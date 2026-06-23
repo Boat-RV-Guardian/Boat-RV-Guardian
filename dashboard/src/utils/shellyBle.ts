@@ -51,7 +51,7 @@ export async function scanShellyDevices(durationMs = 7000): Promise<BleShelly[]>
 // (flood/battery/temp) over BLE when awake, with no internet/cloud/broker. A single shared scan
 // feeds all subscribers. HARDWARE-UNTESTED decode — every advertisement is logged raw so we can map
 // the real device's BTHome layout and iterate.
-export interface AdvReading { mac: string; battery?: number; flood?: boolean; temperature?: number; encrypted?: boolean; raw: string; }
+export interface AdvReading { mac: string; battery?: number; flood?: boolean; temperature?: number; encrypted?: boolean; present?: boolean; raw: string; }
 
 const normMac = (s: string) => (s || '').toLowerCase().replace(/[^a-f0-9]/g, '');
 
@@ -98,13 +98,26 @@ async function ensureAdvScan() {
   if (advStop) return;
   const BleClient = await client();
   await BleClient.requestLEScan({ allowDuplicates: true }, (r: any) => {
-    const sd = r?.serviceData || {};
-    const key = Object.keys(sd).find((k) => k.toLowerCase().includes('fcd2')); // BTHome UUID 0xFCD2
-    if (!key) return;
     try {
-      const reading: AdvReading = { mac: normMac(r?.device?.deviceId || ''), raw: '', ...decodeBTHome(sd[key]) } as AdvReading;
+      const mac = normMac(r?.device?.deviceId || '');
+      const sd = r?.serviceData || {};
+      const md = r?.manufacturerData || {};
+      // Path A — BTHome service data (0xFCD2): true Shelly BLU sensors broadcast clear telemetry here.
+      const fcd2 = Object.keys(sd).find((k) => k.toLowerCase().includes('fcd2'));
+      // Path B — Shelly manufacturer beacon, company 0x0BA9 (2985). HARDWARE-CONFIRMED on a Flood G4:
+      // this beacon is STATIC (identical wet/dry) and carries NO telemetry — only presence + MAC. So
+      // Gen4 wifi sensors need a GATT connect + Shelly.GetStatus for state; the beacon just tells us
+      // the device is awake (a good trigger for that GATT read).
+      const shellyMfg = md['2985'] || md['0BA9'] || md['0ba9'] || md['2985'.toLowerCase()];
+      let reading: AdvReading | null = null;
+      if (fcd2) {
+        reading = { mac, raw: '', ...decodeBTHome(sd[fcd2]) } as AdvReading;
+      } else if (shellyMfg) {
+        reading = { mac, present: true, raw: String(shellyMfg) };
+      }
+      if (!reading) return;
       console.log('[shellyBle] adv', reading.mac, JSON.stringify(reading));
-      advSubscribers.forEach((cb) => cb(reading));
+      advSubscribers.forEach((cb) => cb(reading!));
     } catch { /* ignore malformed adv */ }
   });
   advStop = async () => { try { await BleClient.stopLEScan(); } catch { /* ignore */ } };
