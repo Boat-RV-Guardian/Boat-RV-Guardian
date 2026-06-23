@@ -59,12 +59,15 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const lastFloodRef = useRef<boolean | null>(null);
   const [floodSince, setFloodSince] = useState<number | null>(null);
   const [cloudEvent, setCloudEvent] = useState<{ event: string; at: number } | null>(null);
-  // Prefer the mDNS .local host (survives DHCP IP churn) — but ONLY on desktop/Tauri, where the OS
-  // resolver handles mDNS. Android/iOS WebViews can't resolve .local, so they use the raw IP.
-  // Derive the .local from the Shelly id for devices added before mdnsHost was stored.
+  // The raw IP is the PRIMARY local address — reliable and fast. The mDNS .local host is only a
+  // fallback for DHCP churn, and only on desktop/Tauri (mDNS over HTTP is flaky there and absent in
+  // mobile WebViews). Derived from the Shelly id for devices added before mdnsHost was stored.
   const derivedMdns = device.mdnsHost
     || (device.shellyDeviceId && /shelly/i.test(device.shellyDeviceId) ? `${device.shellyDeviceId.toLowerCase()}.local` : undefined);
-  const localIp = (isTauriEnv() && derivedMdns) ? derivedMdns : device.localIp;
+  // Ordered list of hosts to try: raw IP first, then .local (desktop only) as a churn fallback.
+  const localHosts: string[] = [device.localIp, isTauriEnv() ? derivedMdns : undefined]
+    .filter((h, i, a): h is string => !!h && a.indexOf(h) === i);
+  const localIp = localHosts[0]; // "do we have a local address?" + primary host for reads
 
   // Flood sensors are inherently sleepy/battery, even if added before the batteryPowered flag was
   // stored — treat the role as battery-powered so they're never polled or shown as "unreachable".
@@ -149,9 +152,8 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   };
 
   const fetchStatus = async () => {
-    // Try the preferred host (.local on desktop) then the raw IP, so a failed mDNS lookup falls back.
-    const hosts = [localIp, device.localIp].filter((h, i, a): h is string => !!h && a.indexOf(h) === i);
-    for (const host of hosts) {
+    // Raw IP first, then .local (desktop churn fallback). localHosts is already ordered + deduped.
+    for (const host of localHosts) {
       try {
         const json = await shellyRpc(host, 'Shelly.GetStatus', {}, localStorage.getItem('sh_local_password') || undefined);
         if (json && !json.error) { applyData(json, 'local'); if (isBattery) ensureLocalWebhook(host); return; }
