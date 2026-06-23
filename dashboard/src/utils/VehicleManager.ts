@@ -20,6 +20,12 @@ export interface DeviceConfig {
   fwVersion?: string;        // current firmware version (from Shelly.GetDeviceInfo at onboarding)
   fwUpdateVersion?: string;  // available stable update version, if any (presence ⇒ update available)
 
+  // Per-device voltage calibration offset (V) for the Shelly Plus Uni voltmeter. The correction is
+  // written ONTO the device (Voltmeter.SetConfig xvoltage = "x + offset"), so the local poll AND the
+  // Shelly cloud both report the corrected value (read as voltmeter:N.xvoltage). This field just
+  // mirrors the last-applied offset for the settings UI; the device is the source of truth.
+  voltCalOffset?: number;
+
   // Device-specific settings
   maxFlowRate?: number;
   maxDuration?: number;

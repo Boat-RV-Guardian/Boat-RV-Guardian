@@ -125,7 +125,11 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   // Pull the role's primary trend metric out of a status object (same keys local + cloud).
   const extractMetric = (d: any): number | null => {
     if (device.role === 'High Power Sensor') return d['pm1:0']?.apower ?? d['switch:0']?.apower ?? d['em:0']?.total_act_power ?? d.meters?.[0]?.power ?? null;
-    if (device.role === 'Low Power Sensor') return d['voltmeter:0']?.voltage ?? d['voltmeter:100']?.voltage ?? d.adcs?.[0]?.voltage ?? uniAnalogVolts(d);
+    // Prefer xvoltage (device-side calibrated value) over the raw voltage when present.
+    if (device.role === 'Low Power Sensor')
+      return d['voltmeter:0']?.xvoltage ?? d['voltmeter:0']?.voltage
+        ?? d['voltmeter:100']?.xvoltage ?? d['voltmeter:100']?.voltage
+        ?? d.adcs?.[0]?.voltage ?? uniAnalogVolts(d);
     return null; // flood is binary — no continuous trend
   };
 
@@ -227,7 +231,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
         </div>
       );
     } else if (device.role === 'Low Power Sensor') {
-      const voltage = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
+      const voltage = data['voltmeter:0']?.xvoltage ?? data['voltmeter:0']?.voltage
+        ?? data['voltmeter:100']?.xvoltage ?? data['voltmeter:100']?.voltage
+        ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
       const crit = num('lt_batt_crit_v', 11.8), low = num('lt_batt_low_v', 12.2), normal = num('lt_batt_normal_v', 12.6), charge = num('lt_batt_charge_v', 13.6), over = num('lt_batt_over_v', 15.0);
       const status = voltage <= crit ? { t: 'CRITICAL', c: '#ef4444' } : voltage <= low ? { t: 'LOW', c: '#f59e0b' }
         : voltage >= over ? { t: 'OVER-VOLTAGE', c: '#ef4444' } : voltage >= charge ? { t: 'CHARGING', c: '#22d3ee' } : { t: 'NORMAL', c: '#10b981' };

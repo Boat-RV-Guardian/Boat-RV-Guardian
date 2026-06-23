@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { auth, signOut } from '../services/firebase';
 import Login from './Login';
 
-import { getActiveVehicleId, getVehiclesMap, switchVehicle, addNewVehicle, deleteVehicle, getDevices, type DeviceConfig } from '../utils/VehicleManager';
+import { getActiveVehicleId, getVehiclesMap, switchVehicle, addNewVehicle, deleteVehicle, getDevices, updateDevice, type DeviceConfig } from '../utils/VehicleManager';
 import { getLocalVehicleConfig } from '../utils/configSync';
 import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
@@ -647,6 +647,66 @@ export default function Settings({ user }: { user: any }) {
   // Per-device action feedback (test connection / secure)
   const [devicePanelMsg, setDevicePanelMsg] = useState<{ id: string; text: string; ok: boolean } | null>(null);
   const [devicePanelBusy, setDevicePanelBusy] = useState(false);
+
+  // Per-device voltage-offset calibration. The offset is written ONTO the device via
+  // Voltmeter.SetConfig (xvoltage = "x + offset"), so the local poll and the Shelly cloud both report
+  // the corrected value — single source of truth, no separate sync needed.
+  const [offsetDraft, setOffsetDraft] = useState<Record<string, string>>({});
+  const [voltReadMsg, setVoltReadMsg] = useState<Record<string, string>>({});
+
+  // Find the device's voltmeter component id (peripheral-linked → usually 100).
+  const findVoltmeterId = (status: any): number | null => {
+    for (const k of Object.keys(status || {})) {
+      const m = /^voltmeter:(\d+)$/.exec(k);
+      if (m) return Number(m[1]);
+    }
+    return null;
+  };
+
+  // Read the device's current raw + calibrated voltage (helper for picking an offset).
+  const readVoltNow = async (device: DeviceConfig) => {
+    const host = deviceLocalHost(device);
+    if (!host) return;
+    setDevicePanelBusy(true);
+    try {
+      const { shellyRpc } = await import('../utils/shellyRpc');
+      const st = await shellyRpc(host, 'Shelly.GetStatus', {}, localStorage.getItem('sh_local_password') || undefined);
+      const id = findVoltmeterId(st);
+      const vm = id != null ? st[`voltmeter:${id}`] : null;
+      setVoltReadMsg((prev) => ({
+        ...prev,
+        [device.id]: vm
+          ? `raw ${Number(vm.voltage).toFixed(2)} V${vm.xvoltage != null ? ` → ${Number(vm.xvoltage).toFixed(2)} V` : ''}`
+          : 'no voltmeter — enable it first',
+      }));
+    } catch (e: any) {
+      setVoltReadMsg((prev) => ({ ...prev, [device.id]: `✗ ${e?.message || 'unreachable'}` }));
+    } finally { setDevicePanelBusy(false); }
+  };
+
+  // Write the offset to the device. offset 0 clears the transform (xvoltage off → raw voltage shown).
+  const applyVoltOffset = async (device: DeviceConfig, explicitOff?: number) => {
+    const host = deviceLocalHost(device);
+    if (!host) { setDevicePanelMsg({ id: device.id, text: '✗ No local address for this device.', ok: false }); return; }
+    const off = explicitOff !== undefined ? explicitOff : parseFloat(offsetDraft[device.id] ?? String(device.voltCalOffset ?? '0'));
+    if (Number.isNaN(off)) { setDevicePanelMsg({ id: device.id, text: '✗ Enter a numeric offset (e.g. 0.32 or -0.15).', ok: false }); return; }
+    setDevicePanelBusy(true); setDevicePanelMsg(null);
+    try {
+      const { shellyRpc } = await import('../utils/shellyRpc');
+      const pw = localStorage.getItem('sh_local_password') || undefined;
+      const id = findVoltmeterId(await shellyRpc(host, 'Shelly.GetStatus', {}, pw));
+      if (id == null) { setDevicePanelMsg({ id: device.id, text: '✗ No voltmeter component — tap “Enable voltmeter” first.', ok: false }); return; }
+      const xvoltage = off === 0 ? { expr: null, unit: null } : { expr: `x + (${off})`, unit: 'V' };
+      await shellyRpc(host, 'Voltmeter.SetConfig', { id, config: { xvoltage } }, pw);
+      updateDevice(device.id, { voltCalOffset: off || undefined });
+      setDevices(getDevices());
+      setDevicePanelMsg({ id: device.id, text: off === 0
+        ? '✓ Offset cleared on the device — showing raw reading.'
+        : `✓ Offset ${off >= 0 ? '+' : ''}${off} V written to the device (local + cloud now corrected).`, ok: true });
+    } catch (e: any) {
+      setDevicePanelMsg({ id: device.id, text: `✗ ${e?.message || 'failed'}${device.batteryPowered ? ' — wake the device and retry' : ''}`, ok: false });
+    } finally { setDevicePanelBusy(false); }
+  };
 
   // Device removal (with optional factory reset) — confirmed via dialog
   const [deviceToRemove, setDeviceToRemove] = useState<DeviceConfig | null>(null);
@@ -1584,6 +1644,35 @@ export default function Settings({ user }: { user: any }) {
                                   <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
                                     For Shelly Plus Uni battery monitors reading 0.00 V — links the 0-30 V voltmeter peripheral (reboots the device).
                                   </p>
+                                </div>
+                              )}
+
+                              {/* Voltage calibration — a single offset written ONTO the device (Voltmeter
+                                  xvoltage), so local + cloud both report the corrected value. */}
+                              {device.role === 'Low Power Sensor' && (
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <strong style={{ color: '#fff', fontSize: '0.85rem' }}>🎯 Voltage calibration</strong>
+                                    <button className="btn-secondary" disabled={devicePanelBusy || !deviceLocalHost(device)}
+                                      style={{ padding: '4px 10px', fontSize: '0.72rem' }} onClick={() => readVoltNow(device)}>
+                                      🔄 Read now{voltReadMsg[device.id] ? `: ${voltReadMsg[device.id]}` : ''}
+                                    </button>
+                                  </div>
+                                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '4px 0 8px 0' }}>
+                                    Correction offset for the Shelly Plus Uni voltmeter, written to the device — so the app and the cloud both read the corrected voltage. Offset = (true voltage) − (device reading). Set 0 to clear.
+                                  </p>
+                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <div style={{ position: 'relative', width: '140px' }}>
+                                      <input className="form-input" type="number" step="0.01" placeholder="e.g. 0.32"
+                                        value={offsetDraft[device.id] ?? (device.voltCalOffset != null ? String(device.voltCalOffset) : '')}
+                                        onChange={(e) => setOffsetDraft((prev) => ({ ...prev, [device.id]: e.target.value }))}
+                                        style={{ paddingRight: '28px' }} />
+                                      <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
+                                    </div>
+                                    <button className="btn-primary" disabled={devicePanelBusy} style={{ padding: '6px 12px', fontSize: '0.8rem' }} onClick={() => applyVoltOffset(device)}>Apply</button>
+                                    <button className="btn-secondary" disabled={devicePanelBusy} style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                      onClick={() => { setOffsetDraft((prev) => ({ ...prev, [device.id]: '0' })); applyVoltOffset(device, 0); }}>Clear</button>
+                                  </div>
                                 </div>
                               )}
 

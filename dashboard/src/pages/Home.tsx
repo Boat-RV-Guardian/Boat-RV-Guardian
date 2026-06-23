@@ -53,7 +53,9 @@ function ShellyTile({ device }: { device: DeviceConfig }) {
       badge = v <= cl ? { t: 'CRIT LOW', c: '#ef4444' } : v <= lo ? { t: 'LOW', c: '#f59e0b' } : v >= ch ? { t: 'CRIT HIGH', c: '#ef4444' } : v >= hi ? { t: 'HIGH', c: '#f59e0b' } : { t: 'NORMAL', c: '#10b981' };
       primary = `${Number(power).toFixed(0)} W`; secondary = `${Number(v).toFixed(1)} V`;
     } else if (device.role === 'Low Power Sensor') {
-      const v = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
+      const v = data['voltmeter:0']?.xvoltage ?? data['voltmeter:0']?.voltage
+        ?? data['voltmeter:100']?.xvoltage ?? data['voltmeter:100']?.voltage
+        ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
       const crit = num('lt_batt_crit_v', 11.8), low = num('lt_batt_low_v', 12.2), charge = num('lt_batt_charge_v', 13.6), over = num('lt_batt_over_v', 15.0);
       badge = v <= crit ? { t: 'CRITICAL', c: '#ef4444' } : v <= low ? { t: 'LOW', c: '#f59e0b' } : v >= over ? { t: 'OVER', c: '#ef4444' } : v >= charge ? { t: 'CHARGING', c: '#22d3ee' } : { t: 'NORMAL', c: '#10b981' };
       primary = `${Number(v).toFixed(2)} V`; secondary = 'Battery';
