@@ -99,8 +99,14 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         [hooks/useDeviceHistory.ts](dashboard/src/hooks/useDeviceHistory.ts) (also now owns the
         `AlertLog` type). Widget destructures `{ usageHistory, setUsageHistory, logs, addLog }`.
         Verified with tsc + **full `vite build`** + the suite (49 tests). 1819 → 1645 lines so far.
-  - [ ] **Increment 4+**: polling loop → hook; command senders (start/stop) → hook; Flooding Sentry
-        + auto-restart + washdown automation → hook.
+  - [x] **Increment 4** (2026-06-23): extracted the ~85-line canvas flow-chart rendering into
+        [utils/flowChart.ts](dashboard/src/utils/flowChart.ts) (`drawFlowChart` + the `FlowData`
+        type), with 4 new tests using a stub 2D context (53 total). 1645 → 1559 lines.
+  - [ ] **Increment 5+ (higher risk — defer until hardware smoke-test possible)**: polling loop →
+        hook; command senders (start/stop) → hook; Flooding Sentry + auto-restart + washdown
+        automation → hook. These touch the poll closure and the
+        `commandersRef`/`stateRef`/`expectedWateringStateRef` state machine, which can't be fully
+        verified by tsc/build/tests alone — best done when the app can be run against a live gateway.
 
 ---
 
