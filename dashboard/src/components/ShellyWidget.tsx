@@ -66,7 +66,10 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const [cloudEvent, setCloudEvent] = useState<{ event: string; at: number } | null>(null);
   // Prefer the mDNS .local host (survives DHCP IP churn) — but ONLY on desktop/Tauri, where the OS
   // resolver handles mDNS. Android/iOS WebViews can't resolve .local, so they use the raw IP.
-  const localIp = (isTauriEnv() && device.mdnsHost) ? device.mdnsHost : device.localIp;
+  // Derive the .local from the Shelly id for devices added before mdnsHost was stored.
+  const derivedMdns = device.mdnsHost
+    || (device.shellyDeviceId && /shelly/i.test(device.shellyDeviceId) ? `${device.shellyDeviceId.toLowerCase()}.local` : undefined);
+  const localIp = (isTauriEnv() && derivedMdns) ? derivedMdns : device.localIp;
 
   // Offline mode: listen for the device's BTHome BLE advertisements (no internet/cloud). Native only.
   useEffect(() => {

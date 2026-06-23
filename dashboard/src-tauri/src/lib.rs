@@ -247,6 +247,7 @@ async fn shelly_local_handler(
     if ev.contains("flood") || ev.contains("leak") || ev.contains("alarm") {
         let _ = app_handle.emit("flood-alarm", ());
     }
+    log::info!("local shelly webhook: {}", payload);
     let _ = app_handle.emit("shelly-local-event", payload);
     "OK"
 }
