@@ -1,0 +1,54 @@
+name: Build Android APK
+
+on:
+  push:
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: ./dashboard
+        run: npm run build
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Sync Capacitor Android
+        working-directory: ./dashboard
+        run: npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x dashboard/android/gradlew
+
+      - name: Build Android APK
+        working-directory: ./dashboard/android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: boat-rv-guardian-debug.apk
+          path: 'dashboard/android/app/build/outputs/apk/debug/**/*.apk'

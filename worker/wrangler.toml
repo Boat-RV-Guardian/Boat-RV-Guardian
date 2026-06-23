@@ -1,0 +1,10 @@
+name = "boat-rv-guardian-webhooks"
+main = "src/index.ts"
+compatibility_date = "2024-03-20"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FIREBASE_PROJECT_ID = "boat-rv-guardian-9f8a4"
+# The following must be set via `wrangler secret put <NAME>`:
+# - FIREBASE_CLIENT_EMAIL
+# - FIREBASE_PRIVATE_KEY

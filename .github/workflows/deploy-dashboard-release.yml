@@ -1,0 +1,18 @@
+name: Deploy Web Dashboard on Release Tag
+
+# Release tags (v*) often point at an already-pushed commit, so a combined push `tags` + `paths`
+# filter on deploy-dashboard.yml would be silently skipped (no new commits = no path match). This
+# thin caller has no path filter, so every v* tag redeploys the web dashboard alongside the native
+# release builds in release.yml.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy-dashboard.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      deployments: write

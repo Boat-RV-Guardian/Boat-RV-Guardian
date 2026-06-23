@@ -1,0 +1,52 @@
+name: Deploy Web Dashboard to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dashboard/src/**'
+      - 'dashboard/index.html'
+      - 'dashboard/package.json'
+      - 'dashboard/vite.config.ts'
+      - '.github/workflows/deploy-dashboard.yml'
+  workflow_dispatch:
+  # Reusable: deploy-dashboard-release.yml calls this on v* release tags (no path filter, so tags
+  # always deploy even when they point at an already-pushed commit).
+  workflow_call:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: Build Dashboard (web SPA)
+        working-directory: ./dashboard
+        # BRVG_TARGET=web switches vite.config.ts to a real PWA service worker (offline +
+        # installability); native builds omit this and ship the self-destroying worker.
+        env:
+          BRVG_TARGET: web
+        run: npm run build
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_PAGES_EDIT }}
+          accountId: 9b75e814c0fc254c910fd1afc3c88028
+          projectName: boat-rv-guardian-app
+          directory: ./dashboard/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

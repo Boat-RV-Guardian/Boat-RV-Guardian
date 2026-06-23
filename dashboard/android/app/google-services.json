@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "974787072340",
+    "project_id": "boat-rv-guardian-9f8a4",
+    "storage_bucket": "boat-rv-guardian-9f8a4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:974787072340:android:6c7c5688e270fedcfbb8c1",
+        "android_client_info": {
+          "package_name": "com.jgearinger.boatrvguardian"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "974787072340-6f8m5lu120avq3j1o2pgipqeh7fnsd3r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEpdrBXdLpKd0wh62AaBn0WPWnwa_a2jc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "974787072340-6f8m5lu120avq3j1o2pgipqeh7fnsd3r.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
