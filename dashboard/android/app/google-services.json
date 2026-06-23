@@ -14,6 +14,22 @@
       },
       "oauth_client": [
         {
+          "client_id": "974787072340-8nm014p6a6psdstncbp14u8425pebvg7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jgearinger.boatrvguardian",
+            "certificate_hash": "0f99fd09459c945583480e7ed0196fa59b3e06c0"
+          }
+        },
+        {
+          "client_id": "974787072340-l3iat9o3p3ht0gkmiclo3cjc9dumolih.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jgearinger.boatrvguardian",
+            "certificate_hash": "b94413aa215826754ebce8d2bd8cefb9bae8d294"
+          }
+        },
+        {
           "client_id": "974787072340-6f8m5lu120avq3j1o2pgipqeh7fnsd3r.apps.googleusercontent.com",
           "client_type": 3
         }
