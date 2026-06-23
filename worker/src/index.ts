@@ -136,8 +136,32 @@ async function sendFcmPush(env: Env, token: string, fcmToken: string, title: str
   if (!res.ok) console.warn(`FCM send failed: ${res.status} ${await res.text()}`);
 }
 
+/** Events that should trigger an automatic water shutoff. */
+const FLOOD_EVENT_RE = /flood|leak|alarm/i;
+
 /**
- * Shelly sensor webhook → push the alert to everyone who has access to the vehicle.
+ * Close the valve via the LinkTap cloud API with retries. The LinkTap cloud API is rate-limited
+ * (~1 call / 30s), so a recent client poll can briefly block this safety command — we retry with a
+ * short backoff so the OFF wins. Closing is idempotent, so a redundant close (a local app also
+ * closed it) is harmless. Local-gateway closes by the app aren't rate-limited and are preferred;
+ * this worker path is the no-local-app fallback.
+ */
+async function triggerLinkTapShutoffWithRetry(config: any, attempts = 3): Promise<{ ok: boolean; error?: string }> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      await triggerLinkTapShutoff(config);
+      return { ok: true };
+    } catch (e: any) {
+      if (i === attempts - 1) return { ok: false, error: String(e?.message || e) };
+      await new Promise((r) => setTimeout(r, 3000)); // wait out transient rate-limit/contention
+    }
+  }
+  return { ok: false, error: 'exhausted' };
+}
+
+/**
+ * Shelly sensor webhook → push the alert to everyone who has access to the vehicle, and on a flood
+ * event ALSO close the LinkTap valve (cloud fallback for when no local app is running to do it).
  * The device is provisioned to call /api/shelly?vid=<id>&event=<event>.
  */
 async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
@@ -152,8 +176,7 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
 
   const name = strField(vehicle, 'lt_vessel_name') || 'your vehicle';
   const uids = arrField(vehicle, 'allowedUsers');
-  const title = `🚨 ${name}`;
-  const body = `Sensor alert: ${event}`;
+  const isFlood = FLOOD_EVENT_RE.test(event);
   const now = Date.now();
 
   // Cache last-known state so the app can show it without polling (also serves the offline-return case).
@@ -162,13 +185,41 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     at: { integerValue: String(now) },
   });
 
+  // SAFETY: on a flood/leak event, close every configured LinkTap valve via the cloud API. The app
+  // (if open) also closes locally — redundant closes are harmless, and this guarantees shutoff when
+  // no app is running. Reuses the already-fetched vehicle doc (no extra Firestore read).
+  let shutoff: { ok: boolean; error?: string; valves?: number } | null = null;
+  if (isFlood) {
+    const username = strField(vehicle, 'lt_cloud_user');
+    const apiKey = strField(vehicle, 'lt_cloud_key');
+    const gatewayId = strField(vehicle, 'lt_gateway_id');
+    const taplinkers = [strField(vehicle, 'lt_device_id'), strField(vehicle, 'lt_device_id_2')].filter(Boolean);
+    if (username && apiKey && gatewayId && taplinkers.length) {
+      let okCount = 0; let lastErr = '';
+      for (const tap of taplinkers) {
+        const r = await triggerLinkTapShutoffWithRetry({ username, apiKey, gatewayId, taplinkerId: tap });
+        if (r.ok) okCount++; else lastErr = r.error || 'failed';
+      }
+      shutoff = okCount === taplinkers.length
+        ? { ok: okCount > 0, valves: okCount }
+        : { ok: okCount > 0, valves: okCount, error: lastErr };
+    } else {
+      shutoff = { ok: false, error: 'no LinkTap config' };
+    }
+  }
+
+  const title = `🚨 ${name}`;
+  const body = isFlood
+    ? (shutoff?.ok ? `Flood detected — valve closed automatically.` : `Flood detected: ${event}`)
+    : `Sensor alert: ${event}`;
+
   let sent = 0;
   for (const uid of uids) {
     const user = await getFirestoreDoc(env, token, `users/${uid}`);
     const fcmToken = strField(user, 'fcmToken');
     if (fcmToken) { await sendFcmPush(env, token, fcmToken, title, body); sent++; }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, event }), {
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, shutoff }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }
