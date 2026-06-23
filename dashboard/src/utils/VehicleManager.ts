@@ -16,7 +16,7 @@ export interface DeviceConfig {
   mdnsHost?: string; // Shelly mDNS .local hostname — survives DHCP IP churn; preferred over localIp
   webhookAppIp?: string; // app LAN IP last registered in this device's local webhook (self-heal marker)
   batteryPowered?: boolean; // sleepy sensor (flood etc.) — don't poll; rely on webhook push
-  bleMac?: string; // BLE address (for offline BTHome advertisement matching)
+  bleMac?: string; // BLE address recorded during BLE pairing/onboarding
 
   // Device-specific settings
   maxFlowRate?: number;

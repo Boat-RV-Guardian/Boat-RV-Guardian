@@ -47,92 +47,11 @@ export async function scanShellyDevices(durationMs = 7000): Promise<BleShelly[]>
 }
 
 // ---------------------------------------------------------------------------
-// Offline mode: BLE advertisement (BTHome) scanning. Battery Shelly sensors broadcast their state
-// (flood/battery/temp) over BLE when awake, with no internet/cloud/broker. A single shared scan
-// feeds all subscribers. HARDWARE-UNTESTED decode — every advertisement is logged raw so we can map
-// the real device's BTHome layout and iterate.
-export interface AdvReading { mac: string; battery?: number; flood?: boolean; temperature?: number; encrypted?: boolean; present?: boolean; raw: string; }
-
-const normMac = (s: string) => (s || '').toLowerCase().replace(/[^a-f0-9]/g, '');
-
-// BTHome v2 object id → value byte length (after the id byte). Covers the objects a battery Shelly
-// sensor can emit so we can walk PAST ones we don't surface instead of bailing on the first unknown.
-// Measurements + the full binary-sensor block (each binary value is 1 byte, 0/1).
-const BTHOME_LEN: Record<number, number> = {
-  0x00: 1, 0x01: 1, 0x02: 2, 0x03: 2, 0x04: 3, 0x05: 3, 0x06: 2, 0x07: 4, 0x08: 2, 0x09: 1,
-  0x0a: 3, 0x0b: 3, 0x0c: 2, 0x0d: 2, 0x12: 2, 0x13: 2, 0x14: 2, 0x2e: 1, 0x2f: 1,
-  0x3a: 1, 0x3d: 2, 0x3e: 4, 0x3f: 2,
-  // binary sensors (1 byte each): 0x0F..0x2D
-  0x0f: 1, 0x10: 1, 0x11: 1, 0x15: 1, 0x16: 1, 0x17: 1, 0x18: 1, 0x19: 1, 0x1a: 1, 0x1b: 1,
-  0x1c: 1, 0x1d: 1, 0x1e: 1, 0x1f: 1, 0x20: 1, 0x21: 1, 0x22: 1, 0x23: 1, 0x24: 1, 0x25: 1,
-  0x26: 1, 0x27: 1, 0x28: 1, 0x29: 1, 0x2a: 1, 0x2b: 1, 0x2c: 1, 0x2d: 1,
-};
-
-function decodeBTHome(dv: DataView): Partial<AdvReading> {
-  const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
-  const out: Partial<AdvReading> = { raw: [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('') };
-  if (bytes.length === 0) return out;
-  // Byte 0 = BTHome device-info: bit0 = encrypted (can't decode without the bindkey), bits5-7 = version.
-  out.encrypted = (bytes[0] & 0x01) === 1;
-  if (out.encrypted) return out;
-  let i = 1;
-  while (i < bytes.length) {
-    const id = bytes[i++];
-    const len = BTHOME_LEN[id];
-    if (len === undefined || i + len > bytes.length) break; // unknown/overrun → stop (raw still logged)
-    switch (id) {
-      case 0x01: out.battery = bytes[i]; break;                                  // battery %
-      case 0x02: out.temperature = dv.getInt16(i, true) * 0.01; break;           // temperature °C
-      case 0x20: out.flood = bytes[i] === 1; break;                              // moisture (binary water leak)
-      case 0x14: if (out.flood === undefined) out.flood = dv.getUint16(i, true) > 0; break; // moisture % (fallback)
-    }
-    i += len;
-  }
-  return out;
-}
-
-let advSubscribers: ((r: AdvReading) => void)[] = [];
-let advStop: (() => Promise<void>) | null = null;
-
-async function ensureAdvScan() {
-  if (advStop) return;
-  const BleClient = await client();
-  await BleClient.requestLEScan({ allowDuplicates: true }, (r: any) => {
-    try {
-      const mac = normMac(r?.device?.deviceId || '');
-      const sd = r?.serviceData || {};
-      const md = r?.manufacturerData || {};
-      // Path A — BTHome service data (0xFCD2): true Shelly BLU sensors broadcast clear telemetry here.
-      const fcd2 = Object.keys(sd).find((k) => k.toLowerCase().includes('fcd2'));
-      // Path B — Shelly manufacturer beacon, company 0x0BA9 (2985). HARDWARE-CONFIRMED on a Flood G4:
-      // this beacon is STATIC (identical wet/dry) and carries NO telemetry — only presence + MAC. So
-      // Gen4 wifi sensors need a GATT connect + Shelly.GetStatus for state; the beacon just tells us
-      // the device is awake (a good trigger for that GATT read).
-      const shellyMfg = md['2985'] || md['0BA9'] || md['0ba9'] || md['2985'.toLowerCase()];
-      let reading: AdvReading | null = null;
-      if (fcd2) {
-        reading = { mac, raw: '', ...decodeBTHome(sd[fcd2]) } as AdvReading;
-      } else if (shellyMfg) {
-        reading = { mac, present: true, raw: String(shellyMfg) };
-      }
-      if (!reading) return;
-      console.log('[shellyBle] adv', reading.mac, JSON.stringify(reading));
-      advSubscribers.forEach((cb) => cb(reading!));
-    } catch { /* ignore malformed adv */ }
-  });
-  advStop = async () => { try { await BleClient.stopLEScan(); } catch { /* ignore */ } };
-}
-
-/** Subscribe to decoded BTHome advertisements. Starts the shared scan; stops it when the last
- *  subscriber leaves. Returns an unsubscribe function. */
-export async function subscribeAdvertisements(onReading: (r: AdvReading) => void): Promise<() => void> {
-  advSubscribers.push(onReading);
-  await ensureAdvScan();
-  return () => {
-    advSubscribers = advSubscribers.filter((c) => c !== onReading);
-    if (advSubscribers.length === 0 && advStop) { advStop(); advStop = null; }
-  };
-}
+// NOTE: BLE is used ONLY for pairing/onboarding (provisioning) now. The offline BLE
+// advertisement/BTHome telemetry path was removed — Gen4 wifi sensors don't broadcast
+// state in the clear (hardware-confirmed: static Shelly beacon), so device state comes
+// over IP (local webhook + Shelly.GetStatus strike, cloud webhook/FCM, cached state).
+// ---------------------------------------------------------------------------
 
 // One RPC round-trip on an already-connected device.
 async function rpcOnConnected(BleClient: typeof BleClientType, deviceId: string, method: string, params: any): Promise<any> {

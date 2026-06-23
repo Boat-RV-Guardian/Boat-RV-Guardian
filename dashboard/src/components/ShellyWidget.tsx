@@ -50,7 +50,7 @@ function Sparkline({ points, color, min, max, thresholds }: {
 export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<'local' | 'cloud' | 'ble' | null>(null);
+  const [source, setSource] = useState<'local' | 'cloud' | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [history, setHistory] = useState<number[]>([]);
   const [shellyServer, setShellyServer] = useState('');
@@ -70,38 +70,6 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   // stored — treat the role as battery-powered so they're never polled or shown as "unreachable".
   const isBattery = device.batteryPowered === true || device.role === 'Flood Sensor';
 
-  // Offline mode: listen for the device's BTHome BLE advertisements (no internet/cloud). Native only.
-  useEffect(() => {
-    if (device.enabled === false) return;
-    if (!isBattery) return;
-    const Cap = (window as any).Capacitor;
-    if (!Cap?.isNativePlatform?.()) return;
-    const normMac = (s: string) => (s || '').toLowerCase().replace(/[^a-f0-9]/g, '');
-    const targetMac = normMac(device.bleMac || '');
-    const idMac = ((device.shellyDeviceId || '').match(/([0-9a-fA-F]{12})$/) || [])[1]?.toLowerCase() || '';
-    const matchAdv = (m: string) =>
-      (!!targetMac && m === targetMac) || (!!idMac && m.slice(0, 10) === idMac.slice(0, 10)); // BLE MAC last byte can differ
-
-    let unsub: (() => void) | undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { subscribeAdvertisements } = await import('../utils/shellyBle');
-        const u = await subscribeAdvertisements((r) => {
-          if (!matchAdv(r.mac)) return;
-          setData((prev: any) => ({
-            ...(prev || {}),
-            ...(r.flood !== undefined ? { 'flood:0': { alarm: r.flood } } : {}),
-            ...(r.battery !== undefined ? { 'devicepower:0': { battery: { percent: r.battery } } } : {}),
-            ...(r.temperature !== undefined ? { 'temperature:0': { tC: r.temperature } } : {}),
-          }));
-          setSource('ble'); setError(null); setLastUpdated(Date.now());
-        });
-        if (cancelled) u(); else unsub = u;
-      } catch { /* BLE unavailable */ }
-    })();
-    return () => { cancelled = true; if (unsub) unsub(); };
-  }, [device.enabled, isBattery, device.bleMac, device.shellyDeviceId]);
 
   // Battery sensors: read the worker-cached last event (no polling needed) — works whenever online.
   useEffect(() => {
@@ -304,7 +272,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
             <span style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.04em', padding: '2px 8px', borderRadius: '10px',
               color: source === 'cloud' ? 'var(--accent-cyan)' : '#10b981',
               background: source === 'cloud' ? 'rgba(0,242,254,0.1)' : 'rgba(16,185,129,0.12)' }}>
-              {source === 'local' ? '🏠 LOCAL' : source === 'ble' ? '📡 BLE' : '☁️ CLOUD'}
+              {source === 'local' ? '🏠 LOCAL' : '☁️ CLOUD'}
             </span>
           )}
         </div>
