@@ -6,6 +6,9 @@ import { onAuthStateChanged } from 'firebase/auth';
 export interface UserConfig {
   accessibleVehicles: string[];
   activeVehicleId: string;
+  // What to open on login: 'default' = always the activeVehicleId vehicle; 'last' = whatever was
+  // used last on this device. Unset is treated as 'default' (honor the chosen vehicle).
+  startupMode?: 'default' | 'last';
 }
 
 export function useCloudConfig(activeVid: string | null) {

@@ -909,38 +909,61 @@ export default function Settings({ user }: { user: any }) {
                 </div>
               </div>
 
-              {/* Default Vehicle on Login */}
+              {/* Startup vehicle: open the last-used vehicle, or always a specific default. */}
               {(() => {
                 const vehicles = Object.values(vehiclesMap);
                 if (vehicles.length === 0) return null;
+                const mode = userConfig?.startupMode || 'default';
                 // Auto-pick the first vehicle if the account has no preference set yet
                 const effectiveDefault = userConfig?.activeVehicleId || vehicles[0]?.id || '';
                 return (
-                  <div style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-                    <div style={{ flex: 1 }}>
-                      <label className="form-label" style={{ marginBottom: '4px' }}>Default Vehicle on Login</label>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 8px 0' }}>
-                        Loaded automatically on a fresh install or new device.
-                      </p>
-                      <select
-                        className="form-input"
-                        value={effectiveDefault}
-                        onChange={async (e) => {
-                          setDefaultVidSaving(true);
-                          try { await updateUserConfig({ activeVehicleId: e.target.value }); }
-                          finally { setDefaultVidSaving(false); }
-                        }}
-                      >
-                        {vehicles.map(v => (
-                          <option key={v.id} value={v.id}>
-                            {v.config.lt_vessel_name || v.id}
-                          </option>
-                        ))}
-                      </select>
+                  <div style={{ marginTop: '16px' }}>
+                    <label className="form-label" style={{ marginBottom: '4px' }}>When the app opens</label>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                      <div style={{ flex: 1 }}>
+                        <select
+                          className="form-input"
+                          value={mode}
+                          onChange={async (e) => {
+                            const m = e.target.value as 'default' | 'last';
+                            setDefaultVidSaving(true);
+                            try {
+                              await updateUserConfig(m === 'default'
+                                ? { startupMode: 'default', activeVehicleId: effectiveDefault }
+                                : { startupMode: 'last' });
+                            } finally { setDefaultVidSaving(false); }
+                          }}
+                        >
+                          <option value="last">Last used vehicle</option>
+                          <option value="default">A specific vehicle</option>
+                        </select>
+                      </div>
+                      {mode === 'default' && (
+                        <div style={{ flex: 1 }}>
+                          <select
+                            className="form-input"
+                            value={effectiveDefault}
+                            onChange={async (e) => {
+                              setDefaultVidSaving(true);
+                              try { await updateUserConfig({ startupMode: 'default', activeVehicleId: e.target.value }); }
+                              finally { setDefaultVidSaving(false); }
+                            }}
+                          >
+                            {vehicles.map(v => (
+                              <option key={v.id} value={v.id}>{v.config.lt_vessel_name || v.id}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {defaultVidSaving && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', paddingBottom: '10px', whiteSpace: 'nowrap' }}>Saving…</span>
+                      )}
                     </div>
-                    {defaultVidSaving && (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', paddingBottom: '10px', whiteSpace: 'nowrap' }}>Saving…</span>
-                    )}
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '6px 0 0 0' }}>
+                      {mode === 'default'
+                        ? 'Opens this vehicle every time you log in.'
+                        : 'Opens whichever vehicle you used last on this device.'}
+                    </p>
                   </div>
                 );
               })()}

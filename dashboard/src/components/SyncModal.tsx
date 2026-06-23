@@ -73,27 +73,36 @@ export default function SyncModal() {
     }
     if (mapChanged) saveVehiclesMap(map);
 
-    // Adoption: only if the current device profile is untouched and the active vehicle isn't
-    // already one of the cloud vehicles. The flag makes this a one-shot per login so later
-    // cloud snapshots can't discard a vehicle the user adds after logging in.
+    // Startup vehicle resolution — runs once per login, but only after userConfig has loaded (the
+    // user-pref snapshot can arrive a tick after the vehicle list, and we must not decide without it).
+    // Modes: 'default' (and unset) → open the user's chosen Default Vehicle on every login;
+    // 'last' → keep whatever vehicle was last active on this device. A fresh first-run profile always
+    // adopts a real cloud vehicle (and the blank local profile is discarded).
     const currentActive = getActiveVehicleId();
-    const shouldAdopt = !adoptedRef.current && isLocalProfileFresh() && !cloudIds.has(currentActive);
-    adoptedRef.current = true;
+    if (!adoptedRef.current && userConfig) {
+      adoptedRef.current = true;
+      const localMap = getVehiclesMap();
+      const known = (id?: string): id is string => !!id && (cloudIds.has(id) || !!localMap[id]);
+      const mode = userConfig.startupMode || 'default';
+      const fresh = isLocalProfileFresh() && !cloudIds.has(currentActive);
 
-    if (shouldAdopt) {
-      const preferred = userConfig?.activeVehicleId && cloudIds.has(userConfig.activeVehicleId)
-        ? userConfig.activeVehicleId
-        : cloudList[0].id;
-
-      switchVehicle(preferred); // loads the cloud vehicle's config into the active profile
-
-      // Discard the blank first-run vehicle so the picker isn't cluttered with it.
-      const after = getVehiclesMap();
-      if (currentActive !== preferred && !cloudIds.has(currentActive) && after[currentActive]) {
-        delete after[currentActive];
-        saveVehiclesMap(after);
+      let target = currentActive;
+      if (mode === 'default' && known(userConfig.activeVehicleId)) {
+        target = userConfig.activeVehicleId;          // always open the chosen default
+      } else if (!cloudIds.has(currentActive)) {
+        target = cloudList[0].id;                      // 'last'/no-pref but current isn't a real cloud vehicle
       }
-      return; // switchVehicle already dispatched settings_updated
+
+      if (known(target) && target !== currentActive) {
+        switchVehicle(target); // backs up current, loads target, dispatches settings_updated
+        // Discard the blank first-run vehicle so the picker isn't cluttered with it.
+        const after = getVehiclesMap();
+        if (fresh && !cloudIds.has(currentActive) && after[currentActive]) {
+          delete after[currentActive];
+          saveVehiclesMap(after);
+        }
+        return;
+      }
     }
 
     if (mapChanged) {
