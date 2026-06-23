@@ -151,6 +151,31 @@ export default function SyncModal() {
     }
   }, [activeVehicleConfig, configVid, hasResolved, activeVid]);
 
+  // Live multi-device sync: after the initial conflict resolution, apply a peer's cloud changes to
+  // this already-open app, so a device added / setting changed on another device shows up here in
+  // real time (useCloudConfig already onSnapshots the active vehicle). Last-write-wins; skipped
+  // while one of our own local edits is still pending its debounced push, so we don't clobber what
+  // the user is actively changing. Device-local prefs (LOCAL_ONLY_KEYS) aren't touched.
+  useEffect(() => {
+    if (!auth.currentUser || !hasResolved) return;
+    if (localStorage.getItem('lt_sync_cloud') === 'false') return;
+    if (configVid !== activeVid) return;
+    if (!activeVehicleConfig || Object.keys(activeVehicleConfig).length === 0) return;
+    if (autoSaveTimer.current) return; // our own pending change should win
+
+    const local = getLocalVehicleConfig();
+    let differs = false;
+    for (const key of Object.keys(local)) {
+      if (activeVehicleConfig[key] === undefined) continue;
+      if (local[key] !== activeVehicleConfig[key]) { differs = true; break; }
+    }
+    if (!differs) return;
+
+    (window as any).__is_syncing_cloud = true; // suppress the auto-save echo of this applied change
+    applyCloudVehicleConfig(activeVehicleConfig);
+    (window as any).__is_syncing_cloud = false;
+  }, [activeVehicleConfig, configVid, activeVid, hasResolved]);
+
   // Setup auto-save listener — debounced to avoid hammering Firestore on rapid setting changes.
   // __is_syncing_cloud is set by switchVehicle/deleteVehicle/applyCloudVehicleConfig so this
   // skips events triggered by a vehicle change (which would otherwise write the new vehicle's
