@@ -32,24 +32,32 @@ foreign LAN and never confirmed against real hardware. Source of truth is the
 **Priority:** High — there is no test framework and no test files anywhere in the repo, so
 every change is verified by hand. Start with pure logic that's high-risk and easy to cover.
 
-- [ ] Add Vitest to `dashboard/` (`npm i -D vitest`, add `"test": "vitest"` to
-      [package.json](dashboard/package.json) scripts; reuse the existing Vite config).
-- [ ] Unit-test the time policy in [utils/time.ts](dashboard/src/utils/time.ts)
+**Status (2026-06-23): framework stood up, 35 tests passing across 5 util modules.** Vitest 4
+(supports Vite 8) + jsdom, config in [vitest.config.ts](dashboard/vitest.config.ts), a
+Map-backed localStorage shim in [src/test/setup.ts](dashboard/src/test/setup.ts), tests excluded
+from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
+
+- [x] Add Vitest to `dashboard/` — `npm test` / `npm run test:watch` wired in
+      [package.json](dashboard/package.json).
+- [x] Unit-test the time policy in [utils/time.ts](dashboard/src/utils/time.ts)
       (`formatTime` / `formatDate` / `formatDateTime` — UTC storage, `lt_tz` display, fallbacks).
-- [ ] Unit-test the threshold/config migrations in
+- [x] Unit-test the threshold/config migrations in
       [utils/configSync.ts](dashboard/src/utils/configSync.ts)
-      (`migrateAllVehiclesThresholds`, `migrateFlatThresholds`, `LOCAL_ONLY_KEYS` handling) —
-      these mutate persisted user data, so regressions are costly.
-- [ ] Unit-test role resolution in [utils/sharing.ts](dashboard/src/utils/sharing.ts)
-      (`getMyRole`, legacy-member-as-admin, `ensureOwnerAdmin`).
-- [ ] Unit-test the Shelly webhook param builders in
-      [utils/shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) (`webhookValueParams`, `cidFor`) —
-      ties directly into Task 1.
-- [ ] Unit-test history merge logic in [utils/historySync.ts](dashboard/src/utils/historySync.ts)
-      (usage = max per bucket, events = dedup by `ts|message`).
+      (`migrateAllVehiclesThresholds`, `migrateFlatThresholds`, freshness checks, round-trip).
+- [x] Unit-test role resolution in [utils/sharing.ts](dashboard/src/utils/sharing.ts)
+      (`getMyRole`, legacy-member-as-admin, `getMembers`).
+- [x] Unit-test the Shelly webhook param builders in
+      [utils/shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) (via `registerShellyWebhooks` /
+      `refreshLocalShellyWebhooks` — value params, cid resolution, merge cap) — ties into Task 1.
+- [x] Unit-test history merge logic in [utils/historySync.ts](dashboard/src/utils/historySync.ts)
+      (per-month bucketing, usage = max per bucket). **Found + fixed a real bug**: a non-finite
+      event `ts` (NaN/Infinity passes `typeof === 'number'`) threw `RangeError` and aborted the
+      whole push — now guarded with `Number.isFinite`.
 - [ ] Add a worker typecheck/test gate: [worker/src/index.ts](worker/src/index.ts) parses query
       params into `sensorState` and skips FCM for `*.measurement`/`*.change` — cover that branch.
 - [ ] Wire `npm test` into CI so PRs run it (see `.github/workflows/`).
+- [ ] (Follow-up) Add component/integration tests for the role-gating UI behavior once Task 3
+      extracts the logic into hooks (easier to test in isolation than the current big components).
 
 ---
 

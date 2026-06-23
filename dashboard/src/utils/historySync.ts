@@ -48,7 +48,9 @@ export async function pushDeviceHistory(
     if (m.length === 7) ensure(m).usage[iso] = liters;
   }
   for (const ev of events) {
-    if (typeof ev?.ts !== 'number') continue;
+    // Guard against NaN/Infinity too (both are typeof 'number') — an invalid ts would otherwise
+    // throw RangeError in new Date(ts).toISOString() and abort the entire push, dropping usage.
+    if (!Number.isFinite(ev?.ts)) continue;
     ensure(monthOf(new Date(ev.ts))).events[String(ev.ts)] = { type: ev.type, message: ev.message };
   }
 
