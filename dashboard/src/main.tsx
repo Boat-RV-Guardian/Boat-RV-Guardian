@@ -25,6 +25,26 @@ class ErrorBoundary extends Component<{children: any}, {error: Error | null}> {
   }
 }
 
+// Auto-connect LinkTap on app open: if cloud creds and/or a gateway IP are configured, activate
+// polling so the widgets connect on startup without a manual click. Skipped only when LinkTap
+// devices exist AND every one of them is disabled. Runs before render so the widgets' initial
+// state already reflects the connected flags. Disable a device to opt it out of auto-connect.
+try {
+  const devs = JSON.parse(localStorage.getItem('lt_devices') || '[]');
+  const linktaps = Array.isArray(devs) ? devs.filter((d: any) => d?.type === 'linktap_valve') : [];
+  const anyEnabled = linktaps.length === 0 || linktaps.some((d: any) => d?.enabled !== false);
+  if (anyEnabled) {
+    if (localStorage.getItem('lt_cloud_user') && localStorage.getItem('lt_cloud_key')) {
+      localStorage.setItem('lt_is_cloud_polling', 'true');
+    }
+    if (localStorage.getItem('lt_gateway_ip')) {
+      localStorage.setItem('lt_is_local_polling', 'true');
+    }
+  }
+} catch (e) {
+  /* non-fatal: fall back to the widget's own auto-connect heuristic */
+}
+
 let root = (window as any)._reactRoot;
 if (!root) {
   root = createRoot(document.getElementById('root')!);

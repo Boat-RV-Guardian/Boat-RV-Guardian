@@ -600,7 +600,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     setConnectionStatus('disconnected');
 
     const poll = async () => {
-      if (!isLocalPollingActive && !isCloudPollingActive) {
+      if (device.enabled === false || (!isLocalPollingActive && !isCloudPollingActive)) {
         setConnectionStatus('disconnected');
         return;
       }
@@ -878,7 +878,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     
     const timer = setInterval(poll, pollInterval * 1000);
     return () => clearInterval(timer);
-  }, [gatewayIp, gatewayId, deviceId, isCloudPollingActive, isLocalPollingActive, refreshInterval, effectiveInterval, pollInterval, manualRefresh, cloudUsername, cloudApiKey]);
+  }, [gatewayIp, gatewayId, deviceId, isCloudPollingActive, isLocalPollingActive, refreshInterval, effectiveInterval, pollInterval, manualRefresh, cloudUsername, cloudApiKey, device.enabled]);
 
   // --- API Action Commanders ---
   

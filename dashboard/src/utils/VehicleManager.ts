@@ -20,6 +20,10 @@ export interface DeviceConfig {
   maxFlowRate?: number;
   maxDuration?: number;
   autoGuardEnabled?: boolean;
+
+  // Whether the device is active. undefined === enabled (default on, backward-compatible).
+  // Disabled devices are not polled and are skipped by startup auto-connect.
+  enabled?: boolean;
 }
 
 export interface Vehicle {

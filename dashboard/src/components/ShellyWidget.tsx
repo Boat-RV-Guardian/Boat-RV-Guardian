@@ -57,6 +57,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
 
   // Offline mode: listen for the device's BTHome BLE advertisements (no internet/cloud). Native only.
   useEffect(() => {
+    if (device.enabled === false) return;
     if (!device.batteryPowered) return;
     const Cap = (window as any).Capacitor;
     if (!Cap?.isNativePlatform?.()) return;
@@ -85,10 +86,11 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       } catch { /* BLE unavailable */ }
     })();
     return () => { cancelled = true; if (unsub) unsub(); };
-  }, [device.batteryPowered, device.bleMac, device.shellyDeviceId]);
+  }, [device.enabled, device.batteryPowered, device.bleMac, device.shellyDeviceId]);
 
   // Battery sensors: read the worker-cached last event (no polling needed) — works whenever online.
   useEffect(() => {
+    if (device.enabled === false) return;
     if (!device.batteryPowered || !device.shellyDeviceId) return;
     const vid = getActiveVehicleId();
     if (!vid) return;
@@ -98,7 +100,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       if (d?.event) setCloudEvent({ event: d.event, at: Number(d.at) || 0 });
     }, () => {});
     return () => unsub();
-  }, [device.batteryPowered, device.shellyDeviceId]);
+  }, [device.enabled, device.batteryPowered, device.shellyDeviceId]);
 
   useEffect(() => {
     setShellyServer(localStorage.getItem('sh_server') || '');
@@ -146,6 +148,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   };
 
   useEffect(() => {
+    if (device.enabled === false) return; // disabled device — don't poll
     // Battery/sleepy sensors (flood etc.) must NOT be polled — they deep-sleep, so polling just
     // times out (shows "down") and waking them drains the battery. They report on their wake cycle
     // and push real-time alerts via the cloud webhook. We do a single best-effort read on mount
@@ -165,7 +168,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     const interval = setInterval(fetchStatus, localIp ? 8000 : 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localIp, shellyServer, shellyAuthKey, device.id, device.batteryPowered]);
+  }, [localIp, shellyServer, shellyAuthKey, device.id, device.batteryPowered, device.enabled]);
 
   let content = <div style={{ color: 'var(--text-muted)' }}>Loading…</div>;
 

@@ -992,17 +992,30 @@ export default function Settings({ user }: { user: any }) {
                   </div>
                 </div>
 
+                {/* Retrieve devices from cloud — shared discovery action, centered between the two controllers */}
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    className="btn-secondary"
+                    onClick={handleRetrieveFromCloud}
+                    disabled={isDiscovering || !cloudUsername || !cloudApiKey}
+                    style={{ padding: '8px 18px', fontSize: '0.8rem' }}
+                  >
+                    {isDiscovering ? 'Retrieving...' : '⬇️ Retrieve Devices from Cloud'}
+                  </button>
+                </div>
+
                 {/* Local Gateway Control */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-emerald)', margin: 0 }}>🏠 Local Gateway Control</h4>
                     <button
-                      className="btn-secondary"
-                      onClick={handleRetrieveFromCloud}
-                      disabled={isDiscovering || !cloudUsername || !cloudApiKey}
-                      style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                      className={!isLocalPollingActive ? "btn-primary" : "btn-secondary"}
+                      onClick={() => setIsLocalPollingActive(!isLocalPollingActive)}
+                      disabled={!gatewayIp}
+                      title={!gatewayIp ? 'Enter or scan for a Gateway IP first' : ''}
+                      style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700 }}
                     >
-                      {isDiscovering ? 'Retrieving...' : 'Retrieve Devices from Cloud'}
+                      {!isLocalPollingActive ? 'Connect' : '✓ Connected'}
                     </button>
                   </div>
 
@@ -1158,8 +1171,13 @@ export default function Settings({ user }: { user: any }) {
                         border: '1px solid rgba(255,255,255,0.1)',
                         borderBottom: expandedDeviceId === device.id ? 'none' : undefined,
                       }}>
-                        <div>
-                          <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{device.name || device.role}</div>
+                        <div style={{ opacity: device.enabled === false ? 0.55 : 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            {device.name || device.role}
+                            {device.enabled === false && (
+                              <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Disabled</span>
+                            )}
+                          </div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                             {device.type === 'linktap_valve' ? '🚰 LinkTap Valve' : '⚡ Shelly Sensor'} · {device.linktapDeviceId || device.shellyDeviceId || device.id}
                           </div>
@@ -1186,6 +1204,20 @@ export default function Settings({ user }: { user: any }) {
                           borderTop: 'none', borderRadius: '0 0 12px 12px', padding: '16px',
                           display: 'flex', flexDirection: 'column', gap: '16px',
                         }}>
+                          {/* Enable / disable — gates polling and startup auto-connect */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px' }}>
+                            <div>
+                              <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>Device Enabled</div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                When off, this device isn't polled and is skipped on startup auto-connect.
+                              </div>
+                            </div>
+                            <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                              <input type="checkbox" checked={device.enabled !== false}
+                                onChange={(e) => { import('../utils/VehicleManager').then(m => { m.updateDevice(device.id, { enabled: e.target.checked }); setDevices(m.getDevices()); }); }}
+                                style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
+                            </label>
+                          </div>
                           {device.type === 'linktap_valve' && (
                             <>
                               {/* Normal Run Profile */}
