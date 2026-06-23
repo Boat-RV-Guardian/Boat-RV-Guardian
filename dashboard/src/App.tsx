@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import Sensors from './pages/Sensors';
 import Settings from './pages/Settings';
 import { usePushNotifications } from './hooks/usePushNotifications';
+import { useSensorBridge } from './hooks/useSensorBridge';
 import { auth, onAuthStateChanged } from './services/firebase';
 import SyncModal from './components/SyncModal';
 import Login from './pages/Login';
@@ -13,6 +14,7 @@ type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_powe
 
 export default function App() {
   usePushNotifications();
+  useSensorBridge(); // app-level: handle sleepy-sensor local webhooks regardless of active page
   const [currentView, setCurrentView] = useState<AppView>('home');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);

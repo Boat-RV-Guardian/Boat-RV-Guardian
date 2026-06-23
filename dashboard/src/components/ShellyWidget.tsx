@@ -4,6 +4,7 @@ import { nativeFetch } from '../utils/nativeFetch';
 import { shellyRpc } from '../utils/shellyRpc';
 import { formatTime } from '../utils/time';
 import { db, doc, onSnapshot } from '../services/firebase';
+import { lastStatusKey } from '../hooks/useSensorBridge';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
@@ -20,12 +21,6 @@ const invokeTauri = async (cmd: string, args?: any) => {
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke(cmd, args);
 };
-const listenTauri = async (event: string, handler: (e: any) => void) => {
-  if (!isTauriEnv()) return () => {};
-  const { listen } = await import('@tauri-apps/api/event');
-  return listen(event, handler);
-};
-
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
 
 // Compact SVG trend line with optional dashed threshold lines.
@@ -118,27 +113,20 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     return () => unsub();
   }, [device.enabled, device.batteryPowered, device.shellyDeviceId]);
 
-  // Local webhook (desktop/Tauri): the sleepy device just woke and hit our listener. Strike
-  // Shelly.GetStatus at its current source IP to pull full telemetry, freshen the stored IP, and
-  // self-heal the device's local webhook if our app's LAN IP has changed (DHCP churn).
+  // The strike on a sleepy device's wake (GetStatus + self-heal) is handled app-level by
+  // useSensorBridge so it runs regardless of the active page. Here we just consume the result:
+  // read the cached last-status on mount for instant state, and update live on the broadcast.
   useEffect(() => {
-    if (device.enabled === false) return;
-    let unlisten: any;
-    (async () => {
-      unlisten = await listenTauri('shelly-local-event', async (e: any) => {
-        const p = e?.payload || {};
-        if (!p.ip || !device.shellyDeviceId || p.device !== device.shellyDeviceId) return;
-        const pw = localStorage.getItem('sh_local_password') || undefined;
-        try {
-          const json = await shellyRpc(p.ip, 'Shelly.GetStatus', {}, pw);
-          if (json && !json.error) applyData(json, 'local');
-        } catch { /* may have slept again before we struck */ }
-        const { updateDevice } = await import('../utils/VehicleManager');
-        if (p.ip !== device.localIp) updateDevice(device.id, { localIp: p.ip });
-        ensureLocalWebhook(p.ip); // self-heal the device's local webhook to our current LAN IP
-      });
-    })();
-    return () => { if (unlisten) unlisten(); };
+    if (device.enabled === false || !device.shellyDeviceId) return;
+    try {
+      const cached = localStorage.getItem(lastStatusKey(device.shellyDeviceId));
+      if (cached) { const { status } = JSON.parse(cached); if (status) applyData(status, 'local'); }
+    } catch { /* ignore */ }
+    const onStatus = (e: any) => {
+      if (e?.detail?.deviceId === device.shellyDeviceId && e.detail.status) applyData(e.detail.status, 'local');
+    };
+    window.addEventListener('shelly_status', onStatus);
+    return () => window.removeEventListener('shelly_status', onStatus);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [device.id, device.shellyDeviceId, device.enabled]);
 
