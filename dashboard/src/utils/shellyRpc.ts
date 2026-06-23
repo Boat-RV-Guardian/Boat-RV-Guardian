@@ -147,6 +147,34 @@ export async function refreshLocalShellyWebhooks(
   }
 }
 
+/**
+ * Onboarding/diagnostic firmware check. `call` runs one RPC (works over HTTP or BLE). Returns the
+ * device's current version and the available stable update version (undefined if up to date).
+ */
+export async function shellyCheckFirmware(
+  call: (method: string, params: any) => Promise<any>,
+): Promise<{ version?: string; updateVersion?: string }> {
+  let version: string | undefined;
+  try {
+    const info = await call('Shelly.GetDeviceInfo', {});
+    version = info?.ver;
+  } catch { /* keep undefined */ }
+  let updateVersion: string | undefined;
+  try {
+    const upd = await call('Shelly.CheckForUpdate', {});
+    const stable = upd?.stable?.version;
+    if (stable && stable !== version) updateVersion = stable;
+  } catch { /* device offline / no update server reachable */ }
+  return { version, updateVersion };
+}
+
+/** Apply the available stable firmware update. The device downloads + reboots (~1–2 min). */
+export async function shellyApplyUpdate(
+  call: (method: string, params: any) => Promise<any>,
+): Promise<void> {
+  await call('Shelly.Update', { stage: 'stable' });
+}
+
 /** Secure a device by setting its admin password (HA1). Call on a reachable, unsecured device. */
 export async function shellySetPassword(ip: string, deviceId: string, password: string): Promise<void> {
   const ha1 = await sha256Hex(`admin:${deviceId}:${password}`);

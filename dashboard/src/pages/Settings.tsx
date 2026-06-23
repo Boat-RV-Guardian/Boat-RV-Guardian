@@ -201,6 +201,8 @@ export default function Settings({ user }: { user: any }) {
 
   // Per-device settings panel
   const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  const [fwBusy, setFwBusy] = useState(false);
+  const [fwMsg, setFwMsg] = useState('');
   const [devNormalHrs, setDevNormalHrs] = useState(24);
   const [devNormalMins, setDevNormalMins] = useState(0);
   const [devNormalDaily, setDevNormalDaily] = useState(false);
@@ -506,6 +508,41 @@ export default function Settings({ user }: { user: any }) {
     setDevNormalDaily(localStorage.getItem(`lt_norm_daily_${ltId}`) === 'true');
     setDevNormalVol(Number(localStorage.getItem(`lt_norm_vol_${ltId}`) || '300'));
     setDevAutoRestart(localStorage.getItem(`lt_auto_restart_${ltId}`) === 'true');
+    setFwMsg(''); setFwBusy(false);
+  };
+
+  // --- Firmware (Shelly devices) ---
+  const deviceLocalHost = (d: DeviceConfig) =>
+    d.localIp || (d.shellyDeviceId && /shelly/i.test(d.shellyDeviceId) ? `${d.shellyDeviceId.toLowerCase()}.local` : '');
+
+  const handleCheckFirmware = async (device: DeviceConfig) => {
+    const host = deviceLocalHost(device);
+    if (!host) { setFwMsg('No local address for this device.'); return; }
+    setFwBusy(true); setFwMsg('Checking…');
+    try {
+      const { shellyCheckFirmware, shellyRpc } = await import('../utils/shellyRpc');
+      const { updateDevice } = await import('../utils/VehicleManager');
+      const pw = localStorage.getItem('sh_local_password') || undefined;
+      const fw = await shellyCheckFirmware((m, p) => shellyRpc(host, m, p, pw));
+      updateDevice(device.id, { fwVersion: fw.version, fwUpdateVersion: fw.updateVersion || undefined });
+      setDevices(getDevices());
+      setFwMsg(fw.updateVersion ? `Update available: v${fw.updateVersion}` : 'Up to date.');
+    } catch {
+      setFwMsg(`Couldn't reach the device${device.batteryPowered ? ' — wake it (press its button) and retry' : ''}.`);
+    } finally { setFwBusy(false); }
+  };
+
+  const handleUpdateFirmware = async (device: DeviceConfig) => {
+    const host = deviceLocalHost(device);
+    if (!host) return;
+    setFwBusy(true); setFwMsg('Updating… the device downloads + reboots (~1–2 min). Keep it powered.');
+    try {
+      const { shellyApplyUpdate, shellyRpc } = await import('../utils/shellyRpc');
+      const pw = localStorage.getItem('sh_local_password') || undefined;
+      await shellyApplyUpdate((m, p) => shellyRpc(host, m, p, pw));
+      setFwMsg('Update started — re-check in a couple minutes once it reboots.');
+    } catch { setFwMsg('Failed to start the update.'); }
+    finally { setFwBusy(false); }
   };
 
   const saveDeviceNormalRun = (key: string, value: string | number | boolean) => {
@@ -1250,6 +1287,35 @@ export default function Settings({ user }: { user: any }) {
                                 style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
                             </label>
                           </div>
+
+                          {/* Firmware (Shelly devices) */}
+                          {device.type === 'shelly_sensor' && (
+                            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                                <div>
+                                  <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>Firmware</div>
+                                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                    {device.fwVersion ? `Current: v${device.fwVersion}` : 'Version unknown — check below.'}
+                                    {device.fwUpdateVersion ? `  •  ⬆️ v${device.fwUpdateVersion} available` : ''}
+                                  </div>
+                                </div>
+                                <button className="btn-secondary" disabled={fwBusy} onClick={() => handleCheckFirmware(device)}
+                                  style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                                  {fwBusy ? '…' : 'Check for Update'}
+                                </button>
+                              </div>
+                              {device.fwUpdateVersion && (
+                                <button className="btn-primary" disabled={fwBusy} onClick={() => handleUpdateFirmware(device)}
+                                  style={{ padding: '8px 12px', fontSize: '0.82rem' }}>
+                                  ⬆️ Update Firmware to v{device.fwUpdateVersion}
+                                </button>
+                              )}
+                              {fwMsg && expandedDeviceId === device.id && (
+                                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{fwMsg}</div>
+                              )}
+                            </div>
+                          )}
+
                           {device.type === 'linktap_valve' && (
                             <>
                               {/* Normal Run Profile */}

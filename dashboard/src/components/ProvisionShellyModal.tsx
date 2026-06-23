@@ -43,6 +43,9 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   // Carried from provisioning into the confirm step
   const [shellyId, setShellyId] = useState('UNKNOWN_SHELLY');
   const [detectedModel, setDetectedModel] = useState('');
+  // Firmware captured at onboarding: current version + any available stable update.
+  const [fwVersion, setFwVersion] = useState('');
+  const [fwUpdateVersion, setFwUpdateVersion] = useState('');
   const [roleAutoDetected, setRoleAutoDetected] = useState(false);
   const [bleLocalIp, setBleLocalIp] = useState(''); // IP learned over BLE after the device joins Wi-Fi
   const [bleJoinStatus, setBleJoinStatus] = useState(''); // last Wi-Fi status if it didn't get an IP
@@ -144,6 +147,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         const infoRes = await unifiedFetch(`http://192.168.33.1/rpc/Shelly.GetDeviceInfo`);
         const info = await infoRes.json();
         shellyDeviceId = info.id || info.mac;
+        if (info.ver) setFwVersion(info.ver);
         // Auto-identify the sensor type from the device's reported model/app
         const detected = detectRole(info);
         setDetectedModel(info.model || info.app || info.id || '');
@@ -199,6 +203,9 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       // mDNS .local host (e.g. shellyfloodgen4-aabbcc.local) — used for reads so DHCP IP churn
       // doesn't break local connectivity. Only set when the id looks like a Shelly mDNS name.
       ...(shellyId && /shelly/i.test(String(shellyId)) ? { mdnsHost: `${String(shellyId).toLowerCase()}.local` } : {}),
+      // Firmware captured at onboarding (current version + any available update).
+      ...(fwVersion ? { fwVersion } : {}),
+      ...(fwUpdateVersion ? { fwUpdateVersion } : {}),
       // Flood sensors are battery/sleepy → don't poll them (toggle in device settings for others).
       batteryPowered: deviceRole === 'Flood Sensor',
       // Manual-IP knows the address directly; BLE learns it from Wifi.GetStatus after the join.
@@ -239,6 +246,16 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       if (detected) { setDeviceRole(detected); setRoleAutoDetected(true); }
       else { setRoleAutoDetected(false); }
       setShellyId(shellyDeviceId);
+      if (info.ver) setFwVersion(info.ver);
+
+      // Firmware check — the device is on the LAN here, so we can also see if an update is available.
+      try {
+        setStatusMessage('Checking firmware…');
+        const { shellyCheckFirmware } = await import('../utils/shellyRpc');
+        const fw = await shellyCheckFirmware((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined));
+        if (fw.version) setFwVersion(fw.version);
+        if (fw.updateVersion) setFwUpdateVersion(fw.updateVersion);
+      } catch { /* best-effort */ }
 
       // Cloud-alert webhooks: only when signed in and a worker URL is configured.
       const webhookBase = auth.currentUser ? (localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL) : '';
@@ -278,6 +295,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       if (detected) { setDeviceRole(detected); setRoleAutoDetected(true); }
       else { setRoleAutoDetected(false); }
       setShellyId(info?.id || info?.mac || selectedDev.name);
+      if (info?.ver) setFwVersion(info.ver); // update availability is checked later from device settings (device not online yet)
 
       setStep('confirm_type');
     } catch (e: any) {
