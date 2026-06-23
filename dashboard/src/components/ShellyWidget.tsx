@@ -15,6 +15,17 @@ const unifiedFetch = async (url: string, options?: any) => {
   return nativeFetch(url, options) as any;
 };
 
+const invokeTauri = async (cmd: string, args?: any) => {
+  if (!isTauriEnv()) throw new Error('Tauri API not available');
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke(cmd, args);
+};
+const listenTauri = async (event: string, handler: (e: any) => void) => {
+  if (!isTauriEnv()) return () => {};
+  const { listen } = await import('@tauri-apps/api/event');
+  return listen(event, handler);
+};
+
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
 
 // Compact SVG trend line with optional dashed threshold lines.
@@ -53,7 +64,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const lastFloodRef = useRef<boolean | null>(null);
   const [floodSince, setFloodSince] = useState<number | null>(null);
   const [cloudEvent, setCloudEvent] = useState<{ event: string; at: number } | null>(null);
-  const localIp = device.localIp;
+  // Prefer the mDNS .local host (survives DHCP IP churn) — but ONLY on desktop/Tauri, where the OS
+  // resolver handles mDNS. Android/iOS WebViews can't resolve .local, so they use the raw IP.
+  const localIp = (isTauriEnv() && device.mdnsHost) ? device.mdnsHost : device.localIp;
 
   // Offline mode: listen for the device's BTHome BLE advertisements (no internet/cloud). Native only.
   useEffect(() => {
@@ -102,6 +115,30 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     return () => unsub();
   }, [device.enabled, device.batteryPowered, device.shellyDeviceId]);
 
+  // Local webhook (desktop/Tauri): the sleepy device just woke and hit our listener. Strike
+  // Shelly.GetStatus at its current source IP to pull full telemetry, freshen the stored IP, and
+  // self-heal the device's local webhook if our app's LAN IP has changed (DHCP churn).
+  useEffect(() => {
+    if (device.enabled === false) return;
+    let unlisten: any;
+    (async () => {
+      unlisten = await listenTauri('shelly-local-event', async (e: any) => {
+        const p = e?.payload || {};
+        if (!p.ip || !device.shellyDeviceId || p.device !== device.shellyDeviceId) return;
+        const pw = localStorage.getItem('sh_local_password') || undefined;
+        try {
+          const json = await shellyRpc(p.ip, 'Shelly.GetStatus', {}, pw);
+          if (json && !json.error) applyData(json, 'local');
+        } catch { /* may have slept again before we struck */ }
+        const { updateDevice } = await import('../utils/VehicleManager');
+        if (p.ip !== device.localIp) updateDevice(device.id, { localIp: p.ip });
+        ensureLocalWebhook(p.ip); // self-heal the device's local webhook to our current LAN IP
+      });
+    })();
+    return () => { if (unlisten) unlisten(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [device.id, device.shellyDeviceId, device.enabled]);
+
   useEffect(() => {
     setShellyServer(localStorage.getItem('sh_server') || '');
     setShellyAuthKey(localStorage.getItem('sh_auth_key') || '');
@@ -128,12 +165,32 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     }
   };
 
+  // Desktop-only: ensure this device has a LOCAL webhook pointing at our current LAN IP so it can
+  // push events to us with no internet. Called whenever we've just reached the awake device locally
+  // (provisioning, mount read, manual 🔄, or a strike) — which is also when DHCP churn self-heals.
+  const ensureLocalWebhook = async (reachableHost: string) => {
+    if (!isTauriEnv() || !device.shellyDeviceId) return;
+    try {
+      const appIp = await invokeTauri('get_local_ip') as string;
+      if (!appIp || appIp === device.webhookAppIp) return;
+      const pw = localStorage.getItem('sh_local_password') || undefined;
+      const { refreshLocalShellyWebhooks } = await import('../utils/shellyRpc');
+      await refreshLocalShellyWebhooks(
+        (m, params) => shellyRpc(reachableHost, m, params, pw),
+        `http://${appIp}:3030`, getActiveVehicleId() || '', device.shellyDeviceId);
+      const { updateDevice } = await import('../utils/VehicleManager');
+      updateDevice(device.id, { webhookAppIp: appIp });
+    } catch { /* best-effort */ }
+  };
+
   const fetchStatus = async () => {
-    if (localIp) {
+    // Try the preferred host (.local on desktop) then the raw IP, so a failed mDNS lookup falls back.
+    const hosts = [localIp, device.localIp].filter((h, i, a): h is string => !!h && a.indexOf(h) === i);
+    for (const host of hosts) {
       try {
-        const json = await shellyRpc(localIp, 'Shelly.GetStatus', {}, localStorage.getItem('sh_local_password') || undefined);
-        if (json && !json.error) { applyData(json, 'local'); return; }
-      } catch { /* fall back to cloud */ }
+        const json = await shellyRpc(host, 'Shelly.GetStatus', {}, localStorage.getItem('sh_local_password') || undefined);
+        if (json && !json.error) { applyData(json, 'local'); if (device.batteryPowered) ensureLocalWebhook(host); return; }
+      } catch { /* try next host / fall back to cloud */ }
     }
     if (shellyServer && shellyAuthKey) {
       try {
@@ -154,13 +211,10 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     // and push real-time alerts via the cloud webhook. We do a single best-effort read on mount
     // (in case it's awake right now) and otherwise leave it alone; use 🔄 to read after a manual wake.
     if (device.batteryPowered) {
+      // One best-effort read in case it's awake right now (just provisioned / button pressed).
+      // No interval: polling a deep-sleeping sensor only yields false "down" and is pointless —
+      // real-time state arrives via the local webhook (shelly-local-event), BLE, or cloud cache.
       if (localIp || (shellyServer && shellyAuthKey)) fetchStatus();
-      // Opportunistic low-frequency poll: near-zero drain (the device only answers when awake),
-      // and it reliably catches an ACTIVE flood since the alarm keeps the device awake.
-      if (localIp) {
-        const slow = setInterval(fetchStatus, 240000); // 4 min
-        return () => clearInterval(slow);
-      }
       return;
     }
     if (!localIp && !(shellyServer && shellyAuthKey)) return;

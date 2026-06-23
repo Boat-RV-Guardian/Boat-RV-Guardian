@@ -1,8 +1,11 @@
 use std::io::{Read, Write};
 use std::net::{TcpStream, SocketAddr, IpAddr};
 use std::time::Duration;
+use std::collections::HashMap;
 use tauri::command;
-use axum::{routing::post, Router};
+use axum::{routing::{post, get}, Router};
+use axum::extract::{Query, State, ConnectInfo};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 // ---------------------------------------------------------------------------
@@ -217,8 +220,34 @@ async fn discover_gateway() -> Result<Vec<String>, String> {
 // Webhook Server
 // ---------------------------------------------------------------------------
 
-async fn flood_webhook_handler(axum::extract::State(app_handle): axum::extract::State<AppHandle>) -> &'static str {
+async fn flood_webhook_handler(State(app_handle): State<AppHandle>) -> &'static str {
     let _ = app_handle.emit("flood-alarm", ());
+    "OK"
+}
+
+// Generic local webhook for any Shelly event. Sleepy sensors fire this on wake (in addition to the
+// cloud worker). We forward the query params AND the device's current source IP to the frontend so
+// it can (a) react/notify instantly with no internet, and (b) "strike" Shelly.GetStatus back at the
+// awake device to pull full telemetry, then refresh the device's webhooks to the current app IP.
+async fn shelly_local_handler(
+    State(app_handle): State<AppHandle>,
+    Query(params): Query<HashMap<String, String>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> &'static str {
+    let event = params.get("event").cloned().unwrap_or_default();
+    let payload = serde_json::json!({
+        "vid": params.get("vid").cloned().unwrap_or_default(),
+        "device": params.get("device").cloned().unwrap_or_default(),
+        "event": event,
+        "ip": addr.ip().to_string(),
+    });
+    // Preserve the valve auto-close path: flood/leak events also fire the flood-alarm signal that
+    // LinkTapWidget listens for (local registration now routes flood through /api/shelly).
+    let ev = event.to_lowercase();
+    if ev.contains("flood") || ev.contains("leak") || ev.contains("alarm") {
+        let _ = app_handle.emit("flood-alarm", ());
+    }
+    let _ = app_handle.emit("shelly-local-event", payload);
     "OK"
 }
 
@@ -226,6 +255,8 @@ fn start_webhook_server(app_handle: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let app = Router::new()
             .route("/api/webhook/flood", post(flood_webhook_handler))
+            // Shelly webhooks issue GET requests; accept POST too for flexibility.
+            .route("/api/shelly", get(shelly_local_handler).post(shelly_local_handler))
             .with_state(app_handle);
 
         let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3030));
@@ -233,8 +264,57 @@ fn start_webhook_server(app_handle: AppHandle) {
             Ok(l) => l,
             Err(_) => return,
         };
-        let _ = axum::serve(listener, app).await;
+        // into_make_service_with_connect_info exposes the peer SocketAddr to handlers (source IP).
+        let _ = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await;
     });
+}
+
+// The app's current LAN IP — used to build the local webhook URL registered on Shelly devices.
+#[command]
+fn get_local_ip() -> Result<String, String> {
+    local_ip_address::local_ip()
+        .map(|ip| ip.to_string())
+        .map_err(|e| format!("Could not determine local IP: {}", e))
+}
+
+#[derive(Serialize)]
+struct ShellyService {
+    name: String,
+    host: String,
+    ips: Vec<String>,
+}
+
+// Browse mDNS for Shelly devices. Steady-state reads use the `.local` host so they survive DHCP
+// IP churn; this discovery is for listing/initial mapping.
+#[command]
+async fn discover_shelly(timeout_secs: u64) -> Result<Vec<ShellyService>, String> {
+    use mdns_sd::{ServiceDaemon, ServiceEvent};
+
+    let mdns = ServiceDaemon::new().map_err(|e| format!("mDNS daemon error: {}", e))?;
+    let receiver = mdns
+        .browse("_shelly._tcp.local.")
+        .map_err(|e| format!("mDNS browse error: {}", e))?;
+
+    let mut out: Vec<ShellyService> = Vec::new();
+    let deadline = std::time::Instant::now() + Duration::from_secs(timeout_secs.min(10));
+
+    while std::time::Instant::now() < deadline {
+        if let Ok(ServiceEvent::ServiceResolved(info)) = receiver.recv_timeout(Duration::from_millis(200)) {
+            let host = info.get_hostname().trim_end_matches('.').to_string();
+            if out.iter().any(|s| s.host == host) {
+                continue;
+            }
+            let ips: Vec<String> = info.get_addresses().iter().map(|a| a.to_string()).collect();
+            out.push(ShellyService {
+                name: info.get_fullname().to_string(),
+                host,
+                ips,
+            });
+        }
+    }
+
+    let _ = mdns.shutdown();
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +346,8 @@ pub fn run() {
             discover_gateway,
             discover_via_mdns,
             discover_via_subnet_scan,
+            discover_shelly,
+            get_local_ip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

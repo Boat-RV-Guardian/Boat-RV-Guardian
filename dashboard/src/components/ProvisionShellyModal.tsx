@@ -196,6 +196,9 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       role: deviceRole,
       name: deviceRole,
       shellyDeviceId: shellyId,
+      // mDNS .local host (e.g. shellyfloodgen4-aabbcc.local) — used for reads so DHCP IP churn
+      // doesn't break local connectivity. Only set when the id looks like a Shelly mDNS name.
+      ...(shellyId && /shelly/i.test(String(shellyId)) ? { mdnsHost: `${String(shellyId).toLowerCase()}.local` } : {}),
       // Flood sensors are battery/sleepy → don't poll them (toggle in device settings for others).
       batteryPowered: deviceRole === 'Flood Sensor',
       // Manual-IP knows the address directly; BLE learns it from Wifi.GetStatus after the join.

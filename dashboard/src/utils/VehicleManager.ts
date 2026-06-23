@@ -13,6 +13,8 @@ export interface DeviceConfig {
   // Shelly mapping
   shellyDeviceId?: string;
   localIp?: string; // Shelly local IP (for local RPC polling / factory reset)
+  mdnsHost?: string; // Shelly mDNS .local hostname — survives DHCP IP churn; preferred over localIp
+  webhookAppIp?: string; // app LAN IP last registered in this device's local webhook (self-heal marker)
   batteryPowered?: boolean; // sleepy sensor (flood etc.) — don't poll; rely on webhook push
   bleMac?: string; // BLE address (for offline BTHome advertisement matching)
 

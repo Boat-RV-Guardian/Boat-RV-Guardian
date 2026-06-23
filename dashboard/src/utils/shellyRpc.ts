@@ -97,6 +97,37 @@ export async function registerShellyWebhooks(
   return created;
 }
 
+/**
+ * Self-heal the device's LOCAL webhook(s) to point at the current app IP, leaving cloud hooks
+ * untouched. Call while the device is awake (e.g. inside a shelly-local-event strike). Local hooks
+ * are identified by a private-LAN host + the /api/shelly path. Hardware-untested; best-effort.
+ */
+export async function refreshLocalShellyWebhooks(
+  call: (method: string, params: any) => Promise<any>,
+  localBase: string,
+  vid: string,
+  deviceId = '',
+): Promise<void> {
+  const isPrivate = (u: string) => /\/api\/shelly/.test(u) && /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u);
+  const root = localBase.replace(/\/$/, '');
+  let list: any;
+  try { list = await call('Webhook.List', {}); } catch { return; }
+  const hooks: any[] = list?.hooks || [];
+  const found = hooks.filter(h => (h.urls || []).some(isPrivate));
+  if (found.length === 0) {
+    // No local hook yet (first time on this LAN) — create them at the current app IP.
+    await registerShellyWebhooks(call, root, vid, deviceId);
+    return;
+  }
+  for (const h of found) {
+    const newUrls = (h.urls || []).map((u: string) =>
+      isPrivate(u) ? u.replace(/^https?:\/\/[^/]+/, root) : u);
+    try {
+      await call('Webhook.Update', { id: h.id, enable: h.enable !== false, event: h.event, name: h.name, urls: newUrls });
+    } catch { /* skip hooks that reject the update shape */ }
+  }
+}
+
 /** Secure a device by setting its admin password (HA1). Call on a reachable, unsecured device. */
 export async function shellySetPassword(ip: string, deviceId: string, password: string): Promise<void> {
   const ha1 = await sha256Hex(`admin:${deviceId}:${password}`);
