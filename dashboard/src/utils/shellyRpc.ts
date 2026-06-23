@@ -110,21 +110,29 @@ export async function refreshLocalShellyWebhooks(
 ): Promise<void> {
   const isPrivate = (u: string) => /\/api\/shelly/.test(u) && /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u);
   const root = localBase.replace(/\/$/, '');
-  let list: any;
-  try { list = await call('Webhook.List', {}); } catch { return; }
-  const hooks: any[] = list?.hooks || [];
-  const found = hooks.filter(h => (h.urls || []).some(isPrivate));
-  if (found.length === 0) {
-    // No local hook yet (first time on this LAN) — create them at the current app IP.
-    await registerShellyWebhooks(call, root, vid, deviceId);
-    return;
-  }
-  for (const h of found) {
-    const newUrls = (h.urls || []).map((u: string) =>
-      isPrivate(u) ? u.replace(/^https?:\/\/[^/]+/, root) : u);
+
+  // Desired alert events (so e.g. a flood sensor gets flood.alarm AND flood.alarm_off AND
+  // flood.cable_unplugged — without alarm_off the UI never clears back to dry).
+  let supported: string[] = [];
+  try {
+    const sup = await call('Webhook.ListSupported', {});
+    supported = sup?.hook_types || (sup?.types ? Object.keys(sup.types) : []) || [];
+  } catch { /* device may not support discovery */ }
+  const alertish = supported.filter((e) => /flood|alarm|leak|smoke|over|under|sensor|temperature|motion|opened|closed|btn/i.test(e));
+  const events = (alertish.length ? alertish : supported).slice(0, 8);
+  if (events.length === 0) return;
+
+  let hooks: any[] = [];
+  try { const list = await call('Webhook.List', {}); hooks = list?.hooks || []; } catch { /* none */ }
+
+  // Ensure each desired event has a local hook at the current app IP (update existing, create missing).
+  for (const event of events) {
+    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}`;
+    const existing = hooks.find((h) => h.event === event && (h.urls || []).some(isPrivate));
     try {
-      await call('Webhook.Update', { id: h.id, enable: h.enable !== false, event: h.event, name: h.name, urls: newUrls });
-    } catch { /* skip hooks that reject the update shape */ }
+      if (existing) await call('Webhook.Update', { id: existing.id, enable: true, event, name: existing.name || 'brvg-local', urls: [url] });
+      else await call('Webhook.Create', { cid: 0, enable: true, event, name: 'brvg-local', urls: [url] });
+    } catch { /* skip events that reject the cid/shape */ }
   }
 }
 
