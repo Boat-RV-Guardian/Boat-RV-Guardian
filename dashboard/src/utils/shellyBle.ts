@@ -51,21 +51,42 @@ export async function scanShellyDevices(durationMs = 7000): Promise<BleShelly[]>
 // (flood/battery/temp) over BLE when awake, with no internet/cloud/broker. A single shared scan
 // feeds all subscribers. HARDWARE-UNTESTED decode — every advertisement is logged raw so we can map
 // the real device's BTHome layout and iterate.
-export interface AdvReading { mac: string; battery?: number; flood?: boolean; temperature?: number; raw: string; }
+export interface AdvReading { mac: string; battery?: number; flood?: boolean; temperature?: number; encrypted?: boolean; raw: string; }
 
 const normMac = (s: string) => (s || '').toLowerCase().replace(/[^a-f0-9]/g, '');
+
+// BTHome v2 object id → value byte length (after the id byte). Covers the objects a battery Shelly
+// sensor can emit so we can walk PAST ones we don't surface instead of bailing on the first unknown.
+// Measurements + the full binary-sensor block (each binary value is 1 byte, 0/1).
+const BTHOME_LEN: Record<number, number> = {
+  0x00: 1, 0x01: 1, 0x02: 2, 0x03: 2, 0x04: 3, 0x05: 3, 0x06: 2, 0x07: 4, 0x08: 2, 0x09: 1,
+  0x0a: 3, 0x0b: 3, 0x0c: 2, 0x0d: 2, 0x12: 2, 0x13: 2, 0x14: 2, 0x2e: 1, 0x2f: 1,
+  0x3a: 1, 0x3d: 2, 0x3e: 4, 0x3f: 2,
+  // binary sensors (1 byte each): 0x0F..0x2D
+  0x0f: 1, 0x10: 1, 0x11: 1, 0x15: 1, 0x16: 1, 0x17: 1, 0x18: 1, 0x19: 1, 0x1a: 1, 0x1b: 1,
+  0x1c: 1, 0x1d: 1, 0x1e: 1, 0x1f: 1, 0x20: 1, 0x21: 1, 0x22: 1, 0x23: 1, 0x24: 1, 0x25: 1,
+  0x26: 1, 0x27: 1, 0x28: 1, 0x29: 1, 0x2a: 1, 0x2b: 1, 0x2c: 1, 0x2d: 1,
+};
 
 function decodeBTHome(dv: DataView): Partial<AdvReading> {
   const bytes = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
   const out: Partial<AdvReading> = { raw: [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('') };
-  let i = 1; // byte 0 = BTHome device-info flags
+  if (bytes.length === 0) return out;
+  // Byte 0 = BTHome device-info: bit0 = encrypted (can't decode without the bindkey), bits5-7 = version.
+  out.encrypted = (bytes[0] & 0x01) === 1;
+  if (out.encrypted) return out;
+  let i = 1;
   while (i < bytes.length) {
     const id = bytes[i++];
-    if (id === 0x00) { i += 1; }                                   // packet id
-    else if (id === 0x01) { out.battery = bytes[i]; i += 1; }       // battery %
-    else if (id === 0x02) { out.temperature = dv.getInt16(i, true) * 0.01; i += 2; } // temp 0.01°C
-    else if (id === 0x1A || id === 0x0F || id === 0x2D) { out.flood = bytes[i] === 1; i += 1; } // candidate water/leak/binary
-    else { break; } // unknown id → stop (avoid misaligned reads); raw is logged for mapping
+    const len = BTHOME_LEN[id];
+    if (len === undefined || i + len > bytes.length) break; // unknown/overrun → stop (raw still logged)
+    switch (id) {
+      case 0x01: out.battery = bytes[i]; break;                                  // battery %
+      case 0x02: out.temperature = dv.getInt16(i, true) * 0.01; break;           // temperature °C
+      case 0x20: out.flood = bytes[i] === 1; break;                              // moisture (binary water leak)
+      case 0x14: if (out.flood === undefined) out.flood = dv.getUint16(i, true) > 0; break; // moisture % (fallback)
+    }
+    i += len;
   }
   return out;
 }
