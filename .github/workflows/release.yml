@@ -114,20 +114,26 @@ jobs:
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo $KEYSTORE_BASE64 | base64 --decode > dashboard/android/app/release.keystore
-            export BUILD_TOOLS_VERSION=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -n 1)
-            $ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner sign \
-              --ks dashboard/android/app/release.keystore \
-              --ks-key-alias boatguardian \
-              --ks-pass pass:boatguardian \
-              --key-pass pass:boatguardian \
-              dashboard/android/app/build/outputs/apk/release/app-release-unsigned.apk
-            mv dashboard/android/app/build/outputs/apk/release/app-release-unsigned.apk boat-rv-guardian-release.apk
-          else
-            echo "No keystore secret set, uploading unsigned APK"
-            cp dashboard/android/app/build/outputs/apk/release/app-release-unsigned.apk boat-rv-guardian-release.apk
+          # Refuse to publish an unsigned APK: Android can't install it, and a signature change
+          # (e.g. after a repo migration that dropped this secret) blocks updates over an installed
+          # app. Fail loudly instead of silently shipping something that can't be installed.
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set — refusing to publish an unsigned APK. Add the signing keystore secret to this repository." >&2
+            exit 1
           fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > dashboard/android/app/release.keystore
+          export BUILD_TOOLS_VERSION=$(ls $ANDROID_SDK_ROOT/build-tools/ | sort -V | tail -n 1)
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+          "$APKSIGNER" sign \
+            --ks dashboard/android/app/release.keystore \
+            --ks-key-alias boatguardian \
+            --ks-pass pass:boatguardian \
+            --key-pass pass:boatguardian \
+            dashboard/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          mv dashboard/android/app/build/outputs/apk/release/app-release-unsigned.apk boat-rv-guardian-release.apk
+          # Verify the result is actually signed (catches a bad alias/password/keystore) and record
+          # the signing cert SHA-256 in the log so a future key change is easy to spot.
+          "$APKSIGNER" verify --print-certs boat-rv-guardian-release.apk
 
       - name: Upload APK to Release
         uses: softprops/action-gh-release@v2
