@@ -1,0 +1,57 @@
+name: CI
+
+# Quality gate for pull requests and pushes to main. Runs the dashboard unit tests + typecheck and
+# the worker typecheck. Deploy workflows (deploy-dashboard.yml / worker-deploy.yml) stay separate so
+# this can fail a PR without blocking or triggering a deploy.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: ./dashboard
+        run: npx tsc -b
+
+      - name: Unit Tests
+        working-directory: ./dashboard
+        run: npm test
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install Dependencies
+        working-directory: ./worker
+        run: npm ci
+
+      # CLAUDE.md: the worker's real type gate is `wrangler deploy --dry-run` (raw tsc mis-flags it).
+      - name: Typecheck (wrangler dry-run)
+        working-directory: ./worker
+        run: npx wrangler deploy --dry-run

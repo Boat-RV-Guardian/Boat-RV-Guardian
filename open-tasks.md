@@ -53,9 +53,12 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
       (per-month bucketing, usage = max per bucket). **Found + fixed a real bug**: a non-finite
       event `ts` (NaN/Infinity passes `typeof === 'number'`) threw `RangeError` and aborted the
       whole push — now guarded with `Number.isFinite`.
-- [ ] Add a worker typecheck/test gate: [worker/src/index.ts](worker/src/index.ts) parses query
-      params into `sensorState` and skips FCM for `*.measurement`/`*.change` — cover that branch.
-- [ ] Wire `npm test` into CI so PRs run it (see `.github/workflows/`).
+- [x] Wire `npm test` into CI so PRs run it — [.github/workflows/ci.yml](.github/workflows/ci.yml)
+      runs dashboard typecheck + unit tests and the worker wrangler dry-run on every PR / push to main.
+- [ ] Add a worker *unit* test gate: [worker/src/index.ts](worker/src/index.ts) inlines the
+      event-classification (`FLOOD_EVENT_RE`, `*.measurement`/`*.change` telemetry skip) and the
+      `sensorState` extra-param extraction. Extract those into a `worker/src/events.ts`, add Vitest
+      to the worker package, and cover them. (CI currently typechecks the worker but doesn't unit-test it.)
 - [ ] (Follow-up) Add component/integration tests for the role-gating UI behavior once Task 3
       extracts the logic into hooks (easier to test in isolation than the current big components).
 
