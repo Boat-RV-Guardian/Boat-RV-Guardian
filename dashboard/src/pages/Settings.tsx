@@ -15,7 +15,7 @@ import {
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 
-const APP_VERSION = '1.0.39';
+const APP_VERSION = '1.0.40';
 
 // Battery voltage presets by chemistry, for 12 V and 24 V systems (24 V ≈ 2× the 12 V figures).
 // Values are marine/RV norms: crit = near-empty alarm, low = recharge warning, normal = resting-full
