@@ -94,8 +94,11 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         seconds). Confirm the LinkTap cloud field semantics, then correct to
         `totalDuration*60 - onDuration*60` and update the test. Low impact (only the cloud-only
         "remaining" display when `total` is absent) but worth fixing once verified.
-  - [ ] **Increment 3**: extract usage-history + event-log persistence (the 4 effects + `addLog` +
-        `usageHistory`/`logs` state) into a `useDeviceHistory` hook.
+  - [x] **Increment 3** (2026-06-23): extracted usage-history + Event Sentry Log state, the 4
+        persistence/cloud-sync effects, and `addLog` into
+        [hooks/useDeviceHistory.ts](dashboard/src/hooks/useDeviceHistory.ts) (also now owns the
+        `AlertLog` type). Widget destructures `{ usageHistory, setUsageHistory, logs, addLog }`.
+        Verified with tsc + **full `vite build`** + the suite (49 tests). 1819 → 1645 lines so far.
   - [ ] **Increment 4+**: polling loop → hook; command senders (start/stop) → hook; Flooding Sentry
         + auto-restart + washdown automation → hook.
 
