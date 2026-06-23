@@ -111,9 +111,10 @@ service cloud.firestore {
       allow delete: if false;
 
       match /history/{histId} {
-        allow read:   if request.auth != null && request.auth.uid in resource.data.allowedUsers;
-        allow create: if request.auth != null && request.auth.uid in request.resource.data.allowedUsers;
-        allow update: if request.auth != null && request.auth.uid in resource.data.allowedUsers;
+        // History docs (monthly usage/events rollups) carry no allowedUsers of their own —
+        // authorize against the PARENT vehicle's allowedUsers, like sensorState below.
+        allow read, write: if request.auth != null
+                           && request.auth.uid in get(/databases/$(database)/documents/vehicles/$(vid)).data.allowedUsers;
       }
 
       // Worker-cached last sensor event (battery sensors). Worker writes via admin (bypasses rules).
