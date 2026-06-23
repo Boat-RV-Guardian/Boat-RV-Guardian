@@ -144,3 +144,76 @@ service cloud.firestore {
 Note: rules compare `inviteeEmail == request.auth.token.email`; emails are stored lowercased and
 Google/most providers issue lowercase token emails. If a provider returns mixed-case email, claims
 would fail until normalized.
+
+## Session handoff — 2026-06-23, shipped v1.0.43 (read this first; switching computers)
+
+Memory notes in `~/.claude/...` do NOT travel between machines — the durable facts are duplicated
+here. Tree clean, `HEAD == origin/main`. Version lives in 7 files (keep in sync on each bump):
+`dashboard/package.json`, `dashboard/src-tauri/{tauri.conf.json,Cargo.toml,Cargo.lock(app pkg)}`,
+`dashboard/src/pages/Settings.tsx` + `dashboard/src/components/LinkTapWidget.tsx` (`APP_VERSION`),
+`dashboard/android/app/build.gradle` (`versionCode`+`versionName`). Release = bump → commit →
+`git tag vX.Y.Z` → push main + tag. Tag triggers `release.yml` (Mac/Win/signed-APK + web);
+`worker/**` pushes auto-deploy via `worker-deploy.yml`.
+
+### ⚠️ OPEN — verify on the HOME network (192.168.86.x), UNVERIFIED on hardware
+The **remote-telemetry path is built but never hardware-tested** (the dev Mac was off-site on a
+foreign LAN). When next on the home Wi-Fi with the Shelly Plus Uni reachable:
+1. Open the app once so it re-registers webhooks on the device (happens on a successful local poll).
+2. On the device, confirm: `curl http://<uni-ip>/rpc/Webhook.List` shows hooks for
+   `voltmeter.measurement`/`voltmeter.change` whose URL includes `&v=${ev.xvoltage}&vraw=${ev.voltage}`
+   and the right `cid` (voltmeter cid = 100, flood = 0).
+3. Confirm the worker receives them: Firestore `vehicles/{vid}/sensorState/{shellyDeviceId}` should
+   gain `v`/`vraw` fields (and update ~every 60s). Then off-site the battery widget shows voltage.
+   If wrong, the placeholder syntax (`${ev.X}`) or cid is the likely culprit — adjust
+   `webhookValueParams`/`cidFor` in `utils/shellyRpc.ts`. (Worker stores any non-vid/event/device
+   query param into sensorState; it SKIPS the FCM push for `*.measurement`/`*.change` so no spam.)
+
+### Shelly Plus Uni (SNSN-0043X / app "PlusUni") — voltmeter (HW-verified)
+- 0-30 V voltmeter is an ADC peripheral, NOT enabled by default. Enable = `SensorAddon.AddPeripheral
+  {type:'voltmeter'}` (creates `voltmeter:100`) THEN **`Shelly.Reboot`** to activate (component is
+  absent from GetStatus with `restart_required:true` until reboot). `enableShellyVoltmeter()` in
+  `utils/shellyRpc.ts` does this (returns `{id,rebooted}`; Wi-Fi-AP provisioning passes `reboot:false`
+  since the Wi-Fi join reboots). UI: Settings device panel "🔌 Enable voltmeter".
+- Calibration is ON the device via `Voltmeter.SetConfig {xvoltage:{expr:"x + <offset>", unit:"V"}}`
+  (the voltmeter reads `x`; e.g. `x + 0.32`). Both local poll AND cloud read the corrected value —
+  widgets read `voltmeter:N.xvoltage ?? .voltage`. UI: per-device offset field "🎯 Voltage
+  calibration" (writes to device). No `Voltmeter.*` RPC exists until the peripheral is added+rebooted.
+
+### Android signing + Google Sign-In (HW-verified, fixed this session)
+- Release APK signed in `release.yml` with secret `ANDROID_KEYSTORE_BASE64`, key alias `boatguardian`
+  (ks/key pass `boatguardian`). Secrets do NOT migrate between repos — workflow now `exit 1`s instead
+  of shipping unsigned. To install over an existing app the signing cert must match (else uninstall +
+  reinstall; cloud sync restores vehicles on login).
+- Google login (`@capacitor-firebase/authentication`, Android Credential Manager) fails with "no
+  credentials available" unless the running app's signing SHA is registered in Firebase. The
+  `boatguardian` cert SHAs are registered (project `boat-rv-guardian-9f8a4`, android app id
+  `1:974787072340:android:6c7c5688e270fedcfbb8c1`): SHA-1 `0F:99:FD:09:45:9C:94:55:83:48:0E:7E:D0:19:6F:A5:9B:3E:06:C0`,
+  SHA-256 `03:4F:0D:D9:17:8A:86:30:DF:53:E8:52:FF:14:9A:4B:12:55:7D:D9:07:FA:40:77:3F:8D:92:F0:13:B4:0B:FE`.
+  `google-services.json` includes the matching Android oauth client (type 1). Validation is
+  server-side — no rebuild needed after adding a SHA.
+
+### Other this-session changes
+- **Startup vehicle** (`useCloudConfig.UserConfig.startupMode`: `'default'`|`'last'`, unset='default'):
+  honored every login in `SyncModal` (was only on first-run adoption → kept landing on the wrong
+  vehicle). Settings → Account → "When the app opens".
+- **Battery/shore thresholds** reset to marine/RV defaults; added a "Normal" (nominal) field; battery
+  chemistry presets (Flooded/AGM/Gel/LiFePO₄/Custom) × 12 V/24 V in Settings → Devices → Batteries.
+  A one-time value-matched migration (`configSync.migrateAllVehiclesThresholds` + `migrateFlatThresholds`
+  in `applyCloudVehicleConfig`) upgrades vehicles still on the OLD shipped defaults (untouched values
+  only; customized preserved).
+- **Custom Cloud Server URL** moved to Settings → Vehicles behind a toggle; now per-vehicle
+  (`sh_webhook_url`, blank ⇒ `DEFAULT_WORKER_URL`).
+
+### Remote data model (key mental model the user corrected me on)
+Shelly devices push to the **Cloudflare worker** (`boat-rv-guardian-webhooks`) via webhooks → worker
+caches `sensorState` + sends FCM. There is NO Shelly first-party cloud in this design (the
+`sh_server`/`sh_auth_key` poll in ShellyWidget is vestigial — ignore it). Off-LAN, sensors show ONLY
+what the worker cached. LinkTap is the exception: its remote path is LinkTap's own cloud API
+(`lt_cloud_user`/`lt_cloud_key` + gateway). Flood = push/event; battery/temp = telemetry (see OPEN above).
+
+### New-machine setup checklist
+Clone repo; `cd dashboard && npm i`. Need: Node, Android SDK (`~/Library/Android/sdk` → `adb`,
+`apksigner`), `gh` (auth'd), and for Firebase ops `npx -y firebase-tools login` (interactive browser;
+token then lands in `~/.config/configstore` so headless CLI works). Build gates: `npx tsc -b` +
+`npm run build` (dashboard), `npx wrangler deploy --dry-run` (worker — raw `tsc` mis-flags it).
+Launch native app: `npm run tauri dev`. Sideload: `adb install -r <apk>` (in-place if same keystore).
