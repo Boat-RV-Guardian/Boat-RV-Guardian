@@ -3,88 +3,9 @@ import { type DeviceConfig, getActiveVehicleId } from '../utils/VehicleManager';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { pushDeviceHistory, fetchDeviceHistory, recentMonthsUTC } from '../utils/historySync';
 import { auth } from '../services/firebase';
-const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
-
-const invokeTauri = async (cmd: string, args?: any) => {
-  if (isTauriEnv()) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    return invoke(cmd, args);
-  }
-  throw new Error("Tauri API not available");
-};
-
-const listenTauri = async (event: string, handler: (e: any) => void) => {
-  if (isTauriEnv()) {
-    const { listen } = await import('@tauri-apps/api/event');
-    return listen(event, handler);
-  }
-  return () => {};
-};
+import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
 
 const APP_VERSION = '1.0.43';
-
-const unifiedFetch = async (url: string, options?: any) => {
-  if (isTauriEnv() && options?.method === 'POST' && !url.startsWith('https://')) {
-    // Extract IP from URL (e.g. http://192.168.1.100/api.shtml)
-    const ip = url.replace('http://', '').split('/')[0];
-    const rawText: string = await invokeTauri('raw_linktap_post', { 
-      ip, 
-      payload: options.body || '' 
-    }) as string;
-    return {
-      text: async () => rawText,
-      json: async () => JSON.parse(rawText),
-      ok: true,
-      status: 200
-    };
-  }
-
-  // On Android/iOS, try to use native HTTP to bypass all WebView CORS
-  if (typeof (window as any).Capacitor !== 'undefined') {
-    const Cap = (window as any).Capacitor;
-    if (Cap.isNativePlatform() && Cap.Plugins && Cap.Plugins.CapacitorHttp) {
-      try {
-        const res = await Cap.Plugins.CapacitorHttp.request({
-          method: options?.method || 'GET',
-          url: url,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': '*/*',
-            ...(options?.headers || {})
-          },
-          // Send exactly the string provided, do not parse to Object so it's not reformatted
-          data: options?.body,
-          connectTimeout: 5000,
-          readTimeout: 5000
-        });
-        return {
-          text: async () => typeof res.data === 'string' ? res.data : JSON.stringify(res.data),
-          json: async () => typeof res.data === 'string' ? JSON.parse(res.data) : res.data,
-          ok: res.status >= 200 && res.status < 300,
-          status: res.status
-        };
-      } catch (nativeErr: any) {
-        throw new Error(`Native HTTP Error (${url}): ${nativeErr.message || JSON.stringify(nativeErr)}`);
-      }
-    }
-  }
-
-  let timeoutId: any;
-  const controller = new AbortController();
-  if (typeof AbortSignal !== 'undefined' && (AbortSignal as any).timeout) {
-    options = { ...options, signal: (AbortSignal as any).timeout(5000) };
-  } else {
-    timeoutId = setTimeout(() => controller.abort(), 5000);
-    options = { ...options, signal: controller.signal };
-  }
-
-  try {
-    const res = await fetch(url, options);
-    return res;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-};
 
 interface AlertLog {
   ts: number; // epoch ms (UTC) — formatted for display via utils/time
@@ -620,13 +541,8 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                body: JSON.stringify({ cmd: 3, gw_id: gatewayId, dev_id: deviceId }),
                timeout: 4000 // Short timeout so it falls back to cloud quickly if off-net
              });
-             let rawText = await localRes.text();
-             let cleanedJson = rawText;
-             if (rawText.includes('<html') || rawText.includes('<body')) {
-               const match = rawText.match(/\{[\s\S]*\}/);
-               if (match) cleanedJson = match[0];
-             }
-             data = JSON.parse(cleanedJson);
+             const rawText = await localRes.text();
+             data = JSON.parse(extractJsonFromMaybeHtml(rawText));
              
              if (data.ret !== undefined && data.ret !== 0) {
                throw new Error(`Local API Error Code ${data.ret}`);
@@ -714,7 +630,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         data.battery = data.signal;
         data.signal = tempBattery;
         
-        const newIsWatering = (data.is_watering === true || data.is_watering === 'true' || data.is_watering === 1 || data.is_watering === '1');
+        const newIsWatering = coerceWateringBool(data.is_watering);
 
         if (expectedWateringStateRef.current !== null) {
           if (newIsWatering === expectedWateringStateRef.current) {

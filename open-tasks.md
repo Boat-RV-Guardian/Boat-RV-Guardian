@@ -79,6 +79,16 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
       / Delayed-Start flows, and the usage-history + event-log persistence. Keep the `displayTz`
       `settings_updated` refresh and the monitor-role command gating intact (both documented in
       CLAUDE.md). This file also holds an `APP_VERSION` copy — keep it in sync.
+  - [x] **Increment 1** (2026-06-23): extracted the transport helpers (`isTauriEnv`, `invokeTauri`,
+        `listenTauri`, `unifiedFetch`) plus two pure parsing helpers (`extractJsonFromMaybeHtml`,
+        `coerceWateringBool`) into [utils/linktapHttp.ts](dashboard/src/utils/linktapHttp.ts) with
+        6 new tests. 1819 → 1734 lines, build + tests green.
+  - [ ] **Increment 2**: extract the cloud/local status normalization (the `usedCloud` parse block,
+        battery/signal swap, target vol/dur extraction) into pure tested functions.
+  - [ ] **Increment 3**: extract usage-history + event-log persistence (the 4 effects + `addLog` +
+        `usageHistory`/`logs` state) into a `useDeviceHistory` hook.
+  - [ ] **Increment 4+**: polling loop → hook; command senders (start/stop) → hook; Flooding Sentry
+        + auto-restart + washdown automation → hook.
 
 ---
 
