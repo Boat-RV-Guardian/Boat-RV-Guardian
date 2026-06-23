@@ -177,12 +177,24 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
   const name = strField(vehicle, 'lt_vessel_name') || 'your vehicle';
   const uids = arrField(vehicle, 'allowedUsers');
   const isFlood = FLOOD_EVENT_RE.test(event);
+  // Periodic telemetry (e.g. voltmeter.measurement every 60s) is cached for remote display but must
+  // NOT generate a push — otherwise it'd notify every minute. Only real alerts push.
+  const isTelemetry = /\.(measurement|change)$/i.test(event);
   const now = Date.now();
 
-  // Cache last-known state so the app can show it without polling (also serves the offline-return case).
+  // Cache last-known state so the app can show it without polling (also serves the offline-return
+  // case). Beyond the event name we also persist any telemetry the device embedded in the webhook
+  // URL (e.g. ?v=<calibrated volts>&vraw=<raw>&tC=<temp>) so the app can render live values remotely.
+  const extra: Record<string, { stringValue: string }> = {};
+  for (const [k, val] of url.searchParams) {
+    if (k === 'vid' || k === 'event' || k === 'device') continue;
+    if (val === '' || val === 'null') continue; // skip unset placeholders
+    extra[k] = { stringValue: val };
+  }
   await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
     event: { stringValue: event },
     at: { integerValue: String(now) },
+    ...extra,
   });
 
   // SAFETY: on a flood/leak event, close every configured LinkTap valve via the cloud API. The app
@@ -214,12 +226,14 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     : `Sensor alert: ${event}`;
 
   let sent = 0;
-  for (const uid of uids) {
-    const user = await getFirestoreDoc(env, token, `users/${uid}`);
-    const fcmToken = strField(user, 'fcmToken');
-    if (fcmToken) { await sendFcmPush(env, token, fcmToken, title, body); sent++; }
+  if (!isTelemetry) {
+    for (const uid of uids) {
+      const user = await getFirestoreDoc(env, token, `users/${uid}`);
+      const fcmToken = strField(user, 'fcmToken');
+      if (fcmToken) { await sendFcmPush(env, token, fcmToken, title, body); sent++; }
+    }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, shutoff }), {
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, telemetry: isTelemetry, shutoff }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }

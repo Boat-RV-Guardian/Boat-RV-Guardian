@@ -64,10 +64,37 @@ export async function shellyRpc(ip: string, method: string, params: any = {}, pa
   return second.data?.result ?? second.data;
 }
 
+// Events we push to the worker: alerts AND periodic telemetry (voltmeter/temperature/humidity
+// .measurement + .change), so the worker can cache live readings for remote display — not just alarms.
+const WEBHOOK_EVENT_RE = /flood|alarm|leak|smoke|over|under|sensor|temperature|humidity|motion|opened|closed|btn|voltmeter/i;
+
+// Extra URL params that embed the event's value(s) so the worker caches real readings. SINGLE-QUOTED
+// on purpose: the ${...} are literal Shelly webhook tokens (evaluated on the device at fire time),
+// NOT JS template interpolation. ev.xvoltage is the on-device calibrated voltage (null if uncalibrated).
+function webhookValueParams(event: string): string {
+  if (/^voltmeter\./i.test(event)) return '&v=${ev.xvoltage}&vraw=${ev.voltage}';
+  if (/^temperature\./i.test(event)) return '&tC=${ev.tC}';
+  if (/^humidity\./i.test(event)) return '&rh=${ev.rh}';
+  if (/^devicepower\./i.test(event)) return '&batt=${ev.percent}';
+  return '';
+}
+
+// Webhook.Create needs the component-instance id the event belongs to (e.g. voltmeter:100 → cid 100;
+// flood:0 → cid 0). Build family→id from Shelly.GetStatus keys; default to 0 when unknown.
+function buildCidMap(status: any): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const k of Object.keys(status || {})) {
+    const m = /^([a-z_]+):(\d+)$/i.exec(k);
+    if (m && map[m[1]] === undefined) map[m[1]] = Number(m[2]);
+  }
+  return map;
+}
+const cidFor = (event: string, cidMap: Record<string, number>): number => cidMap[event.split('.')[0]] ?? 0;
+
 /**
- * Register cloud-alert webhooks on a Shelly. `call` runs one RPC (works over HTTP or BLE), so this
- * is transport-agnostic. Discovers the device's supported events and points the alert-relevant ones
- * at `${baseUrl}/api/shelly?vid=…&event=…`. Returns the events it successfully registered.
+ * Register cloud-alert + telemetry webhooks on a Shelly. `call` runs one RPC (works over HTTP or
+ * BLE), so this is transport-agnostic. Discovers supported events and points the relevant ones at
+ * `${baseUrl}/api/shelly?vid=…&event=…` with the event's value(s) embedded. Returns the events created.
  */
 export async function registerShellyWebhooks(
   call: (method: string, params: any) => Promise<any>,
@@ -81,16 +108,19 @@ export async function registerShellyWebhooks(
     supported = sup?.hook_types || (sup?.types ? Object.keys(sup.types) : []) || [];
   } catch { /* device may not support discovery */ }
 
-  const alertish = supported.filter((e) => /flood|alarm|leak|smoke|over|under|sensor|temperature|motion|opened|closed|btn/i.test(e));
-  const events = (alertish.length ? alertish : supported).slice(0, 8); // cap to avoid spamming
+  const alertish = supported.filter((e) => WEBHOOK_EVENT_RE.test(e));
+  const events = (alertish.length ? alertish : supported).slice(0, 10);
   const root = baseUrl.replace(/\/$/, '');
   const dev = deviceId ? `&device=${encodeURIComponent(deviceId)}` : '';
 
+  let cidMap: Record<string, number> = {};
+  try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
+
   const created: string[] = [];
   for (const event of events) {
-    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}`;
+    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}`;
     try {
-      await call('Webhook.Create', { cid: 0, enable: true, event, urls: [url] });
+      await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, urls: [url] });
       created.push(event);
     } catch { /* skip events that need a different cid/format */ }
   }
@@ -124,15 +154,18 @@ export async function refreshLocalShellyWebhooks(
     const sup = await call('Webhook.ListSupported', {});
     supported = sup?.hook_types || (sup?.types ? Object.keys(sup.types) : []) || [];
   } catch { /* device may not support discovery */ }
-  const alertish = supported.filter((e) => /flood|alarm|leak|smoke|over|under|sensor|temperature|motion|opened|closed|btn/i.test(e));
-  const events = (alertish.length ? alertish : supported).slice(0, 8);
+  const alertish = supported.filter((e) => WEBHOOK_EVENT_RE.test(e));
+  const events = (alertish.length ? alertish : supported).slice(0, 10);
   if (events.length === 0) return;
+
+  let cidMap: Record<string, number> = {};
+  try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
 
   let hooks: any[] = [];
   try { const list = await call('Webhook.List', {}); hooks = list?.hooks || []; } catch { /* none */ }
 
   for (const event of events) {
-    const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}`;
+    const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}${webhookValueParams(event)}`;
     const existing = hooks.find((h) => h.event === event);
     try {
       if (existing) {
@@ -141,7 +174,7 @@ export async function refreshLocalShellyWebhooks(
         const merged = Array.from(new Set([...others, myUrl])).slice(0, 5);
         await call('Webhook.Update', { id: existing.id, enable: true, event, name: existing.name || 'brvg-local', urls: merged });
       } else {
-        await call('Webhook.Create', { cid: 0, enable: true, event, name: 'brvg-local', urls: [myUrl] });
+        await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, name: 'brvg-local', urls: [myUrl] });
       }
     } catch { /* skip events that reject the cid/shape */ }
   }

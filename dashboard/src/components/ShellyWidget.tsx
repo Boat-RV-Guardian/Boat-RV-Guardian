@@ -59,6 +59,11 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const lastFloodRef = useRef<boolean | null>(null);
   const [floodSince, setFloodSince] = useState<number | null>(null);
   const [cloudEvent, setCloudEvent] = useState<{ event: string; at: number } | null>(null);
+  // When local polling last succeeded, and the current data source — used so worker-cached cloud
+  // state only fills in when local is stale/absent (off-site), and a local "unreachable" doesn't
+  // flicker over data we're already showing from the cloud.
+  const lastLocalAtRef = useRef(0);
+  const sourceRef = useRef<'local' | 'cloud' | null>(null);
   // The raw IP is the PRIMARY local address — reliable and fast. The mDNS .local host is only a
   // fallback for DHCP churn, and only on desktop/Tauri (mDNS over HTTP is flaky there and absent in
   // mobile WebViews). Derived from the Shelly id for devices added before mdnsHost was stored.
@@ -74,19 +79,32 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const isBattery = device.batteryPowered === true || device.role === 'Flood Sensor';
 
 
-  // Battery sensors: read the worker-cached last event (no polling needed) — works whenever online.
+  // Worker-cached remote state (vehicles/{vid}/sensorState/{deviceId}): the device pushes alerts AND
+  // periodic telemetry (voltage/temp/…) to the worker, which caches the values here. Read for EVERY
+  // Shelly device so readings show remotely (off the LAN). Local polling wins while it's fresh; this
+  // fills in when local is stale/absent (the off-site case). Also feeds the "last report" line.
   useEffect(() => {
-    if (device.enabled === false) return;
-    if (!isBattery || !device.shellyDeviceId) return;
+    if (device.enabled === false || !device.shellyDeviceId) return;
     const vid = getActiveVehicleId();
     if (!vid) return;
     const ref = doc(db, 'vehicles', vid, 'sensorState', device.shellyDeviceId);
     const unsub = onSnapshot(ref, (snap: any) => {
       const d = snap.data();
-      if (d?.event) setCloudEvent({ event: d.event, at: Number(d.at) || 0 });
+      if (!d) return;
+      if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
+      // Don't clobber a fresh local poll (home); only synthesize from the cloud when local is stale.
+      if (Date.now() - lastLocalAtRef.current < 20000) return;
+      const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
+      const remote: any = {};
+      if (d.v != null || d.vraw != null) remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+      if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
+      if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
+      const ev = String(d.event || '');
+      if (/flood|alarm|leak/i.test(ev)) remote['flood:0'] = { alarm: !/off|clear|inactive|dry/i.test(ev) };
+      if (Object.keys(remote).length) applyData(remote, 'cloud');
     }, () => {});
     return () => unsub();
-  }, [device.enabled, isBattery, device.shellyDeviceId]);
+  }, [device.enabled, device.shellyDeviceId]);
 
   // The strike on a sleepy device's wake (GetStatus + self-heal) is handled app-level by
   // useSensorBridge so it runs regardless of the active page. Here we just consume the result:
@@ -136,6 +154,8 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   const applyData = (statusObj: any, src: 'local' | 'cloud') => {
     setData(statusObj);
     setSource(src);
+    sourceRef.current = src;
+    if (src === 'local') lastLocalAtRef.current = Date.now();
     setError(null);
     setLastUpdated(Date.now());
     const m = extractMetric(statusObj);
@@ -182,9 +202,10 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
         if (json.isok && json.data && json.data.device_status) { applyData(json.data.device_status, 'cloud'); return; }
       } catch { /* ignore */ }
       // A sleeping battery sensor is EXPECTED to be unreachable — don't show it as an error;
-      // last-known state (cache/BLE/cloud event) carries it instead.
-      if (!isBattery) setError('Offline or Invalid');
-    } else if (localIp && !isBattery) {
+      // last-known state (cache/BLE/cloud event) carries it instead. Also suppress when we're
+      // already showing worker-cached cloud telemetry (off-site) so it doesn't flicker an error.
+      if (!isBattery && sourceRef.current !== 'cloud') setError('Offline or Invalid');
+    } else if (localIp && !isBattery && sourceRef.current !== 'cloud') {
       setError('Unreachable on local network');
     }
   };
