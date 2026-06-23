@@ -189,8 +189,10 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
         const json = await res.json();
         if (json.isok && json.data && json.data.device_status) { applyData(json.data.device_status, 'cloud'); return; }
       } catch { /* ignore */ }
-      setError('Offline or Invalid');
-    } else if (localIp) {
+      // A sleeping battery sensor is EXPECTED to be unreachable — don't show it as an error;
+      // last-known state (cache/BLE/cloud event) carries it instead.
+      if (!device.batteryPowered) setError('Offline or Invalid');
+    } else if (localIp && !device.batteryPowered) {
       setError('Unreachable on local network');
     }
   };
