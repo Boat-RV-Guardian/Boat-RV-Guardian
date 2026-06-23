@@ -153,6 +153,19 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         setDetectedModel(info.model || info.app || info.id || '');
         if (detected) { setDeviceRole(detected); setRoleAutoDetected(true); }
         else { setRoleAutoDetected(false); }
+        // Plus Uni's 0-30 V voltmeter isn't enabled by default — it must be linked as a peripheral.
+        // Do it now, while we can still reach the device on its AP (it reboots off it after
+        // Wifi.SetConfig, and enabling the voltmeter reboots it too). Best-effort; the Settings
+        // "Enable voltmeter" button can re-run it later.
+        if (detected === 'Low Power Sensor') {
+          try {
+            setStatusMessage('Enabling voltmeter…');
+            const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
+            // No explicit reboot here — the device reboots when it joins Wi-Fi (Wifi.SetConfig below),
+            // which activates the just-linked voltmeter component.
+            await enableShellyVoltmeter((m, p) => shellyRpc('192.168.33.1', m, p), { reboot: false });
+          } catch { /* best-effort */ }
+        }
       } catch (e) {
         console.warn('Could not fetch device info', e);
       }
@@ -213,6 +226,14 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       ...(method === 'bluetooth' && bleLocalIp ? { localIp: bleLocalIp } : {}),
       ...(method === 'bluetooth' && selectedBleDevice ? { bleMac: selectedBleDevice } : {}),
     });
+    // Bluetooth path: the Plus Uni joined Wi-Fi during provisioning, so its voltmeter is enabled
+    // here (once) over its learned local IP. Wi-Fi/Manual-IP paths already did this while reachable.
+    if (method === 'bluetooth' && bleLocalIp && deviceRole === 'Low Power Sensor') {
+      try {
+        const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
+        await enableShellyVoltmeter((m, p) => shellyRpc(bleLocalIp, m, p));
+      } catch { /* best-effort — the Settings button can re-run it */ }
+    }
     setStep('completion');
   };
 
@@ -265,6 +286,15 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
           const { registerShellyWebhooks } = await import('../utils/shellyRpc');
           const vid = (await import('../utils/VehicleManager')).getActiveVehicleId();
           await registerShellyWebhooks((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined), webhookBase, vid, shellyDeviceId);
+        } catch { /* best-effort */ }
+      }
+
+      // Plus Uni's 0-30 V voltmeter isn't enabled by default — link it as a peripheral while reachable.
+      if (detected === 'Low Power Sensor') {
+        try {
+          setStatusMessage('Enabling voltmeter…');
+          const { enableShellyVoltmeter } = await import('../utils/shellyRpc');
+          await enableShellyVoltmeter((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined));
         } catch { /* best-effort */ }
       }
 

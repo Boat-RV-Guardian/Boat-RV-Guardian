@@ -17,6 +17,16 @@ const CATEGORIES: { key: CatKey; icon: string; title: string; color: string; mat
 
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
 
+// Shelly Plus UNI has no Voltmeter component — its 0-30 V reading is an input of type "analog"
+// (input:N { percent }). Mirror of ShellyWidget.uniAnalogVolts. See CLAUDE.md / shellyRpc.ts.
+const uniAnalogVolts = (d: any): number | null => {
+  for (let i = 0; i < 5; i++) {
+    const inp = d?.[`input:${i}`];
+    if (inp && typeof inp.percent === 'number') return (inp.percent / 100) * num('lt_uni_volt_fullscale', 30);
+  }
+  return null;
+};
+
 const DEFAULT_ORDER: CatKey[] = ['fresh_water', 'high_water', 'batteries', 'shore_power'];
 const loadOrder = (): CatKey[] => {
   try {
@@ -39,12 +49,12 @@ function ShellyTile({ device }: { device: DeviceConfig }) {
     if (device.role === 'High Power Sensor') {
       const power = data['pm1:0']?.apower ?? data['switch:0']?.apower ?? data['em:0']?.total_act_power ?? data.meters?.[0]?.power ?? 0;
       const v = data['pm1:0']?.voltage ?? data['switch:0']?.voltage ?? data['em:0']?.a_voltage ?? data.meters?.[0]?.voltage ?? 0;
-      const cl = num('lt_shore_crit_low_v', 95), lo = num('lt_shore_low_v', 100), hi = num('lt_shore_high_v', 128), ch = num('lt_shore_crit_high_v', 135);
+      const cl = num('lt_shore_crit_low_v', 104), lo = num('lt_shore_low_v', 114), hi = num('lt_shore_high_v', 126), ch = num('lt_shore_crit_high_v', 132);
       badge = v <= cl ? { t: 'CRIT LOW', c: '#ef4444' } : v <= lo ? { t: 'LOW', c: '#f59e0b' } : v >= ch ? { t: 'CRIT HIGH', c: '#ef4444' } : v >= hi ? { t: 'HIGH', c: '#f59e0b' } : { t: 'NORMAL', c: '#10b981' };
       primary = `${Number(power).toFixed(0)} W`; secondary = `${Number(v).toFixed(1)} V`;
     } else if (device.role === 'Low Power Sensor') {
-      const v = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? 0;
-      const crit = num('lt_batt_crit_v', 11.5), low = num('lt_batt_low_v', 11.9), charge = num('lt_batt_charge_v', 13.2), over = num('lt_batt_over_v', 15.5);
+      const v = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
+      const crit = num('lt_batt_crit_v', 11.8), low = num('lt_batt_low_v', 12.2), charge = num('lt_batt_charge_v', 13.6), over = num('lt_batt_over_v', 15.0);
       badge = v <= crit ? { t: 'CRITICAL', c: '#ef4444' } : v <= low ? { t: 'LOW', c: '#f59e0b' } : v >= over ? { t: 'OVER', c: '#ef4444' } : v >= charge ? { t: 'CHARGING', c: '#22d3ee' } : { t: 'NORMAL', c: '#10b981' };
       primary = `${Number(v).toFixed(2)} V`; secondary = 'Battery';
     } else if (device.role === 'Flood Sensor') {

@@ -148,6 +148,60 @@ export async function refreshLocalShellyWebhooks(
 }
 
 /**
+ * Enable the Shelly Plus Uni's 0-30 V DC voltmeter. The Uni's onboard ADC has NO Voltmeter
+ * component out of the box — it must be linked as an add-on PERIPHERAL (SensorAddon.AddPeripheral
+ * { type:'voltmeter' }), which creates a `voltmeter:100` component (peripheral-linked ids start at
+ * 100). Verified on hardware (fw 1.7.5, SNSN-0043X): adding the peripheral sets sys.restart_required
+ * but does NOT auto-reboot, and the component does NOT appear in Shelly.GetStatus until a reboot —
+ * so we must reboot to activate it. This firmware exposes no Voltmeter.* RPC (range/threshold aren't
+ * settable via RPC; the device reports actual volts regardless). `call` runs one RPC (HTTP or BLE).
+ *
+ * `opts.reboot` (default true) issues Shelly.Reboot after linking so the component goes live. Pass
+ * false in the Wi-Fi-AP provisioning path, where the device reboots on its own when it joins Wi-Fi
+ * (an early reboot there would abort the rest of provisioning). Returns { id, rebooted }; throws the
+ * device's error if AddPeripheral fails and no voltmeter is present, so callers can surface why.
+ */
+export async function enableShellyVoltmeter(
+  call: (method: string, params: any) => Promise<any>,
+  opts: { reboot?: boolean } = {},
+): Promise<{ id: number | null; rebooted: boolean }> {
+  const reboot = opts.reboot !== false;
+  const idFromKeys = (obj: any): number | null => {
+    for (const k of Object.keys(obj || {})) {
+      const m = /voltmeter:(\d+)/.exec(k);
+      if (m) return Number(m[1]);
+    }
+    return null;
+  };
+
+  // 1. Already live? (component present in Shelly.GetStatus → no reboot needed)
+  try {
+    const live = idFromKeys(await call('Shelly.GetStatus', {}));
+    if (live != null) return { id: live, rebooted: false };
+  } catch { /* fall through */ }
+
+  // 2. Peripheral already linked (just needs a reboot to activate)?
+  let id: number | null = null;
+  try {
+    const ps = await call('SensorAddon.GetPeripherals', {});
+    id = idFromKeys(ps?.voltmeter) ?? idFromKeys(ps);
+  } catch { /* ignore */ }
+
+  // 3. Not linked yet → add it. (throws with the device's message on failure)
+  if (id == null) {
+    const res = await call('SensorAddon.AddPeripheral', { type: 'voltmeter' });
+    id = idFromKeys(res) ?? idFromKeys(res?.voltmeter);
+  }
+
+  // 4. Activate it — the component only shows up in status after a reboot.
+  if (id != null && reboot) {
+    try { await call('Shelly.Reboot', {}); } catch { /* connection drops as it reboots — expected */ }
+    return { id, rebooted: true };
+  }
+  return { id, rebooted: false };
+}
+
+/**
  * Onboarding/diagnostic firmware check. `call` runs one RPC (works over HTTP or BLE). Returns the
  * device's current version and the available stable update version (undefined if up to date).
  */

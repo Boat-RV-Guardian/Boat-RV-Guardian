@@ -50,16 +50,21 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
   lt_auto_restart: 'false',
   lt_target_dur: '0',
   lt_target_vol: '0',
-  lt_batt_low_v: '11.9',
-  lt_batt_crit_v: '11.5',
-  lt_batt_charge_v: '13.2',
-  lt_batt_over_v: '15.5',
-  lt_shore_crit_low_v: '95',
-  lt_shore_low_v: '100',
-  lt_shore_high_v: '128',
-  lt_shore_crit_high_v: '135',
+  lt_batt_type: 'flooded',
+  lt_batt_system_v: '12',
+  lt_batt_low_v: '12.2',
+  lt_batt_crit_v: '11.8',
+  lt_batt_normal_v: '12.6',
+  lt_batt_charge_v: '13.6',
+  lt_batt_over_v: '15.0',
+  lt_shore_crit_low_v: '104',
+  lt_shore_low_v: '114',
+  lt_shore_normal_v: '120',
+  lt_shore_high_v: '126',
+  lt_shore_crit_high_v: '132',
   lt_vessel_name: 'New Vehicle',
   sh_local_password: '', // per-vehicle Shelly local device password (auto-generated on create)
+  sh_webhook_url: '',    // per-vehicle custom cloud worker URL (blank ⇒ DEFAULT_WORKER_URL)
   lt_devices: '[]'
 };
 

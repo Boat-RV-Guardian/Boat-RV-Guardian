@@ -3,7 +3,7 @@ import { auth, signOut } from '../services/firebase';
 import Login from './Login';
 
 import { getActiveVehicleId, getVehiclesMap, switchVehicle, addNewVehicle, deleteVehicle, getDevices, type DeviceConfig } from '../utils/VehicleManager';
-import { getLocalVehicleConfig, DEFAULT_WORKER_URL } from '../utils/configSync';
+import { getLocalVehicleConfig } from '../utils/configSync';
 import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { usePendingInvites } from '../hooks/usePendingInvites';
@@ -16,6 +16,49 @@ import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 
 const APP_VERSION = '1.0.39';
+
+// Battery voltage presets by chemistry, for 12 V and 24 V systems (24 V ≈ 2× the 12 V figures).
+// Values are marine/RV norms: crit = near-empty alarm, low = recharge warning, normal = resting-full
+// nominal, charge = "charging detected" threshold, over = over-voltage alarm. 'custom' applies no
+// preset — the fields stay manually editable.
+type BattThresholds = { crit: number; low: number; normal: number; charge: number; over: number };
+const BATTERY_PRESETS: Record<string, { label: string; v: Record<'12' | '24', BattThresholds> }> = {
+  flooded: {
+    label: 'Flooded Lead-Acid',
+    v: {
+      '12': { crit: 11.8, low: 12.2, normal: 12.6, charge: 13.6, over: 15.0 },
+      '24': { crit: 23.6, low: 24.4, normal: 25.2, charge: 27.2, over: 30.0 },
+    },
+  },
+  agm: {
+    label: 'AGM (Sealed)',
+    v: {
+      '12': { crit: 11.8, low: 12.0, normal: 12.8, charge: 13.6, over: 14.7 },
+      '24': { crit: 23.6, low: 24.0, normal: 25.6, charge: 27.2, over: 29.4 },
+    },
+  },
+  gel: {
+    label: 'Gel',
+    v: {
+      '12': { crit: 11.8, low: 12.0, normal: 12.8, charge: 13.5, over: 14.2 },
+      '24': { crit: 23.6, low: 24.0, normal: 25.6, charge: 27.0, over: 28.4 },
+    },
+  },
+  lifepo4: {
+    label: 'Lithium (LiFePO₄)',
+    v: {
+      '12': { crit: 12.0, low: 12.8, normal: 13.2, charge: 13.8, over: 14.6 },
+      '24': { crit: 24.0, low: 25.6, normal: 26.4, charge: 27.6, over: 29.2 },
+    },
+  },
+  custom: {
+    label: 'Custom (manual)',
+    v: {
+      '12': { crit: 11.8, low: 12.2, normal: 12.6, charge: 13.6, over: 15.0 },
+      '24': { crit: 23.6, low: 24.4, normal: 25.2, charge: 27.2, over: 30.0 },
+    },
+  },
+};
 
 
 
@@ -150,7 +193,10 @@ export default function Settings({ user }: { user: any }) {
   const [vesselNickname, setVesselNickname] = useState(() => localStorage.getItem('lt_vessel_name') || '');
   const [shellyLocalPassword, setShellyLocalPassword] = useState(() => localStorage.getItem('sh_local_password') || '');
   const [showShellyPw, setShowShellyPw] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL);
+  // Custom cloud worker URL — per-vehicle config; blank ⇒ DEFAULT_WORKER_URL is used. Hidden behind
+  // a toggle (only relevant for users running their own cloud server).
+  const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('sh_webhook_url') || '');
+  const [showCustomCloudUrl, setShowCustomCloudUrl] = useState(() => !!localStorage.getItem('sh_webhook_url'));
 
   // Local Server Options (device-local). The app can act as a local listener so sleepy Shelly
   // sensors can push events straight to it with no internet. Background mode (Android foreground
@@ -209,16 +255,36 @@ export default function Settings({ user }: { user: any }) {
   const [devNormalVol, setDevNormalVol] = useState(300);
   const [devAutoRestart, setDevAutoRestart] = useState(false);
 
-  // Battery Voltage Thresholds
-  const [battLowVoltage, setBattLowVoltage] = useState(() => Number(localStorage.getItem('lt_batt_low_v') || '11.9'));
-  const [battCritVoltage, setBattCritVoltage] = useState(() => Number(localStorage.getItem('lt_batt_crit_v') || '11.5'));
-  const [battOverVoltage, setBattOverVoltage] = useState(() => Number(localStorage.getItem('lt_batt_over_v') || '15.5'));
-  const [battChargeVoltage, setBattChargeVoltage] = useState(() => Number(localStorage.getItem('lt_batt_charge_v') || '13.2'));
-  // Shore Power Voltage Thresholds
-  const [shoreCritLowV, setShoreCritLowV] = useState(() => Number(localStorage.getItem('lt_shore_crit_low_v') || '95'));
-  const [shoreLowV, setShoreLowV] = useState(() => Number(localStorage.getItem('lt_shore_low_v') || '100'));
-  const [shoreHighV, setShoreHighV] = useState(() => Number(localStorage.getItem('lt_shore_high_v') || '128'));
-  const [shoreCritHighV, setShoreCritHighV] = useState(() => Number(localStorage.getItem('lt_shore_crit_high_v') || '135'));
+  // Battery chemistry preset + system voltage (drives the threshold defaults below).
+  const [battType, setBattType] = useState(() => localStorage.getItem('lt_batt_type') || 'flooded');
+  const [battSystemV, setBattSystemV] = useState(() => localStorage.getItem('lt_batt_system_v') || '12');
+  // Battery Voltage Thresholds (defaults = marine/RV 12 V lead-acid resting SoC + charging norms)
+  const [battLowVoltage, setBattLowVoltage] = useState(() => Number(localStorage.getItem('lt_batt_low_v') || '12.2'));
+  const [battCritVoltage, setBattCritVoltage] = useState(() => Number(localStorage.getItem('lt_batt_crit_v') || '11.8'));
+  const [battNormalVoltage, setBattNormalVoltage] = useState(() => Number(localStorage.getItem('lt_batt_normal_v') || '12.6'));
+  const [battOverVoltage, setBattOverVoltage] = useState(() => Number(localStorage.getItem('lt_batt_over_v') || '15.0'));
+  const [battChargeVoltage, setBattChargeVoltage] = useState(() => Number(localStorage.getItem('lt_batt_charge_v') || '13.6'));
+  // Shore Power Voltage Thresholds (defaults = 120 V nominal with EMS-style ±5% warn / cutoff bands)
+  const [shoreCritLowV, setShoreCritLowV] = useState(() => Number(localStorage.getItem('lt_shore_crit_low_v') || '104'));
+  const [shoreLowV, setShoreLowV] = useState(() => Number(localStorage.getItem('lt_shore_low_v') || '114'));
+  const [shoreNormalV, setShoreNormalV] = useState(() => Number(localStorage.getItem('lt_shore_normal_v') || '120'));
+  const [shoreHighV, setShoreHighV] = useState(() => Number(localStorage.getItem('lt_shore_high_v') || '126'));
+  const [shoreCritHighV, setShoreCritHighV] = useState(() => Number(localStorage.getItem('lt_shore_crit_high_v') || '132'));
+
+  // Apply a battery chemistry/system-voltage preset to the five threshold fields. 'custom' keeps
+  // whatever is currently set (manual edit). Called from the two dropdowns.
+  const applyBatteryPreset = (type: string, sysV: string) => {
+    setBattType(type);
+    setBattSystemV(sysV);
+    const preset = BATTERY_PRESETS[type]?.v[sysV as '12' | '24'];
+    if (type !== 'custom' && preset) {
+      setBattCritVoltage(preset.crit);
+      setBattLowVoltage(preset.low);
+      setBattNormalVoltage(preset.normal);
+      setBattChargeVoltage(preset.charge);
+      setBattOverVoltage(preset.over);
+    }
+  };
 
   // Notifications & Alarms
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem('lt_notif_enabled') !== 'false');
@@ -303,14 +369,18 @@ export default function Settings({ user }: { user: any }) {
       setMaxDuration(Number(localStorage.getItem('lt_max_dur') || '30'));
       setAutoGuardEnabled(localStorage.getItem('lt_auto_guard') !== 'false');
 
-      setBattLowVoltage(Number(localStorage.getItem('lt_batt_low_v') || '11.9'));
-      setBattCritVoltage(Number(localStorage.getItem('lt_batt_crit_v') || '11.5'));
-      setBattOverVoltage(Number(localStorage.getItem('lt_batt_over_v') || '15.5'));
-      setBattChargeVoltage(Number(localStorage.getItem('lt_batt_charge_v') || '13.2'));
-      setShoreCritLowV(Number(localStorage.getItem('lt_shore_crit_low_v') || '95'));
-      setShoreLowV(Number(localStorage.getItem('lt_shore_low_v') || '100'));
-      setShoreHighV(Number(localStorage.getItem('lt_shore_high_v') || '128'));
-      setShoreCritHighV(Number(localStorage.getItem('lt_shore_crit_high_v') || '135'));
+      setBattType(localStorage.getItem('lt_batt_type') || 'flooded');
+      setBattSystemV(localStorage.getItem('lt_batt_system_v') || '12');
+      setBattLowVoltage(Number(localStorage.getItem('lt_batt_low_v') || '12.2'));
+      setBattCritVoltage(Number(localStorage.getItem('lt_batt_crit_v') || '11.8'));
+      setBattNormalVoltage(Number(localStorage.getItem('lt_batt_normal_v') || '12.6'));
+      setBattOverVoltage(Number(localStorage.getItem('lt_batt_over_v') || '15.0'));
+      setBattChargeVoltage(Number(localStorage.getItem('lt_batt_charge_v') || '13.6'));
+      setShoreCritLowV(Number(localStorage.getItem('lt_shore_crit_low_v') || '104'));
+      setShoreLowV(Number(localStorage.getItem('lt_shore_low_v') || '114'));
+      setShoreNormalV(Number(localStorage.getItem('lt_shore_normal_v') || '120'));
+      setShoreHighV(Number(localStorage.getItem('lt_shore_high_v') || '126'));
+      setShoreCritHighV(Number(localStorage.getItem('lt_shore_crit_high_v') || '132'));
 
       const currentVid = getActiveVehicleId();
       setActiveVid(currentVid);
@@ -383,12 +453,16 @@ export default function Settings({ user }: { user: any }) {
     localStorage.setItem('lt_max_dur', maxDuration.toString());
     localStorage.setItem('lt_auto_guard', autoGuardEnabled.toString());
 
+    localStorage.setItem('lt_batt_type', battType);
+    localStorage.setItem('lt_batt_system_v', battSystemV);
     localStorage.setItem('lt_batt_low_v', battLowVoltage.toString());
     localStorage.setItem('lt_batt_crit_v', battCritVoltage.toString());
+    localStorage.setItem('lt_batt_normal_v', battNormalVoltage.toString());
     localStorage.setItem('lt_batt_over_v', battOverVoltage.toString());
     localStorage.setItem('lt_batt_charge_v', battChargeVoltage.toString());
     localStorage.setItem('lt_shore_crit_low_v', shoreCritLowV.toString());
     localStorage.setItem('lt_shore_low_v', shoreLowV.toString());
+    localStorage.setItem('lt_shore_normal_v', shoreNormalV.toString());
     localStorage.setItem('lt_shore_high_v', shoreHighV.toString());
     localStorage.setItem('lt_shore_crit_high_v', shoreCritHighV.toString());
 
@@ -405,8 +479,9 @@ export default function Settings({ user }: { user: any }) {
     notifyLowBattery, notifyWatering, notifyFlood, notifyHouseBatt, notifyEngineBatt, notifyShorePower,
     alarmSound, alarmVolume, alarmRepeatInterval,
     maxFlowRate, maxDuration, autoGuardEnabled,
-    battLowVoltage, battCritVoltage, battOverVoltage, battChargeVoltage,
-    shoreCritLowV, shoreLowV, shoreHighV, shoreCritHighV
+    battType, battSystemV,
+    battLowVoltage, battCritVoltage, battNormalVoltage, battOverVoltage, battChargeVoltage,
+    shoreCritLowV, shoreLowV, shoreNormalV, shoreHighV, shoreCritHighV
   ]);
 
   const handleManualSync = async () => {
@@ -622,28 +697,6 @@ export default function Settings({ user }: { user: any }) {
 
       {activeTab === 'general' && (
         <>
-          {/* Local Server Options */}
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>🖧 Local Server Options</h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
-              This device can run a local listener so battery sensors (e.g. flood) push alerts straight to it over your LAN — works with no internet, no Bluetooth required.
-            </p>
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}>
-              <span>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Enable local sensor server</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Listen for local sensor webhooks on this device.</div>
-              </span>
-              <input type="checkbox" checked={localServerEnabled} onChange={e => setLocalServerEnabled(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', opacity: localServerEnabled ? 1 : 0.5 }}>
-              <span>
-                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Run in the background</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Keep the server alive when the app is closed so local alerts arrive even offline. On Android this runs a foreground service with a persistent notification and uses more battery. When off, the local server only runs while the app is open.</div>
-              </span>
-              <input type="checkbox" disabled={!localServerEnabled} checked={localServerBackground} onChange={e => setLocalServerBackground(e.target.checked)} style={{ width: '20px', height: '20px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-emerald)' }} />
-            </label>
-          </div>
-
           {/* Vehicles Sub-section (App & System Config) */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
@@ -720,6 +773,162 @@ export default function Settings({ user }: { user: any }) {
                   Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices.
                 </p>
               </div>
+
+              {/* Custom Cloud Server URL — per-vehicle; for users running their own cloud server. */}
+              <div>
+                <button type="button" className="btn-secondary"
+                  onClick={() => setShowCustomCloudUrl(s => !s)}
+                  style={{ fontSize: '0.85rem', padding: '8px 14px' }}>
+                  {showCustomCloudUrl ? '▾' : '▸'} Custom Cloud Server URL
+                </button>
+                {showCustomCloudUrl && (
+                  <div style={{ marginTop: '12px' }}>
+                    <label className="form-label">Cloud Alert Worker URL</label>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
+                      For users running their own cloud server. Your deployed Cloudflare worker (e.g. <code>https://boat-rv-guardian-webhooks.&lt;you&gt;.workers.dev</code>). Required for Shelly devices to push away-from-home alerts. Leave blank to use the default server. Set this before adding devices.
+                    </p>
+                    <input className="form-input" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://…workers.dev (blank = default server)" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                  </div>
+                )}
+              </div>
+          </div>
+
+          {/* Account Information (moved below Vehicles) */}
+          <div className="glass-card">
+          <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', marginBottom: '16px' }}>Account Information</h3>
+          {!user ? (
+            <div>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                Sign in to Boat-RV-Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
+              </p>
+              {!showLogin ? (
+                <button 
+                  className="btn-primary"
+                  onClick={() => setShowLogin(true)}
+                  style={{ marginTop: '16px' }}
+                >
+                  Log into Boat-RV-Guardian.com
+                </button>
+              ) : (
+                <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
+                  <Login />
+                  <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                    <button className="btn-secondary" onClick={() => setShowLogin(false)} style={{ fontSize: '0.85rem' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <p style={{ margin: 0 }}><strong>Email:</strong> {user.email}</p>
+                <button 
+                  className="btn-secondary"
+                  onClick={() => signOut(auth)}
+                  style={{ border: '1px solid #ef4444', color: '#ef4444', padding: '4px 12px', fontSize: '0.8rem' }}
+                >
+                  Sign Out
+                </button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+                    <span style={{ fontWeight: 600 }}>Sync settings with the cloud</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Automatically backup and restore your configuration</span>
+                  </label>
+                  <input type="checkbox" checked={syncSettingsCloud} onChange={(e) => setSyncSettingsCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+                    <span style={{ fontWeight: 600 }}>Store historical data in the cloud</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Sync your water flow history for long-term storage</span>
+                  </label>
+                  <input type="checkbox" checked={storeHistoryCloud} onChange={(e) => setStoreHistoryCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
+                </div>
+              </div>
+
+              {/* Default Vehicle on Login */}
+              {(() => {
+                const vehicles = Object.values(vehiclesMap);
+                if (vehicles.length === 0) return null;
+                // Auto-pick the first vehicle if the account has no preference set yet
+                const effectiveDefault = userConfig?.activeVehicleId || vehicles[0]?.id || '';
+                return (
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="form-label" style={{ marginBottom: '4px' }}>Default Vehicle on Login</label>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 8px 0' }}>
+                        Loaded automatically on a fresh install or new device.
+                      </p>
+                      <select
+                        className="form-input"
+                        value={effectiveDefault}
+                        onChange={async (e) => {
+                          setDefaultVidSaving(true);
+                          try { await updateUserConfig({ activeVehicleId: e.target.value }); }
+                          finally { setDefaultVidSaving(false); }
+                        }}
+                      >
+                        {vehicles.map(v => (
+                          <option key={v.id} value={v.id}>
+                            {v.config.lt_vessel_name || v.id}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {defaultVidSaving && (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', paddingBottom: '10px', whiteSpace: 'nowrap' }}>Saving…</span>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Manual Sync Button */}
+              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button
+                  className="btn-primary"
+                  onClick={handleManualSync}
+                  disabled={isManualSyncing}
+                >
+                  {isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
+                </button>
+                {manualSyncMsg && (
+                  <div style={{ 
+                    fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
+                    color: manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
+                    background: manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+                  }}>
+                    {manualSyncMsg.text}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          )}
+        </div>
+
+          {/* Local Server (moved above Notifications, below Account Info) */}
+          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>📡 Local Server</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+              This device can run a local listener so battery sensors (e.g. flood) push alerts straight to it over your LAN — works with no internet, no Bluetooth required.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}>
+              <span>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Enable local sensor server</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Listen for local sensor webhooks on this device.</div>
+              </span>
+              <input type="checkbox" checked={localServerEnabled} onChange={e => setLocalServerEnabled(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', opacity: localServerEnabled ? 1 : 0.5 }}>
+              <span>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Run in the background</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Keep the server alive when the app is closed so local alerts arrive even offline. On Android this runs a foreground service with a persistent notification and uses more battery. When off, the local server only runs while the app is open.</div>
+              </span>
+              <input type="checkbox" disabled={!localServerEnabled} checked={localServerBackground} onChange={e => setLocalServerBackground(e.target.checked)} style={{ width: '20px', height: '20px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-emerald)' }} />
+            </label>
           </div>
 
           {/* Device Preferences — local to this device, not synced to cloud */}
@@ -835,130 +1044,6 @@ export default function Settings({ user }: { user: any }) {
 
       {activeTab === 'general' && (
         <>
-          <div className="glass-card">
-          <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', marginBottom: '16px' }}>Account Information</h3>
-          {!user ? (
-            <div>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-                Sign in to Boat-RV-Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
-              </p>
-              {!showLogin ? (
-                <button 
-                  className="btn-primary"
-                  onClick={() => setShowLogin(true)}
-                  style={{ marginTop: '16px' }}
-                >
-                  Log into Boat-RV-Guardian.com
-                </button>
-              ) : (
-                <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
-                  <Login />
-                  <div style={{ textAlign: 'center', marginTop: '10px' }}>
-                    <button className="btn-secondary" onClick={() => setShowLogin(false)} style={{ fontSize: '0.85rem' }}>Cancel</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <p style={{ margin: 0 }}><strong>Email:</strong> {user.email}</p>
-                <button 
-                  className="btn-secondary"
-                  onClick={() => signOut(auth)}
-                  style={{ border: '1px solid #ef4444', color: '#ef4444', padding: '4px 12px', fontSize: '0.8rem' }}
-                >
-                  Sign Out
-                </button>
-              </div>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-                    <span style={{ fontWeight: 600 }}>Sync settings with the cloud</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Automatically backup and restore your configuration</span>
-                  </label>
-                  <input type="checkbox" checked={syncSettingsCloud} onChange={(e) => setSyncSettingsCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
-                    <span style={{ fontWeight: 600 }}>Store historical data in the cloud</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Sync your water flow history for long-term storage</span>
-                  </label>
-                  <input type="checkbox" checked={storeHistoryCloud} onChange={(e) => setStoreHistoryCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
-                </div>
-              </div>
-
-              {/* Default Vehicle on Login */}
-              {(() => {
-                const vehicles = Object.values(vehiclesMap);
-                if (vehicles.length === 0) return null;
-                // Auto-pick the first vehicle if the account has no preference set yet
-                const effectiveDefault = userConfig?.activeVehicleId || vehicles[0]?.id || '';
-                return (
-                  <div style={{ marginTop: '16px', display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
-                    <div style={{ flex: 1 }}>
-                      <label className="form-label" style={{ marginBottom: '4px' }}>Default Vehicle on Login</label>
-                      <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: '0 0 8px 0' }}>
-                        Loaded automatically on a fresh install or new device.
-                      </p>
-                      <select
-                        className="form-input"
-                        value={effectiveDefault}
-                        onChange={async (e) => {
-                          setDefaultVidSaving(true);
-                          try { await updateUserConfig({ activeVehicleId: e.target.value }); }
-                          finally { setDefaultVidSaving(false); }
-                        }}
-                      >
-                        {vehicles.map(v => (
-                          <option key={v.id} value={v.id}>
-                            {v.config.lt_vessel_name || v.id}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    {defaultVidSaving && (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--accent-cyan)', paddingBottom: '10px', whiteSpace: 'nowrap' }}>Saving…</span>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Cloud Alerts worker URL */}
-              <div style={{ marginTop: '16px' }}>
-                <label className="form-label">Cloud Alert Worker URL</label>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                  Your deployed Cloudflare worker (e.g. <code>https://boat-rv-guardian-webhooks.&lt;you&gt;.workers.dev</code>). Required for Shelly devices to push away-from-home alerts. Set this before adding devices.
-                </p>
-                <input className="form-input" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://…workers.dev" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-              </div>
-
-              {/* Manual Sync Button */}
-              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button
-                  className="btn-primary"
-                  onClick={handleManualSync}
-                  disabled={isManualSyncing}
-                >
-                  {isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
-                </button>
-                {manualSyncMsg && (
-                  <div style={{ 
-                    fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
-                    color: manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
-                    background: manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                  }}>
-                    {manualSyncMsg.text}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          )}
-        </div>
-
         {/* Delete Vehicle Section */}
         <div className="glass-card" style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}>
           <h3 style={{ marginTop: 0, color: '#ef4444', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', paddingBottom: '8px', marginBottom: '16px' }}>Danger Zone</h3>
@@ -1468,6 +1553,40 @@ export default function Settings({ user }: { user: any }) {
                                 >Clear password</button>
                               </div>
 
+                              {/* Shelly Plus Uni's 0-30 V voltmeter isn't enabled by default — it must be
+                                  linked as a peripheral (creates voltmeter:1xx; reboots the device).
+                                  Provisioning does this automatically; this re-runs it for devices added
+                                  before the fix or after a factory reset. */}
+                              {device.role === 'Low Power Sensor' && (
+                                <div>
+                                  <button
+                                    className="btn-secondary"
+                                    disabled={devicePanelBusy || !deviceLocalHost(device)}
+                                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                                    onClick={async () => {
+                                      const host = deviceLocalHost(device);
+                                      if (!host) return;
+                                      setDevicePanelBusy(true); setDevicePanelMsg(null);
+                                      try {
+                                        const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
+                                        const pw = localStorage.getItem('sh_local_password') || undefined;
+                                        const { id, rebooted } = await enableShellyVoltmeter((m, p) => shellyRpc(host, m, p, pw));
+                                        setDevicePanelMsg(id != null
+                                          ? { id: device.id, text: rebooted
+                                              ? `✓ Voltmeter enabled (voltmeter:${id}) — device rebooting (~15 s), then voltage appears.`
+                                              : `✓ Voltmeter already enabled (voltmeter:${id}).`, ok: true }
+                                          : { id: device.id, text: '✗ Could not enable the voltmeter — this device may not expose one.', ok: false });
+                                      } catch (err: any) {
+                                        setDevicePanelMsg({ id: device.id, text: `✗ ${err?.message || 'Unreachable'}${device.batteryPowered ? ' — wake the device and retry' : ''}`, ok: false });
+                                      } finally { setDevicePanelBusy(false); }
+                                    }}
+                                  >🔌 Enable voltmeter</button>
+                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                                    For Shelly Plus Uni battery monitors reading 0.00 V — links the 0-30 V voltmeter peripheral (reboots the device).
+                                  </p>
+                                </div>
+                              )}
+
                               {devicePanelMsg?.id === device.id && (
                                 <div style={{ fontSize: '0.8rem', color: devicePanelMsg.ok ? '#10b981' : '#ef4444' }}>{devicePanelMsg.text}</div>
                               )}
@@ -1510,13 +1629,33 @@ export default function Settings({ user }: { user: any }) {
             <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Batteries</h3>
               <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>Alert thresholds applied to house and engine battery sensors.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
+                <div>
+                  <label className="form-label">Battery Type</label>
+                  <select className="form-input" value={battType} onChange={(e) => applyBatteryPreset(e.target.value, battSystemV)}>
+                    {Object.entries(BATTERY_PRESETS).map(([key, p]) => (
+                      <option key={key} value={key}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label">System</label>
+                  <select className="form-input" value={battSystemV} onChange={(e) => applyBatteryPreset(battType, e.target.value)}>
+                    <option value="12">12 V</option>
+                    <option value="24">24 V</option>
+                  </select>
+                </div>
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '-6px 0 0 0' }}>
+                Choosing a battery type / system fills the thresholds below with recommended values. Pick <strong>Custom (manual)</strong> — or just edit any field — to set your own.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
                 <div>
                   <label className="form-label">Critical Voltage</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" min="10" max="14.9" step="0.1" className="form-input"
+                    <input type="number" min="8" max="35" step="0.1" className="form-input"
                       value={battCritVoltage}
-                      onChange={(e) => setBattCritVoltage(Number(Number(e.target.value).toFixed(1)))}
+                      onChange={(e) => { setBattCritVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
                       style={{ paddingRight: '32px' }} />
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
                   </div>
@@ -1525,20 +1664,31 @@ export default function Settings({ user }: { user: any }) {
                 <div>
                   <label className="form-label">Low Voltage</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" min="10" max="14.9" step="0.1" className="form-input"
+                    <input type="number" min="8" max="35" step="0.1" className="form-input"
                       value={battLowVoltage}
-                      onChange={(e) => setBattLowVoltage(Number(Number(e.target.value).toFixed(1)))}
+                      onChange={(e) => { setBattLowVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
                       style={{ paddingRight: '32px' }} />
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers low-battery warning</div>
                 </div>
                 <div>
+                  <label className="form-label">Normal Voltage</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="number" min="8" max="35" step="0.1" className="form-input"
+                      value={battNormalVoltage}
+                      onChange={(e) => { setBattNormalVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
+                      style={{ paddingRight: '32px' }} />
+                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Nominal resting voltage</div>
+                </div>
+                <div>
                   <label className="form-label">Charging</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" min="12" max="15" step="0.1" className="form-input"
+                    <input type="number" min="8" max="35" step="0.1" className="form-input"
                       value={battChargeVoltage}
-                      onChange={(e) => setBattChargeVoltage(Number(Number(e.target.value).toFixed(1)))}
+                      onChange={(e) => { setBattChargeVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
                       style={{ paddingRight: '32px' }} />
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
                   </div>
@@ -1547,9 +1697,9 @@ export default function Settings({ user }: { user: any }) {
                 <div>
                   <label className="form-label">Over Voltage</label>
                   <div style={{ position: 'relative' }}>
-                    <input type="number" min="14" max="20" step="0.1" className="form-input"
+                    <input type="number" min="8" max="35" step="0.1" className="form-input"
                       value={battOverVoltage}
-                      onChange={(e) => setBattOverVoltage(Number(Number(e.target.value).toFixed(1)))}
+                      onChange={(e) => { setBattOverVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
                       style={{ paddingRight: '32px' }} />
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
                   </div>
@@ -1562,7 +1712,7 @@ export default function Settings({ user }: { user: any }) {
             <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>⚡ Shore Power</h3>
               <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>Alert thresholds applied to shore power / AC inlet sensors.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '16px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
                 <div>
                   <label className="form-label">Critical Low</label>
                   <div style={{ position: 'relative' }}>
@@ -1584,6 +1734,17 @@ export default function Settings({ user }: { user: any }) {
                     <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
                   </div>
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers low-voltage warning</div>
+                </div>
+                <div>
+                  <label className="form-label">Normal Voltage</label>
+                  <div style={{ position: 'relative' }}>
+                    <input type="number" min="90" max="160" step="1" className="form-input"
+                      value={shoreNormalV}
+                      onChange={(e) => setShoreNormalV(Number(e.target.value))}
+                      style={{ paddingRight: '32px' }} />
+                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Nominal line voltage</div>
                 </div>
                 <div>
                   <label className="form-label">High Voltage</label>

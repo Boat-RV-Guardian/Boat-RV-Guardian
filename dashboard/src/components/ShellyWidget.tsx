@@ -110,10 +110,22 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     setShellyAuthKey(localStorage.getItem('sh_auth_key') || '');
   }, []);
 
+  // Shelly Plus UNI has NO Voltmeter component — its 0-30 V DC measurement comes from an INPUT
+  // configured as type "analog", which reports as input:N { percent } (full-scale 0-100%).
+  // Convert that to volts over the configured range (default 30 V). The input index isn't fixed,
+  // so scan for the first input exposing a numeric percent (switch/count inputs don't).
+  const uniAnalogVolts = (d: any): number | null => {
+    for (let i = 0; i < 5; i++) {
+      const inp = d?.[`input:${i}`];
+      if (inp && typeof inp.percent === 'number') return (inp.percent / 100) * num('lt_uni_volt_fullscale', 30);
+    }
+    return null;
+  };
+
   // Pull the role's primary trend metric out of a status object (same keys local + cloud).
   const extractMetric = (d: any): number | null => {
     if (device.role === 'High Power Sensor') return d['pm1:0']?.apower ?? d['switch:0']?.apower ?? d['em:0']?.total_act_power ?? d.meters?.[0]?.power ?? null;
-    if (device.role === 'Low Power Sensor') return d['voltmeter:0']?.voltage ?? d['voltmeter:100']?.voltage ?? d.adcs?.[0]?.voltage ?? null;
+    if (device.role === 'Low Power Sensor') return d['voltmeter:0']?.voltage ?? d['voltmeter:100']?.voltage ?? d.adcs?.[0]?.voltage ?? uniAnalogVolts(d);
     return null; // flood is binary — no continuous trend
   };
 
@@ -200,7 +212,7 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     if (device.role === 'High Power Sensor') {
       const power = data['pm1:0']?.apower ?? data['switch:0']?.apower ?? data['em:0']?.total_act_power ?? data.meters?.[0]?.power ?? 0;
       const voltage = data['pm1:0']?.voltage ?? data['switch:0']?.voltage ?? data['em:0']?.a_voltage ?? data.meters?.[0]?.voltage ?? 0;
-      const critLow = num('lt_shore_crit_low_v', 95), low = num('lt_shore_low_v', 100), high = num('lt_shore_high_v', 128), critHigh = num('lt_shore_crit_high_v', 135);
+      const critLow = num('lt_shore_crit_low_v', 104), low = num('lt_shore_low_v', 114), normal = num('lt_shore_normal_v', 120), high = num('lt_shore_high_v', 126), critHigh = num('lt_shore_crit_high_v', 132);
       const status = voltage <= critLow ? { t: 'CRITICAL LOW', c: '#ef4444' } : voltage <= low ? { t: 'LOW', c: '#f59e0b' }
         : voltage >= critHigh ? { t: 'CRITICAL HIGH', c: '#ef4444' } : voltage >= high ? { t: 'HIGH', c: '#f59e0b' } : { t: 'NORMAL', c: '#10b981' };
       content = (
@@ -209,14 +221,14 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
             <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f59e0b' }}>{power.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>W</span></span>
             <span style={{ fontSize: '0.7rem', fontWeight: 700, color: status.c, background: `${status.c}22`, padding: '2px 8px', borderRadius: '10px' }}>{status.t}</span>
           </div>
-          <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>{voltage.toFixed(1)} V</div>
+          <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>{voltage.toFixed(1)} V <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>· nominal {normal} V</span></div>
           <Sparkline points={history} color="#f59e0b" />
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Power trend (W)</div>
         </div>
       );
     } else if (device.role === 'Low Power Sensor') {
-      const voltage = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? 0;
-      const crit = num('lt_batt_crit_v', 11.5), low = num('lt_batt_low_v', 11.9), charge = num('lt_batt_charge_v', 13.2), over = num('lt_batt_over_v', 15.5);
+      const voltage = data['voltmeter:0']?.voltage ?? data['voltmeter:100']?.voltage ?? data.adcs?.[0]?.voltage ?? uniAnalogVolts(data) ?? 0;
+      const crit = num('lt_batt_crit_v', 11.8), low = num('lt_batt_low_v', 12.2), normal = num('lt_batt_normal_v', 12.6), charge = num('lt_batt_charge_v', 13.6), over = num('lt_batt_over_v', 15.0);
       const status = voltage <= crit ? { t: 'CRITICAL', c: '#ef4444' } : voltage <= low ? { t: 'LOW', c: '#f59e0b' }
         : voltage >= over ? { t: 'OVER-VOLTAGE', c: '#ef4444' } : voltage >= charge ? { t: 'CHARGING', c: '#22d3ee' } : { t: 'NORMAL', c: '#10b981' };
       content = (
@@ -227,8 +239,8 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
           </div>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>Battery Monitor</div>
           <Sparkline points={history} color={status.c} min={crit - 0.4} max={over + 0.4}
-            thresholds={[{ v: crit, color: '#ef4444' }, { v: low, color: '#f59e0b' }, { v: charge, color: '#22d3ee' }, { v: over, color: '#ef4444' }]} />
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Voltage trend · thresholds {crit} / {low} / {charge} / {over} V</div>
+            thresholds={[{ v: crit, color: '#ef4444' }, { v: low, color: '#f59e0b' }, { v: normal, color: '#94a3b8' }, { v: charge, color: '#22d3ee' }, { v: over, color: '#ef4444' }]} />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Voltage trend · nominal {normal} V · thresholds {crit} / {low} / {charge} / {over} V</div>
         </div>
       );
     } else if (device.role === 'Flood Sensor') {
