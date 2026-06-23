@@ -3,7 +3,7 @@ import { useCloudConfig } from '../hooks/useCloudConfig';
 import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig } from '../utils/configSync';
 import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle } from '../utils/VehicleManager';
 import { getMyRole } from '../utils/sharing';
-import { auth } from '../services/firebase';
+import { auth, signOut } from '../services/firebase';
 
 export default function SyncModal() {
   const [activeVid, setActiveVid] = useState(getActiveVehicleId());
@@ -205,11 +205,12 @@ export default function SyncModal() {
 
   if (!showModal) return null;
 
-  const handleUseLocal = () => {
+  // Keep this device's local settings and stop syncing by signing out — the cloud copy is left
+  // untouched (we do NOT overwrite it). The local profile stays exactly as-is.
+  const handleLogoutUseLocal = async () => {
     setShowModal(false);
     setHasResolved(true);
-    // Fire-and-forget — don't block the UI waiting for Firestore (may be offline)
-    updateVehicleConfig(activeVid, getLocalVehicleConfig()).catch(() => {});
+    try { await signOut(auth); } catch { /* ignore */ }
   };
 
   const handleUseCloud = () => {
@@ -235,19 +236,19 @@ export default function SyncModal() {
       <div className="glass-card" style={{ maxWidth: '400px', width: '90%' }}>
         <h3 style={{ marginTop: 0, color: 'var(--accent-cyan)' }}>Cloud Sync Conflict</h3>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          We found an existing configuration in the cloud for this vehicle, but you also have local settings. Which one would you like to keep?
+          This vehicle has a different configuration saved in the cloud than what's on this device. How do you want to resolve it?
         </p>
-        
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
           <button className="btn-primary" onClick={handleUseCloud}>
-            ☁️ Use Cloud Settings
+            ☁️ Use the cloud copy
           </button>
-          <button className="btn-secondary" onClick={handleUseLocal}>
-            📱 Use Local Settings (Overwrite Cloud)
+          <button className="btn-secondary" onClick={handleLogoutUseLocal}>
+            📱 Log out and use local
           </button>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '8px 0' }}></div>
           <button className="btn-secondary" onClick={handleCancel}>
-            Cancel
+            Cancel and go back
           </button>
         </div>
       </div>
