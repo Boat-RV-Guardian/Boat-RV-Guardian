@@ -151,7 +151,13 @@ export default function Settings({ user }: { user: any }) {
   const [shellyLocalPassword, setShellyLocalPassword] = useState(() => localStorage.getItem('sh_local_password') || '');
   const [showShellyPw, setShowShellyPw] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL);
-  
+
+  // Local Server Options (device-local). The app can act as a local listener so sleepy Shelly
+  // sensors can push events straight to it with no internet. Background mode (Android foreground
+  // service) keeps it alive when the app isn't open, at the cost of a persistent notification.
+  const [localServerEnabled, setLocalServerEnabled] = useState(() => localStorage.getItem('lt_local_server') !== 'false');
+  const [localServerBackground, setLocalServerBackground] = useState(() => localStorage.getItem('lt_local_server_bg') === 'true');
+
   // Normal Run Profile Config
   const [normalRunHours, setNormalRunHours] = useState(() => Number(localStorage.getItem('lt_nr_hrs') || '0'));
   const [normalRunMinutes, setNormalRunMinutes] = useState(() => Number(localStorage.getItem('lt_nr_mins') || '0'));
@@ -255,6 +261,8 @@ export default function Settings({ user }: { user: any }) {
       setTimeZone(localStorage.getItem('lt_tz') || ((Intl as any).supportedValuesOf ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC'));
       setShellyLocalPassword(localStorage.getItem('sh_local_password') || '');
       setWebhookUrl(localStorage.getItem('sh_webhook_url') || '');
+      setLocalServerEnabled(localStorage.getItem('lt_local_server') !== 'false');
+      setLocalServerBackground(localStorage.getItem('lt_local_server_bg') === 'true');
       setVesselNickname(localStorage.getItem('lt_vessel_name') || '');
       setNormalRunHours(Number(localStorage.getItem('lt_nr_hrs') || '0'));
       setNormalRunMinutes(Number(localStorage.getItem('lt_nr_mins') || '0'));
@@ -331,6 +339,8 @@ export default function Settings({ user }: { user: any }) {
     localStorage.setItem('lt_vessel_name', vesselNickname);
     localStorage.setItem('sh_local_password', shellyLocalPassword);
     localStorage.setItem('sh_webhook_url', webhookUrl.trim());
+    localStorage.setItem('lt_local_server', localServerEnabled.toString());
+    localStorage.setItem('lt_local_server_bg', localServerBackground.toString());
     localStorage.setItem('lt_unit', unitSystem);
     localStorage.setItem('lt_tz', timeZone);
     localStorage.setItem('lt_nr_hrs', normalRunHours.toString());
@@ -384,7 +394,7 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
     syncDispatchRef.current = false;
   }, [
-    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, unitSystem, timeZone,
+    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, localServerEnabled, localServerBackground, unitSystem, timeZone,
     normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
     isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
     gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
@@ -575,6 +585,28 @@ export default function Settings({ user }: { user: any }) {
 
       {activeTab === 'general' && (
         <>
+          {/* Local Server Options */}
+          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>🖧 Local Server Options</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+              This device can run a local listener so battery sensors (e.g. flood) push alerts straight to it over your LAN — works with no internet, no Bluetooth required.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }}>
+              <span>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Enable local sensor server</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Listen for local sensor webhooks on this device.</div>
+              </span>
+              <input type="checkbox" checked={localServerEnabled} onChange={e => setLocalServerEnabled(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', opacity: localServerEnabled ? 1 : 0.5 }}>
+              <span>
+                <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Run in the background</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Keep the server alive when the app is closed so local alerts arrive even offline. On Android this runs a foreground service with a persistent notification and uses more battery. When off, the local server only runs while the app is open.</div>
+              </span>
+              <input type="checkbox" disabled={!localServerEnabled} checked={localServerBackground} onChange={e => setLocalServerBackground(e.target.checked)} style={{ width: '20px', height: '20px', cursor: localServerEnabled ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-emerald)' }} />
+            </label>
+          </div>
+
           {/* Vehicles Sub-section (App & System Config) */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
