@@ -9,7 +9,7 @@ import { useCloudConfig } from '../hooks/useCloudConfig';
 import { usePendingInvites } from '../hooks/usePendingInvites';
 import {
   ROLE_OPTIONS, ROLE_LABELS, getMyRole, getMembers, createInvite, acceptInvite, declineInvite,
-  cancelInvite, removeMember, leaveVehicle, listSentInvites,
+  cancelInvite, removeMember, leaveVehicle, listSentInvites, ensureOwnerAdmin,
   type VehicleRole, type Invite, type Member,
 } from '../utils/sharing';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
@@ -57,7 +57,6 @@ export default function Settings({ user }: { user: any }) {
 
   // --- Friends / Sharing state ---
   const pendingInvites = usePendingInvites();
-  const [shareVid, setShareVid] = useState('');
   const [shareEmail, setShareEmail] = useState('');
   const [shareRole, setShareRole] = useState<VehicleRole>('monitor');
   const [shareMsg, setShareMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -69,10 +68,19 @@ export default function Settings({ user }: { user: any }) {
   const adminVehicles = (cloudVehicles || []).filter(cv => getMyRole(cv) === 'admin');
   const sharedWithMe = (cloudVehicles || []).filter(cv => { const r = getMyRole(cv); return r === 'control' || r === 'monitor'; });
 
-  // Default the share dropdown to the first admin vehicle once loaded
-  useEffect(() => {
-    if (!shareVid && adminVehicles.length > 0) setShareVid(adminVehicles[0].id);
-  }, [cloudVehicles]);
+  // Sharing is scoped to the ACTIVE vehicle only — you share whatever you're currently in.
+  const activeCloudVehicle = (cloudVehicles || []).find(cv => cv.id === activeVid);
+  const isActiveAdmin = activeCloudVehicle ? getMyRole(activeCloudVehicle) === 'admin' : false;
+  const activeVehicleName = activeCloudVehicle?.lt_vessel_name || localStorage.getItem('lt_vessel_name') || 'this vehicle';
+  // Members of the active vehicle. Legacy owners have no members map yet, so synthesize the
+  // current admin (you) until ensureOwnerAdmin backfills the doc.
+  const activeMembers: Member[] = (() => {
+    const m = getMembers(activeCloudVehicle);
+    if (user && isActiveAdmin && !m.some(x => x.uid === user.uid)) {
+      return [{ uid: user.uid, role: 'admin', email: user.email || '(you)' }, ...m];
+    }
+    return m;
+  })();
 
   // Load outstanding sent invites for each vehicle I administer
   const refreshSentInvites = async () => {
@@ -84,17 +92,18 @@ export default function Settings({ user }: { user: any }) {
   };
   useEffect(() => {
     if (activeTab === 'friends' && adminVehicles.length > 0) refreshSentInvites();
+    // Backfill the owner's members entry on the active vehicle so People With Access lists them.
+    if (activeTab === 'friends' && isActiveAdmin && activeVid) ensureOwnerAdmin(activeVid).catch(() => {});
   }, [activeTab, cloudVehicles.length]);
 
   const handleCreateInvite = async () => {
     setShareMsg(null);
     setLastInvite(null);
-    if (!shareVid) { setShareMsg({ text: 'Select a vehicle to share', type: 'error' }); return; }
+    if (!activeVid || !isActiveAdmin) { setShareMsg({ text: 'You must be an admin of the active vehicle to share it.', type: 'error' }); return; }
     setFriendsBusy(true);
     try {
-      const cv = adminVehicles.find(v => v.id === shareVid);
-      const name = cv?.lt_vessel_name || 'Vehicle';
-      const invite = await createInvite(shareVid, name, shareEmail, shareRole);
+      const name = activeCloudVehicle?.lt_vessel_name || localStorage.getItem('lt_vessel_name') || 'Vehicle';
+      const invite = await createInvite(activeVid, name, shareEmail, shareRole);
       setLastInvite(invite);
       setShareEmail('');
       setShareMsg({ text: 'Invite created — share the message below with your friend.', type: 'success' });
@@ -1523,17 +1532,15 @@ export default function Settings({ user }: { user: any }) {
 
           {/* Share a vehicle */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Share a Vehicle</h3>
-            {adminVehicles.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>You need to be an admin of a vehicle to share it. Create or sync a vehicle first.</p>
+            <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Share <span style={{ color: 'var(--text-primary)' }}>{activeVehicleName}</span></h3>
+            {!isActiveAdmin ? (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
+                {activeCloudVehicle
+                  ? 'Only an admin of the active vehicle can share it.'
+                  : 'The active vehicle isn’t synced to the cloud yet. Sign in and sync it to share.'}
+              </p>
             ) : (
               <>
-                <div>
-                  <label className="form-label">Vehicle</label>
-                  <select className="form-input" value={shareVid} onChange={e => setShareVid(e.target.value)}>
-                    {adminVehicles.map(cv => <option key={cv.id} value={cv.id}>{cv.lt_vessel_name || cv.id}</option>)}
-                  </select>
-                </div>
                 <div>
                   <label className="form-label">Friend's Email</label>
                   <input className="form-input" type="email" value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="friend@example.com" />
@@ -1574,33 +1581,25 @@ export default function Settings({ user }: { user: any }) {
             )}
           </div>
 
-          {/* People with access to my vehicles */}
-          {adminVehicles.length > 0 && (
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* People with access to the ACTIVE vehicle */}
+          {isActiveAdmin && (
+            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>People With Access</h3>
-              {adminVehicles.map(cv => {
-                const members: Member[] = getMembers(cv);
-                const pend = sentInvites[cv.id] || [];
-                return (
-                  <div key={cv.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '10px' }}>
-                    <div style={{ fontWeight: 700 }}>{cv.lt_vessel_name || cv.id}</div>
-                    {members.map(m => (
-                      <div key={m.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                        <span>{m.email} {m.uid === user.uid && <em style={{ color: 'var(--text-muted)' }}>(you)</em>} — {ROLE_LABELS[m.role]}</span>
-                        {m.uid !== user.uid && (
-                          <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleRemoveMember(cv.id, m)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Remove</button>
-                        )}
-                      </div>
-                    ))}
-                    {pend.map(inv => (
-                      <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        <span>{inv.inviteeEmail} — {ROLE_LABELS[inv.role]} <em>(pending)</em></span>
-                        <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleCancelInvite(inv.id)} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Cancel</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{activeVehicleName}</div>
+              {activeMembers.map(m => (
+                <div key={m.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
+                  <span>{m.email} {m.uid === user.uid && <em style={{ color: 'var(--text-muted)' }}>(you)</em>} — {ROLE_LABELS[m.role]}</span>
+                  {m.uid !== user.uid && (
+                    <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleRemoveMember(activeVid, m)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Revoke</button>
+                  )}
+                </div>
+              ))}
+              {(sentInvites[activeVid] || []).map(inv => (
+                <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>{inv.inviteeEmail} — {ROLE_LABELS[inv.role]} <em>(pending)</em></span>
+                  <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleCancelInvite(inv.id)} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Cancel</button>
+                </div>
+              ))}
             </div>
           )}
 
