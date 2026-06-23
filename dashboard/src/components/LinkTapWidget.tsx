@@ -21,7 +21,7 @@ const listenTauri = async (event: string, handler: (e: any) => void) => {
   return () => {};
 };
 
-const APP_VERSION = '1.0.41';
+const APP_VERSION = '1.0.42';
 
 const unifiedFetch = async (url: string, options?: any) => {
   if (isTauriEnv() && options?.method === 'POST' && !url.startsWith('https://')) {
