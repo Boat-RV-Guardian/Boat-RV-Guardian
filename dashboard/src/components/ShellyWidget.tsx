@@ -135,14 +135,16 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     if (!isTauriEnv() || !device.shellyDeviceId) return;
     try {
       const appIp = await invokeTauri('get_local_ip') as string;
-      if (!appIp || appIp === device.webhookAppIp) return;
+      if (!appIp) return;
       const pw = localStorage.getItem('sh_local_password') || undefined;
       const { refreshLocalShellyWebhooks } = await import('../utils/shellyRpc');
+      // Always ensure (merge) — another instance may have clobbered our URL even if our IP is unchanged.
       await refreshLocalShellyWebhooks(
         (m, params) => shellyRpc(reachableHost, m, params, pw),
-        `http://${appIp}:3030`, getActiveVehicleId() || '', device.shellyDeviceId);
+        `http://${appIp}:3030`, getActiveVehicleId() || '', device.shellyDeviceId,
+        device.webhookAppIp ? `http://${device.webhookAppIp}:3030` : undefined);
       const { updateDevice } = await import('../utils/VehicleManager');
-      updateDevice(device.id, { webhookAppIp: appIp });
+      if (appIp !== device.webhookAppIp) updateDevice(device.id, { webhookAppIp: appIp });
     } catch { /* best-effort */ }
   };
 

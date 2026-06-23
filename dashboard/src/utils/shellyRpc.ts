@@ -98,18 +98,24 @@ export async function registerShellyWebhooks(
 }
 
 /**
- * Self-heal the device's LOCAL webhook(s) to point at the current app IP, leaving cloud hooks
- * untouched. Call while the device is awake (e.g. inside a shelly-local-event strike). Local hooks
- * are identified by a private-LAN host + the /api/shelly path. Hardware-untested; best-effort.
+ * Ensure this app instance is a local-webhook target on the device, for the full alert-event set.
+ *
+ * MERGES rather than replaces: each Shelly hook holds up to 5 URLs, so multiple app instances
+ * (e.g. a desktop + a phone on the same boat) can all receive events. We add/refresh OUR url and
+ * keep other listeners' urls; we drop only our own stale entry (current host, or `priorBase`'s host
+ * from a previous IP) so DHCP churn doesn't pile up dead URLs. Call while the device is awake.
  */
 export async function refreshLocalShellyWebhooks(
   call: (method: string, params: any) => Promise<any>,
   localBase: string,
   vid: string,
   deviceId = '',
+  priorBase?: string,
 ): Promise<void> {
-  const isPrivate = (u: string) => /\/api\/shelly/.test(u) && /\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u);
   const root = localBase.replace(/\/$/, '');
+  const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
+  const myHost = hostOf(root);
+  const priorHost = priorBase ? hostOf(priorBase.replace(/\/$/, '')) : '';
 
   // Desired alert events (so e.g. a flood sensor gets flood.alarm AND flood.alarm_off AND
   // flood.cable_unplugged — without alarm_off the UI never clears back to dry).
@@ -125,13 +131,18 @@ export async function refreshLocalShellyWebhooks(
   let hooks: any[] = [];
   try { const list = await call('Webhook.List', {}); hooks = list?.hooks || []; } catch { /* none */ }
 
-  // Ensure each desired event has a local hook at the current app IP (update existing, create missing).
   for (const event of events) {
-    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}`;
-    const existing = hooks.find((h) => h.event === event && (h.urls || []).some(isPrivate));
+    const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}`;
+    const existing = hooks.find((h) => h.event === event);
     try {
-      if (existing) await call('Webhook.Update', { id: existing.id, enable: true, event, name: existing.name || 'brvg-local', urls: [url] });
-      else await call('Webhook.Create', { cid: 0, enable: true, event, name: 'brvg-local', urls: [url] });
+      if (existing) {
+        // Keep other listeners; drop our own (current + prior) host; add our current url. Cap at 5.
+        const others = (existing.urls || []).filter((u: string) => { const h = hostOf(u); return h && h !== myHost && h !== priorHost; });
+        const merged = Array.from(new Set([...others, myUrl])).slice(0, 5);
+        await call('Webhook.Update', { id: existing.id, enable: true, event, name: existing.name || 'brvg-local', urls: merged });
+      } else {
+        await call('Webhook.Create', { cid: 0, enable: true, event, name: 'brvg-local', urls: [myUrl] });
+      }
     } catch { /* skip events that reject the cid/shape */ }
   }
 }

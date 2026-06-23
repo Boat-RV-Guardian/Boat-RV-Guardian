@@ -49,11 +49,13 @@ async function handleLocalEvent(p: { device?: string; event?: string; ip?: strin
 
   try {
     const appIp = await getAppLanIp();
-    if (appIp && appIp !== dev.webhookAppIp) {
+    if (appIp) {
+      // Always ensure (merge) — another instance may have clobbered our URL even if IP is unchanged.
       await refreshLocalShellyWebhooks(
         (m, params) => shellyRpc(ip, m, params, pw),
-        `http://${appIp}:3030`, p.vid || getActiveVehicleId() || '', dev.shellyDeviceId || '');
-      updateDevice(dev.id, { webhookAppIp: appIp });
+        `http://${appIp}:3030`, p.vid || getActiveVehicleId() || '', dev.shellyDeviceId || '',
+        dev.webhookAppIp ? `http://${dev.webhookAppIp}:3030` : undefined);
+      if (appIp !== dev.webhookAppIp) updateDevice(dev.id, { webhookAppIp: appIp });
     }
   } catch { /* best-effort */ }
 }
