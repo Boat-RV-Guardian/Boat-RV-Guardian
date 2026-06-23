@@ -9,6 +9,7 @@ import { auth, onAuthStateChanged } from './services/firebase';
 import SyncModal from './components/SyncModal';
 import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
+import { migrateAllVehiclesThresholds } from './utils/configSync';
 
 type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'settings';
 
@@ -21,6 +22,10 @@ export default function App() {
   // Onboarding gate: with no vehicle the app is locked until the user signs in (cloud vehicles
   // get adopted) or explicitly creates a local vehicle. We no longer auto-create a vehicle.
   const [hasVehicle, setHasVehicle] = useState(() => hasActiveVehicle());
+
+  // One-time: pull pre-refresh vehicles onto the new marine/RV default thresholds (untouched values
+  // only — customized ones are preserved). The active vehicle is also re-checked on every cloud pull.
+  useEffect(() => { migrateAllVehiclesThresholds(); }, []);
 
   useEffect(() => {
     const sync = () => setHasVehicle(hasActiveVehicle());
