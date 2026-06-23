@@ -4,6 +4,7 @@ import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { pushDeviceHistory, fetchDeviceHistory, recentMonthsUTC } from '../utils/historySync';
 import { auth } from '../services/firebase';
 import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
+import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
 
 const APP_VERSION = '1.0.43';
 
@@ -598,38 +599,23 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
            throw new Error("Polling failed: Ensure Local IP or Cloud Credentials are configured correctly and network is reachable.");
         }
 
-        // 3. Parse format based on source
+        // 3. Parse format based on source. Cloud responses get folded into the native shape;
+        //    local responses already match it.
         if (usedCloud) {
            try {
-             const st = data.status || data;
-             data = {
-               is_rf_linked: (window as any).cachedCloudStatus !== 'Offline',
-               battery: (window as any).cachedCloudBattery || 100,
-               signal: (window as any).cachedCloudSignal || 100,
-               is_watering: st.isWatering === true || st.watering != null || st.onDuration > 0 || st.status === 'Watering',
-               speed: st.vel || st.speed || 0,
-               volume: st.vol || st.volume || 0,
-               target_volume: st.limit || st.target_vol || (st.watering ? st.watering.vol : 0) || 0,
-               target_duration: st.totalDuration || st.total || (st.watering ? st.watering.duration : 0) || 0,
-               is_broken: false,
-               remain_duration: st.remain_duration || st.remainingSeconds || st.remaining || 
-                                (st.total != null && st.onDuration != null ? ((Number(st.total) * 60 + Number(st.totalSec || 0)) - (Number(st.onDuration) * 60 + Number(st.onDurSec || 0))) : 0) ||
-                                (st.totalDuration ? (st.totalDuration * 60) - (st.onDuration || 0) : 0) || 
-                                (st.watering && st.watering.remaining ? st.watering.remaining * 60 : 0)
-             };
+             data = normalizeCloudStatus(data, {
+               battery: (window as any).cachedCloudBattery,
+               signal: (window as any).cachedCloudSignal,
+               status: (window as any).cachedCloudStatus,
+             });
            } catch (e) {
              console.warn('Cloud API parsing issue', e);
            }
-        } else {
-           // Local API parsing (native structure)
         }
-        
-        // LinkTap's firmware has battery and signal values swapped internally, 
-        // which propagates to both their Local and Cloud APIs.
-        const tempBattery = data.battery;
-        data.battery = data.signal;
-        data.signal = tempBattery;
-        
+
+        // LinkTap firmware reports battery and signal swapped (both APIs); swap them back.
+        swapBatterySignal(data);
+
         const newIsWatering = coerceWateringBool(data.is_watering);
 
         if (expectedWateringStateRef.current !== null) {
@@ -689,10 +675,10 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         setSpeed(newIsWatering ? Number(data.speed ?? data.vel ?? 0) : 0);
 
         // If targetVolume is 0 (app launched mid-cycle), try to extract it from the API
-        const apiTargetVol = Number(data.target_volume ?? data.volume_limit ?? data.limit ?? data.target_vol ?? (data.watering ? data.watering.vol : 0));
+        const apiTargetVol = pickTargetVolume(data);
         if (apiTargetVol > 0 && stateRef.current.targetVolume === 0) setTargetVolume(apiTargetVol);
-        
-        const apiTargetDur = Number(data.target_duration ?? data.totalDuration ?? data.total ?? (data.watering ? data.watering.duration : 0));
+
+        const apiTargetDur = pickTargetDuration(data);
         if (apiTargetDur > 0 && stateRef.current.targetDuration === 0) setTargetDuration(apiTargetDur * 60); // assume minutes from API
 
         // If we are using Local API (meaning usedCloud is false) and we just discovered watering is active, 

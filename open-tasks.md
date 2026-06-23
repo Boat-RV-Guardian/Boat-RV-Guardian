@@ -83,8 +83,17 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         `listenTauri`, `unifiedFetch`) plus two pure parsing helpers (`extractJsonFromMaybeHtml`,
         `coerceWateringBool`) into [utils/linktapHttp.ts](dashboard/src/utils/linktapHttp.ts) with
         6 new tests. 1819 → 1734 lines, build + tests green.
-  - [ ] **Increment 2**: extract the cloud/local status normalization (the `usedCloud` parse block,
-        battery/signal swap, target vol/dur extraction) into pure tested functions.
+  - [x] **Increment 2** (2026-06-23): extracted status normalization into
+        [utils/linktapStatus.ts](dashboard/src/utils/linktapStatus.ts) — `normalizeCloudStatus`
+        (cloud→native shape), `swapBatterySignal`, `pickTargetVolume`, `pickTargetDuration` — with
+        8 new tests (49 total). Behavior preserved; tsc + tests green. **Surfaced a latent quirk**
+        (not changed, behavior-neutral refactor): the cloud `remain_duration` fallback
+        `totalDuration*60 - onDuration` subtracts `onDuration` (minutes) as raw seconds. See follow-up.
+  - [ ] **(Follow-up) Fix `remain_duration` unit bug**: in `normalizeCloudStatus`, the
+        `totalDuration*60 - onDuration` branch mixes units (onDuration is minutes, subtracted as
+        seconds). Confirm the LinkTap cloud field semantics, then correct to
+        `totalDuration*60 - onDuration*60` and update the test. Low impact (only the cloud-only
+        "remaining" display when `total` is absent) but worth fixing once verified.
   - [ ] **Increment 3**: extract usage-history + event-log persistence (the 4 effects + `addLog` +
         `usageHistory`/`logs` state) into a `useDeviceHistory` hook.
   - [ ] **Increment 4+**: polling loop → hook; command senders (start/stop) → hook; Flooding Sentry
