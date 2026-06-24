@@ -7,6 +7,64 @@ note — `App.tsx` is now only 159 lines).
 
 ---
 
+## 🚨 ACTIVE — Flood auto-shutoff safety chain (hardware-tested 2026-06-23)
+
+On-boat hardware testing found the **entire flood→shutoff→push chain was dead in production**,
+broken in **three** independent places. Two are fixed + deployed + verified; one remains.
+
+**Verified working chain:** `Shelly flood sensor wakes → GET webhook → Cloudflare worker →
+LinkTap cloud activateInstantMode(action:false) → valve closes (~16s over RF)`.
+
+- [x] **Break #1 — worker 405'd every webhook.** Shelly fires webhooks as **GET**; the worker's
+      `fetch` began with `if (method !== 'POST') return 405`, rejecting every flood alarm before the
+      handler. Fixed (handle `/api/shelly` before the method check) — commit `b3fdce3`, **deployed**
+      (worker version after `b9a9f014`). Confirmed: GET now 200/404 not 405.
+- [x] **Break #3 — dead LinkTap endpoint.** Worker closed the valve via
+      `https://www.link-tap.com/api/turnOffV2`, which **no longer exists** (returns an HTML 404).
+      Switched to `activateInstantMode` w/ `action:false, duration:0` (the call the app uses) —
+      commit `a6ca1c3`, **deployed** (version `7ddb792a`). Verified: replayed `flood.alarm` →
+      `shutoff:{ok:true,valves:1}` → valve physically closed in ~16s. ✅
+- [ ] **Break #2 — push notifications fail (`403`).** ⬅️ **IMMEDIATE NEXT ACTION.** The worker's
+      service account `linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com` has only
+      `roles/datastore.user` — it lacks `cloudmessaging.messages.create`, so FCM send 403s (valve
+      still closes; only the alert push is missing). FCM API is already **enabled**. **Fix = grant
+      the FCM role** (was authorized-pending when the session ended):
+      ```
+      gcloud projects add-iam-policy-binding boat-rv-guardian-9f8a4 \
+        --member="serviceAccount:linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com" \
+        --role="roles/firebasecloudmessaging.admin" --condition=None
+      ```
+      (Or in the Cloud console: IAM → grant that SA **Firebase Cloud Messaging API Admin**.)
+      Then verify: `curl "https://boat-rv-guardian-webhooks.jgearinger.workers.dev/api/shelly?vid=v_uusajkm88&device=diag&event=flood.alarm"`
+      → check `wrangler tail` shows **no** `FCM send failed: 403`, and your phone gets the push.
+      NOTE: re-running that curl will **close the valve** (it's a real flood replay).
+
+- [ ] **Follow-up: `flood.alarm_off` also triggers a shutoff.** `FLOOD_EVENT_RE = /flood|leak|alarm/i`
+      matches `flood.alarm_off` too, so the "dried out" event also fires a (harmless, idempotent)
+      close. Consider excluding `*_off` / `*.alarm_off` from the shutoff trigger in
+      [worker/src/index.ts](worker/src/index.ts) `FLOOD_EVENT_RE` / the `isFlood` check.
+
+### Hardware / environment facts discovered (for the next session)
+- **LinkTap gateway:** IP `172.31.0.245`, Gateway ID `1485A036004B1200`, valve/TapLinker ID
+  `3CC1C335004B1200`. Local API: `POST http://172.31.0.245/api.shtml` `{cmd, gw_id, dev_id}`;
+  cmd 3=status, 6=open `{duration:<sec>,volume_limit,vol}`, 7=close. Responses are HTML-wrapped JSON
+  (`<body>…<!--#RET-->{…}</body>`) — the app's `extractJsonFromMaybeHtml` handles it. RF actuation
+  lags ~15s after `ret:0` (why the poll loop uses the optimistic `expectedWateringStateRef` lock).
+- **Shelly flood sensor:** "shellyfloodg4" (Gen4), MAC `d8:85:ac:ea:39:14` ≈ `172.31.0.248`.
+  **Battery, deep-sleeps → undiscoverable by scan/poll**; only wakes to POST its webhook. Trigger
+  for testing = bridge/wet the probes ("lick the wires").
+- **Vehicle id (Firestore):** `v_uusajkm88`. **Worker SA:** `linktap-worker@…`. **Worker:**
+  `boat-rv-guardian-webhooks` at `…jgearinger.workers.dev` (deploy: `cd worker && npx wrangler deploy`;
+  CI also deploys on push to `worker/**`). Boat LAN is `172.31.0.0/16`, this Mac was `172.31.0.254`.
+- **⚠️ VALVE LEFT CLOSED** after the flood test (safe state for an unattended boat). Reopen via the
+  app (or `cmd 6`) if water is needed.
+- **gcloud** installed at `~/google-cloud-sdk` on the *boat* Mac (run with
+  `CLOUDSDK_PYTHON=$(which python3)`), authed as `jgearinger@sc4tech.com`. This auth does NOT travel
+  to another machine — re-auth (`gcloud auth login`) or use the Cloud console there. `wrangler` is
+  also authed on the boat Mac only.
+
+---
+
 ## 1. Verify remote telemetry on hardware (from CLAUDE.md `⚠️ OPEN`)
 
 **Priority:** High — built but never hardware-tested.

@@ -217,3 +217,34 @@ Clone repo; `cd dashboard && npm i`. Need: Node, Android SDK (`~/Library/Android
 token then lands in `~/.config/configstore` so headless CLI works). Build gates: `npx tsc -b` +
 `npm run build` (dashboard), `npx wrangler deploy --dry-run` (worker — raw `tsc` mis-flags it).
 Launch native app: `npm run tauri dev`. Sideload: `adb install -r <apk>` (in-place if same keystore).
+
+## Session handoff — 2026-06-23 (evening), on-boat hardware testing + worker fixes
+
+Switching machines mid-task. Full detail + the immediate next action live in
+[open-tasks.md](open-tasks.md) (read its top "🚨 ACTIVE — Flood auto-shutoff safety chain" section
+FIRST). Highlights:
+
+- **Flood auto-shutoff was completely broken in production — found via on-boat hardware testing and
+  fixed in 2 of 3 places (deployed + verified).** The chain `flood sensor → GET webhook → worker →
+  LinkTap cloud close → valve` now works (valve auto-closes ~16s after a flood alarm).
+  1. Worker rejected Shelly's **GET** webhooks with 405 → fixed, commit `b3fdce3`, deployed.
+  2. **IMMEDIATE TODO:** FCM push 403 — worker SA `linktap-worker@boat-rv-guardian-9f8a4.iam`
+     needs `roles/firebasecloudmessaging.admin` (has only `datastore.user`). One `gcloud
+     add-iam-policy-binding` away — exact command in open-tasks.md. Valve shutoff is unaffected;
+     only the alert push is missing.
+  3. Worker closed the valve via dead endpoint `link-tap.com/api/turnOffV2` (HTML 404) → switched to
+     `activateInstantMode {action:false,duration:0}`, commit `a6ca1c3`, deployed (version `7ddb792a`).
+- **Worker dev note:** `cd worker && npm ci` before `wrangler deploy/--dry-run` (jose isn't bundled).
+  `wrangler tail boat-rv-guardian-webhooks --format pretty` streams live webhook logs — invaluable
+  for this. Worker auto-deploys via CI on push to `worker/**`, so **push these commits** so prod
+  matches git (a future CI deploy from an unchanged main would otherwise re-ship the OLD worker).
+- **LinkTap dual-source confirmed on hardware:** gateway `1485A036004B1200` / valve
+  `3CC1C335004B1200` at `172.31.0.245`; HTML-wrapped JSON responses; ~15s RF actuation lag.
+- **Task 3 refactor (split LinkTapWidget) — increments 1–4 done** (1819→1559 lines), all behavior-
+  preserving, each tsc+test+build green: `utils/linktapHttp`, `utils/linktapStatus`,
+  `hooks/useDeviceHistory`, `utils/flowChart`. **Increments 5+ (poll loop, command senders,
+  Flooding-Sentry/auto-restart/washdown automation) are NOT done** — they touch the safety-critical
+  poll/command state machine and should be smoke-tested on the gateway (now demonstrably reachable).
+- **Tests:** Vitest 4 + jsdom stood up in `dashboard/` (`npm test`, 53 tests) + CI workflow
+  (`.github/workflows/ci.yml`). Found+fixed a real `historySync` NaN-ts bug along the way.
+- **⚠️ The LinkTap valve was left CLOSED** after the flood test (safe for an unattended boat).
