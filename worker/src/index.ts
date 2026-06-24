@@ -240,19 +240,22 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
-
     try {
       const url = new URL(request.url);
 
-      // Shelly sensor alerts → push notifications to the vehicle's members.
+      // Shelly sensor alerts → push notifications + flood valve shutoff.
+      // IMPORTANT: Shelly devices fire their outbound webhooks as GET requests, so this path must
+      // be handled BEFORE any method check — a blanket POST-only guard here silently 405'd every
+      // real flood alarm, disabling the entire auto-shutoff safety chain (confirmed on hardware).
       if (url.pathname === '/api/shelly') {
         return await handleShellyWebhook(env, url);
       }
 
-      // Default (legacy) path: LinkTap auto-shutoff webhook.
+      // Default (legacy) LinkTap auto-shutoff webhook is POST-only.
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+
       const vid = url.searchParams.get('vid');
       if (!vid) {
         return new Response('Missing vid parameter', { status: 400 });
