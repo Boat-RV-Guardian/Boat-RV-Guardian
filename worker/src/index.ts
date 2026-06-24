@@ -73,6 +73,12 @@ async function getLinkTapConfigFromFirestore(env: Env, token: string, vid: strin
 
 /**
  * Triggers the LinkTap Cloud API to instantly shut off the water.
+ *
+ * Uses activateInstantMode with action:false (duration 0) — the same call the dashboard app uses
+ * to stop the valve. The previous endpoint, /api/turnOffV2, no longer exists (LinkTap returns an
+ * HTML "not a valid path" 404), which silently broke every cloud-side flood shutoff (confirmed on
+ * hardware: the worker's shutoff result was `LinkTap API failure: <!DOCTYPE html>... turnOffV2 is
+ * not a valid path`).
  */
 async function triggerLinkTapShutoff(config: any): Promise<void> {
   const payload = {
@@ -81,10 +87,11 @@ async function triggerLinkTapShutoff(config: any): Promise<void> {
     gatewayId: config.gatewayId,
     taplinkerId: config.taplinkerId,
     action: false,
+    duration: 0,
     autoBack: true
   };
 
-  const res = await fetch('https://www.link-tap.com/api/turnOffV2', {
+  const res = await fetch('https://www.link-tap.com/api/activateInstantMode', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
