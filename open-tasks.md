@@ -156,11 +156,10 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         8 new tests (49 total). Behavior preserved; tsc + tests green. **Surfaced a latent quirk**
         (not changed, behavior-neutral refactor): the cloud `remain_duration` fallback
         `totalDuration*60 - onDuration` subtracts `onDuration` (minutes) as raw seconds. See follow-up.
-  - [ ] **(Follow-up) Fix `remain_duration` unit bug**: in `normalizeCloudStatus`, the
-        `totalDuration*60 - onDuration` branch mixes units (onDuration is minutes, subtracted as
-        seconds). Confirm the LinkTap cloud field semantics, then correct to
-        `totalDuration*60 - onDuration*60` and update the test. Low impact (only the cloud-only
-        "remaining" display when `total` is absent) but worth fixing once verified.
+  - [x] **(Follow-up) Fix `remain_duration` unit bug** — DONE 2026-06-25. Corrected the
+        `totalDuration*60 - onDuration` branch to `*60` (both fields are minutes) in
+        [utils/linktapStatus.ts](dashboard/src/utils/linktapStatus.ts); updated the test that had
+        locked the buggy 1790 value to 1200.
   - [x] **Increment 3** (2026-06-23): extracted usage-history + Event Sentry Log state, the 4
         persistence/cloud-sync effects, and `addLog` into
         [hooks/useDeviceHistory.ts](dashboard/src/hooks/useDeviceHistory.ts) (also now owns the
@@ -380,7 +379,9 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
 - [x] **Done:** worker unit-test gate added to CI (Task 2). The four required gates are documented.
 - [x] **Done (partial):** safety-chain regression — `isFloodShutoff` unit tests assert the
       `*.alarm_off`/telemetry exclusions. Expand toward the worker handler as it's made injectable.
-- [ ] Add coverage reporting + a floor (don't let it regress).
+- [x] **Coverage reporting added (2026-06-25):** `npm run test:coverage` (v8) in dashboard + worker;
+      `coverage/` gitignored; baseline ~63% lines (dashboard). **Floor still TODO** — add a CI
+      threshold once the baseline stabilizes.
 - [ ] Make the CI checks **required** via branch protection (repo setting — owner action).
 - [ ] Add the Docker image build to CI once Task 7 lands.
 

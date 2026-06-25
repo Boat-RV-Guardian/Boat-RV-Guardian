@@ -69,8 +69,12 @@ Enforced by [.github/workflows/ci.yml](../.github/workflows/ci.yml) on every PR 
 
 **Do not merge red.** If a gate can't pass, the change isn't done (see AGENTS.md).
 
-Planned additions: coverage reporting + a floor (don't let it regress); the Docker image build once
-Task 7 lands; required-status-check branch protection.
+**Coverage:** `npm run test:coverage` in `dashboard/` or `worker/` (v8 provider; output in `coverage/`,
+gitignored). Baseline at first run (2026-06-25): dashboard ~63% lines. No hard CI floor yet — add one
+once the baseline stabilizes so coverage can't regress.
+
+Planned additions: a CI coverage floor; the Docker image build once Task 7 lands; required-status-check
+branch protection.
 
 ## What every change should add
 

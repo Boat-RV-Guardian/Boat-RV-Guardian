@@ -8,10 +8,12 @@
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240320.1",
+    "@vitest/coverage-v8": "^4.1.9",
     "typescript": "^5.4.3",
     "vitest": "^4.0.0",
     "wrangler": "^3.36.0"
