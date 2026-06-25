@@ -314,3 +314,20 @@ was safe to do without the user / hardware / DNS+gcloud auth. Tree clean, all on
 - **Domain cutover** (Task 11): code not flipped (would break webhooks before the custom domain is
   attached); DNS is owner-only.
 - **Remote telemetry verify** (Task 1): needs the home Wi-Fi.
+
+### Continued 2026-06-25 → shipped **v1.0.44** (on `main`, NOT tagged — awaiting owner)
+- FCM 403 **resolved** (owner applied the IAM grant; `button.push` test → `notified:1`). Worker also
+  now reports `pushFailed` for real delivery visibility.
+- Added: LinkTap **Volume Consumed = 0 when idle** fix; **Plan badge + Upgrade link** (Settings →
+  Vehicles); self-host **cloud server URL + username/API key** (`sh_webhook_user`/`sh_webhook_key`);
+  **Shelly password Edit→Save** with confirm + push-to-all-devices (`shellyChangePassword`,
+  HARDWARE-UNTESTED); manual-IP provisioning now secures the device; **Advanced Vehicle Settings**
+  group (Custom Cloud URL collapsed by default); **vehicle-switch → stop-local-server prompt**;
+  **remain_duration** unit fix; **tier-aware telemetry throttle** in the worker; **coverage reporting**.
+- Website: two PRs open ([website#1](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/1)
+  pricing page + copy alignment, [website#2](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/2)
+  pre-alpha popup) — **awaiting owner merge**.
+- New repo provided for the self-host server: **Boat-RV-Guardian/brvg-cloud-server** (Task 7 dest).
+- **v1.0.44 is committed + pushed but NOT git-tagged** — tagging triggers the public release build
+  (`release.yml`); left to the owner to cut. Run `git tag v1.0.44 && git push origin v1.0.44` to release.
+- **UI-verify policy:** use the native app (`npm run tauri dev`), NOT the web preview pane.
