@@ -260,8 +260,13 @@ Tasks:
       verbose in-app feature panel (owner: keep the comparison on the website).
 - [ ] **Backend administrative site** to manage users, tiers/entitlements, and other admin tasks
       (see Task 12).
-- [ ] Wire **Stripe** when going live (deferred; entitlement layer must be provider-agnostic so this
-      is a drop-in).
+- [x] **MOCK billing (2026-06-25):** [utils/billing.ts](dashboard/src/utils/billing.ts) — coupon
+      codes (`GUARDIANBASIC/PREMIUM/FREE`) set the active vehicle's `tier` via `setActiveVehicleTier`
+      (the single seam Stripe will drive). In-app **/account portal**
+      ([pages/Account.tsx](dashboard/src/pages/Account.tsx)) for testing the entitlement flow before
+      real CC. `tier` is now a synced per-vehicle config field.
+- [ ] Wire **Stripe** when going live (deferred per owner; entitlement layer is provider-agnostic +
+      `setActiveVehicleTier` is the drop-in seam — Stripe webhook → setActiveVehicleTier).
 - [x] **Scaffolded + refined 2026-06-25 (provider-agnostic, additive, tested, 16 tests):**
       [utils/entitlements.ts](dashboard/src/utils/entitlements.ts) — `Tier` + `AutomationLevel`,
       full `TIER_FEATURES` matrix (remote view manual-only/throttle, remote control, away push, cloud
@@ -463,14 +468,14 @@ real updater behind it.)
 app links to via `UPGRADE_PORTAL_URL` (currently `app.boatrvguardian.com/account`) — distinct from
 the **operator** admin site (Task 12) and the **self-host** admin page (Task 7).
 
-**Recommendation on hosting:** build it as an authed **`/account` section of the existing web app**
-(`app.boatrvguardian.com`) — reuses Firebase auth + the entitlement model, one codebase. Delegate the
-heavy billing UI to **Stripe**: Stripe **Checkout** for purchase + the Stripe **Customer Portal**
-(hosted) for payment method / invoices / cancel, so we build less and stay PCI-light. The custom UI
-owns the parts Stripe doesn't know about (per-vehicle plan assignment, entitlements, trials).
+**Decided (2026-06-25): in-app `/account` view** (state-routed, not a URL — the app is an SPA). **v1
+built with MOCK coupon billing** ([pages/Account.tsx](dashboard/src/pages/Account.tsx)): shows the
+active vehicle's plan + feature list and redeems coupon codes to set the tier. Real Stripe is the
+drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleTier`).
 
 **Core (subscription management):**
-- [ ] View each **vehicle's** plan + status; **upgrade/downgrade**, start/cancel, monthly⇄yearly.
+- [x] **View the vehicle's plan + feature list (done, Account.tsx).** Change plan via coupon (mock).
+- [ ] Real upgrade/downgrade/cancel, monthly⇄yearly (Stripe).
 - [ ] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
       subscription applies to; manage multiple vehicles; (future) fleet/multi-vehicle discount.
 - [ ] **Trial** status + days left; enforce per-user+per-vehicle eligibility (ties to Task 6 trial).
