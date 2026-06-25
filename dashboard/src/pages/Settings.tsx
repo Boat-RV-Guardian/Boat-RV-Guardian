@@ -14,8 +14,8 @@ import {
 } from '../utils/sharing';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
-import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
+import VehiclesPanel from './settings/VehiclesPanel';
 import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
 import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
@@ -812,155 +812,26 @@ export default function Settings({ user }: { user: any }) {
       {activeTab === 'general' && (
         <>
           {/* Vehicles Sub-section (App & System Config) */}
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
-
-            {/* Per-vehicle plan + upgrade link (full comparison lives on the marketing pricing page) */}
-            <PlanBadge />
-            
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px' }}>
-              <div style={{ flex: 1 }}>
-                 <label className="form-label" style={{ marginBottom: '8px' }}>Active Vehicle Profile</label>
-                 <select className="form-input" value={selectedVid} onChange={(e) => setSelectedVid(e.target.value)}>
-                   {Object.values(vehiclesMap).map(v => (
-                     <option key={v.id} value={v.id}>
-                       {v.config.lt_vessel_name || v.id} {v.id === activeVid ? '(Active)' : ''}
-                     </option>
-                   ))}
-                 </select>
-              </div>
-              <button 
-                className="btn-secondary" 
-                onClick={() => handleSwitchVehicle(selectedVid)} 
-                disabled={selectedVid === activeVid}
-                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-              >
-                Switch
-              </button>
-              <button 
-                className="btn-primary" 
-                onClick={handleAddNewVehicle}
-                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
-              >
-                + New
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px' }}>
-                <div style={{ flex: 1 }}>
-                  <label className="form-label">Vessel / Vehicle Nickname</label>
-                  {isEditingName ? (
-                    <input type="text" className="form-input" placeholder="e.g. My Boat or RV" value={vesselNickname} onChange={(e) => setVesselNickname(e.target.value)} autoFocus />
-                  ) : (
-                    <div className="form-input" style={{ opacity: 0.8, height: '42px', display: 'flex', alignItems: 'center' }}>{vesselNickname || 'Unnamed Vessel'}</div>
-                  )}
-                </div>
-                <button
-                  className={isEditingName ? "btn-primary" : "btn-secondary"}
-                  onClick={() => setIsEditingName(!isEditingName)}
-                  style={{ padding: '8px 16px', height: '42px' }}
-                >
-                  {isEditingName ? 'Save' : 'Edit'}
-                </button>
-              </div>
-
-              <div>
-                <label className="form-label">Shelly Local Password</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', flex: 1 }}>
-                    <input
-                      className="form-input"
-                      type={showShellyPw ? 'text' : 'password'}
-                      value={isEditingShellyPw ? shellyPwDraft : shellyLocalPassword}
-                      onChange={(e) => setShellyPwDraft(e.target.value)}
-                      readOnly={!isEditingShellyPw}
-                      placeholder="Auto-generated per vehicle"
-                      style={{ paddingRight: '44px', width: '100%', fontFamily: 'monospace', opacity: isEditingShellyPw ? 1 : 0.75 }}
-                    />
-                    <button type="button" onClick={() => setShowShellyPw(s => !s)} aria-label={showShellyPw ? 'Hide' : 'Show'}
-                      style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '4px' }}>
-                      {showShellyPw ? '🙈' : '👁️'}
-                    </button>
-                  </div>
-                  {isEditingShellyPw && (
-                    <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                      onClick={async () => { const { generateShellyPassword } = await import('../utils/VehicleManager'); setShellyPwDraft(generateShellyPassword()); }}>
-                      🎲 Regenerate
-                    </button>
-                  )}
-                  <button className={isEditingShellyPw ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', height: '42px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
-                    onClick={() => isEditingShellyPw ? requestSaveShellyPw() : startEditShellyPw()}>
-                    {isEditingShellyPw ? 'Save' : 'Edit'}
-                  </button>
-                  {isEditingShellyPw && (
-                    <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem' }}
-                      onClick={() => { setIsEditingShellyPw(false); setPwChangeMsg(null); }}>
-                      Cancel
-                    </button>
-                  )}
-                </div>
-                {pwChangeMsg && (
-                  <p style={{ fontSize: '0.78rem', color: pwChangeMsg.ok ? 'var(--success-color, #10b981)' : '#ffb3b3', margin: '6px 0 0 0' }}>{pwChangeMsg.text}</p>
-                )}
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '6px 0 0 0' }}>
-                  Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices. Changing it here pushes the new password to every Shelly device on this vehicle.
-                </p>
-              </div>
-
-              {/* Advanced Vehicle Settings (Custom Cloud Server URL, etc.) — collapsed by default. */}
-              <div>
-                <button type="button" className="btn-secondary"
-                  onClick={() => setShowAdvanced(s => !s)}
-                  style={{ fontSize: '0.85rem', padding: '8px 14px' }}>
-                  {showAdvanced ? '▾' : '▸'} Advanced Vehicle Settings
-                </button>
-                {showAdvanced && (
-                  <div style={{ marginTop: '12px' }}>
-                    <label className="form-label" style={{ fontWeight: 600 }}>Custom Cloud Server URL</label>
-                    <label className="form-label">Cloud Alert Worker URL</label>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                      For users running their own cloud server (the self-hostable Guardian cloud server, or a Cloudflare worker). Required for Shelly devices to push away-from-home alerts. Leave all three blank to use the default hosted server. Set this before adding devices.
-                    </p>
-                    <input className="form-input" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://your-server.example.com (blank = default server)" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-                    <label className="form-label" style={{ marginTop: '12px' }}>Username</label>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                      The username created in your server's admin page. Leave blank if your server doesn't require auth.
-                    </p>
-                    <input className="form-input" type="text" value={webhookUser} onChange={(e) => setWebhookUser(e.target.value)} placeholder="self-host server username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" />
-                    <label className="form-label" style={{ marginTop: '12px' }}>API Key</label>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                      The API key paired with that username. Stored with this vehicle and used to authenticate to your server.
-                    </p>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input className="form-input" type={showWebhookKey ? 'text' : 'password'} value={webhookKey} onChange={(e) => setWebhookKey(e.target.value)} placeholder="self-host server API key" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" style={{ flex: 1 }} />
-                      <button type="button" className="btn-secondary" onClick={() => setShowWebhookKey(s => !s)} style={{ fontSize: '0.8rem', padding: '8px 12px' }}>{showWebhookKey ? 'Hide' : 'Show'}</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Force Cloud Sync — bottom of the Vehicles section; only usable when signed in to the
-                  cloud (otherwise there's nothing to sync with). */}
-              <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button className="btn-primary" onClick={handleManualSync} disabled={!user || isManualSyncing}>
-                  {isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
-                </button>
-                {!user && (
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'center' }}>
-                    Sign in (Account Information below) to sync with the cloud.
-                  </p>
-                )}
-                {manualSyncMsg && (
-                  <div style={{
-                    fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
-                    color: manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
-                    background: manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                  }}>
-                    {manualSyncMsg.text}
-                  </div>
-                )}
-              </div>
-          </div>
+          <VehiclesPanel
+            selectedVid={selectedVid} setSelectedVid={setSelectedVid}
+            vehiclesMap={vehiclesMap} activeVid={activeVid}
+            onSwitchVehicle={handleSwitchVehicle} onAddNewVehicle={handleAddNewVehicle}
+            isEditingName={isEditingName} setIsEditingName={setIsEditingName}
+            vesselNickname={vesselNickname} setVesselNickname={setVesselNickname}
+            showShellyPw={showShellyPw} setShowShellyPw={setShowShellyPw}
+            isEditingShellyPw={isEditingShellyPw} setIsEditingShellyPw={setIsEditingShellyPw}
+            shellyPwDraft={shellyPwDraft} setShellyPwDraft={setShellyPwDraft}
+            shellyLocalPassword={shellyLocalPassword}
+            pwChangeMsg={pwChangeMsg} setPwChangeMsg={setPwChangeMsg}
+            onStartEditShellyPw={startEditShellyPw} onRequestSaveShellyPw={requestSaveShellyPw}
+            showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
+            webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl}
+            webhookUser={webhookUser} setWebhookUser={setWebhookUser}
+            webhookKey={webhookKey} setWebhookKey={setWebhookKey}
+            showWebhookKey={showWebhookKey} setShowWebhookKey={setShowWebhookKey}
+            onManualSync={handleManualSync} user={user}
+            isManualSyncing={isManualSyncing} manualSyncMsg={manualSyncMsg}
+          />
 
           {/* Account Information (moved below Vehicles) */}
           <div className="glass-card">
