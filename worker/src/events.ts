@@ -1,0 +1,68 @@
+/**
+ * Pure, transport-agnostic webhook event classification + param extraction.
+ *
+ * Extracted from index.ts so the same logic runs on the Cloudflare Worker today and on the
+ * self-hostable Node/Docker adapter later (see open-tasks.md Task 7), and so it can be unit-tested
+ * without standing up Firestore/FCM (Task 2). Everything here is a pure function — no I/O.
+ */
+
+/**
+ * Events that should trigger an automatic water shutoff (flood/leak/alarm). Shelly devices report
+ * their real event names via Webhook.ListSupported, so we match by family rather than hardcoding.
+ */
+export const FLOOD_EVENT_RE = /flood|leak|alarm/i;
+
+/**
+ * Periodic telemetry (e.g. `voltmeter.measurement` every 60s, `*.change`). These are cached for
+ * remote display but must NEVER push (would notify every minute) and must NEVER trigger a shutoff.
+ */
+export const TELEMETRY_EVENT_RE = /\.(measurement|change)$/i;
+
+/**
+ * "Cleared"/"dried out" variants of an alarm — e.g. `flood.alarm_off`. These also match
+ * FLOOD_EVENT_RE (they contain "flood"/"alarm"), so without this guard the dry-out event fires a
+ * redundant valve close. Closing is idempotent so it was harmless, but it's noise and could mask a
+ * genuine re-trigger; treat `*_off` / `*.off` as NOT a flood trigger.
+ */
+export const ALARM_CLEARED_RE = /(?:_off|\.off)$/i;
+
+/** True for periodic telemetry that should be cached but never pushed/triggered. */
+export function isTelemetry(event: string): boolean {
+  return TELEMETRY_EVENT_RE.test(event);
+}
+
+/** True for the "cleared/off" variant of an alarm (e.g. flood.alarm_off). */
+export function isAlarmCleared(event: string): boolean {
+  return ALARM_CLEARED_RE.test(event);
+}
+
+/**
+ * True only for a *real* flood/leak alarm that should close the valve: matches the flood family,
+ * is not the cleared/off variant, and is not periodic telemetry.
+ */
+export function isFloodShutoff(event: string): boolean {
+  return FLOOD_EVENT_RE.test(event) && !isAlarmCleared(event) && !isTelemetry(event);
+}
+
+/** Query params that are routing/identity, not sensor telemetry to cache. */
+export const RESERVED_PARAMS: ReadonlySet<string> = new Set(['vid', 'event', 'device']);
+
+/**
+ * Extract the telemetry params a device embedded in its webhook URL (e.g. `?v=<calibrated volts>`
+ * `&vraw=<raw>&tC=<temp>`) into a plain map, skipping routing params and unset placeholders.
+ * Returns plain string values; the caller value-wraps them for Firestore.
+ */
+export function extractSensorStateExtras(searchParams: Iterable<[string, string]>): Record<string, string> {
+  const extra: Record<string, string> = {};
+  for (const [k, val] of searchParams) {
+    if (RESERVED_PARAMS.has(k)) continue;
+    if (val === '' || val === 'null') continue; // skip unset placeholders
+    extra[k] = val;
+  }
+  return extra;
+}
+
+/** Sanitize a device id for use as a Firestore document id (no path-significant chars). */
+export function sanitizeDevice(device: string | null | undefined): string {
+  return (device || 'unknown').replace(/[\/#?]/g, '_');
+}

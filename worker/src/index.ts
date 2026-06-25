@@ -1,4 +1,5 @@
 import { SignJWT, importPKCS8 } from 'jose';
+import { isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice } from './events';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -143,9 +144,6 @@ async function sendFcmPush(env: Env, token: string, fcmToken: string, title: str
   if (!res.ok) console.warn(`FCM send failed: ${res.status} ${await res.text()}`);
 }
 
-/** Events that should trigger an automatic water shutoff. */
-const FLOOD_EVENT_RE = /flood|leak|alarm/i;
-
 /**
  * Close the valve via the LinkTap cloud API with retries. The LinkTap cloud API is rate-limited
  * (~1 call / 30s), so a recent client poll can briefly block this safety command — we retry with a
@@ -170,11 +168,12 @@ async function triggerLinkTapShutoffWithRetry(config: any, attempts = 3): Promis
  * Shelly sensor webhook → push the alert to everyone who has access to the vehicle, and on a flood
  * event ALSO close the LinkTap valve (cloud fallback for when no local app is running to do it).
  * The device is provisioned to call /api/shelly?vid=<id>&event=<event>.
+ * (Event classification + param extraction live in ./events for reuse + unit testing.)
  */
 async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
   const vid = url.searchParams.get('vid');
   const event = url.searchParams.get('event') || 'sensor alert';
-  const device = (url.searchParams.get('device') || 'unknown').replace(/[\/#?]/g, '_');
+  const device = sanitizeDevice(url.searchParams.get('device'));
   if (!vid) return new Response('Missing vid', { status: 400 });
 
   const token = await getFirebaseAccessToken(env);
@@ -183,19 +182,19 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
 
   const name = strField(vehicle, 'lt_vessel_name') || 'your vehicle';
   const uids = arrField(vehicle, 'allowedUsers');
-  const isFlood = FLOOD_EVENT_RE.test(event);
+  // A flood SHUTOFF fires only on a real flood/leak alarm — never on the "cleared" (*.alarm_off)
+  // variant (which also matches the flood family) and never on periodic telemetry. See ./events.
+  const isFlood = isFloodShutoff(event);
   // Periodic telemetry (e.g. voltmeter.measurement every 60s) is cached for remote display but must
   // NOT generate a push — otherwise it'd notify every minute. Only real alerts push.
-  const isTelemetry = /\.(measurement|change)$/i.test(event);
+  const telemetry = isTelemetry(event);
   const now = Date.now();
 
   // Cache last-known state so the app can show it without polling (also serves the offline-return
   // case). Beyond the event name we also persist any telemetry the device embedded in the webhook
   // URL (e.g. ?v=<calibrated volts>&vraw=<raw>&tC=<temp>) so the app can render live values remotely.
   const extra: Record<string, { stringValue: string }> = {};
-  for (const [k, val] of url.searchParams) {
-    if (k === 'vid' || k === 'event' || k === 'device') continue;
-    if (val === '' || val === 'null') continue; // skip unset placeholders
+  for (const [k, val] of Object.entries(extractSensorStateExtras(url.searchParams))) {
     extra[k] = { stringValue: val };
   }
   await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
@@ -233,14 +232,14 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     : `Sensor alert: ${event}`;
 
   let sent = 0;
-  if (!isTelemetry) {
+  if (!telemetry) {
     for (const uid of uids) {
       const user = await getFirestoreDoc(env, token, `users/${uid}`);
       const fcmToken = strField(user, 'fcmToken');
       if (fcmToken) { await sendFcmPush(env, token, fcmToken, title, body); sent++; }
     }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, telemetry: isTelemetry, shutoff }), {
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, telemetry, shutoff }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }

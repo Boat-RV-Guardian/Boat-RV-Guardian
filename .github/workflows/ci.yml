@@ -55,3 +55,7 @@ jobs:
       - name: Typecheck (wrangler dry-run)
         working-directory: ./worker
         run: npx wrangler deploy --dry-run
+
+      - name: Unit Tests
+        working-directory: ./worker
+        run: npm test
