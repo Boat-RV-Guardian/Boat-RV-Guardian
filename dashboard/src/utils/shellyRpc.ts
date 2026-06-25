@@ -272,3 +272,15 @@ export async function shellySetPassword(ip: string, deviceId: string, password: 
 export async function shellyClearPassword(ip: string, password: string): Promise<void> {
   await shellyRpc(ip, 'Shelly.SetAuth', { user: 'admin', realm: '', ha1: null }, password);
 }
+
+/**
+ * Change a device's admin password to `newPassword`, authenticating with `oldPassword` if the device
+ * is already secured. Uses shellyRpc (unauth → digest fallback), so this works whether the device is
+ * currently unsecured (oldPassword ignored) or secured (digest with oldPassword). The new HA1 is
+ * computed over the device id (the Shelly realm). HARDWARE-UNTESTED — a wrong/failed SetAuth can lock
+ * the device out (factory reset to recover), so callers must confirm with the user first.
+ */
+export async function shellyChangePassword(ip: string, deviceId: string, newPassword: string, oldPassword?: string): Promise<void> {
+  const ha1 = await sha256Hex(`admin:${deviceId}:${newPassword}`);
+  await shellyRpc(ip, 'Shelly.SetAuth', { user: 'admin', realm: deviceId, ha1 }, oldPassword);
+}

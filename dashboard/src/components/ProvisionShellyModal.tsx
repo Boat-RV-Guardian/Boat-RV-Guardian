@@ -298,6 +298,18 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         } catch { /* best-effort */ }
       }
 
+      // Secure the device with this vehicle's local password (best-effort; never block onboarding).
+      // Done LAST so the preceding unauthenticated calls aren't affected. shellyChangePassword works
+      // whether the device is currently open or already secured (auth with whatever was entered).
+      try {
+        const vehiclePw = localStorage.getItem('sh_local_password') || '';
+        if (vehiclePw && vehiclePw !== (shellyPassword || '')) {
+          setStatusMessage('Securing with vehicle password…');
+          const { shellyChangePassword } = await import('../utils/shellyRpc');
+          await shellyChangePassword(localIp, shellyDeviceId, vehiclePw, shellyPassword || undefined);
+        }
+      } catch { /* best-effort: device stays reachable on its current password */ }
+
       setStep('confirm_type');
     } catch (e: any) {
       setStatusMessage(`Error: ${e.message}. Ensure the IP is correct and on your network.`);

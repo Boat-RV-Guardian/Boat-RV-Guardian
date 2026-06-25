@@ -480,6 +480,18 @@ owns the parts Stripe doesn't know about (per-vehicle plan assignment, entitleme
 
 ---
 
+## Follow-ups (small)
+
+- [ ] **Shelly password-set during provisioning — AP & BLE paths.** Done for the **manual-IP** path
+      (best-effort `shellyChangePassword` as the last step). The **Wi-Fi-AP** path has an ordering
+      hazard (securing the device would 401 the subsequent unauthenticated `Wifi.SetConfig`), and
+      **BLE** goes through `bleProvision`. Wire both to set the vehicle `sh_local_password` on pairing
+      — needs hardware to get the ordering right. (See `ProvisionShellyModal.tsx`.)
+- [ ] **Verify `shellyChangePassword` on hardware.** The Settings "Edit→Save" flow pushes the new
+      password to every Shelly device (`Shelly.SetAuth`); the digest path in `shellyRpc.ts` is
+      HARDWARE-UNTESTED. A wrong/failed SetAuth can lock a device out (factory reset to recover).
+      Sleeping battery sensors will fail until they next wake — the UI reports per-device results.
+
 ## Notes
 
 - **Version bumps touch 7 files** (per CLAUDE.md): `dashboard/package.json`,

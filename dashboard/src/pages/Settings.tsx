@@ -194,6 +194,12 @@ export default function Settings({ user }: { user: any }) {
   const [vesselNickname, setVesselNickname] = useState(() => localStorage.getItem('lt_vessel_name') || '');
   const [shellyLocalPassword, setShellyLocalPassword] = useState(() => localStorage.getItem('sh_local_password') || '');
   const [showShellyPw, setShowShellyPw] = useState(false);
+  // Shelly local password is read-only until "Edit"; on "Save" we confirm + push to every device.
+  const [isEditingShellyPw, setIsEditingShellyPw] = useState(false);
+  const [shellyPwDraft, setShellyPwDraft] = useState('');
+  const [showPwChangeModal, setShowPwChangeModal] = useState(false);
+  const [pwChangeBusy, setPwChangeBusy] = useState(false);
+  const [pwChangeMsg, setPwChangeMsg] = useState<{ ok: boolean; text: string } | null>(null);
   // Custom cloud worker URL — per-vehicle config; blank ⇒ DEFAULT_WORKER_URL is used. Hidden behind
   // a toggle (only relevant for users running their own cloud server).
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('sh_webhook_url') || '');
@@ -202,7 +208,8 @@ export default function Settings({ user }: { user: any }) {
   const [webhookUser, setWebhookUser] = useState(() => localStorage.getItem('sh_webhook_user') || '');
   const [webhookKey, setWebhookKey] = useState(() => localStorage.getItem('sh_webhook_key') || '');
   const [showWebhookKey, setShowWebhookKey] = useState(false);
-  const [showCustomCloudUrl, setShowCustomCloudUrl] = useState(() => !!localStorage.getItem('sh_webhook_url'));
+  // "Advanced Vehicle Settings" group (holds the Custom Cloud Server URL etc.) — collapsed by default.
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Local Server Options (device-local). The app can act as a local listener so sleepy Shelly
   // sensors can push events straight to it with no internet. Background mode (Android foreground
@@ -748,6 +755,48 @@ export default function Settings({ user }: { user: any }) {
     }
   };
 
+  // Begin editing the Shelly local password (field becomes editable; button → "Save").
+  const startEditShellyPw = () => { setShellyPwDraft(shellyLocalPassword); setPwChangeMsg(null); setIsEditingShellyPw(true); };
+
+  // "Save" pressed: if unchanged just exit; if changed, open the confirm dialog before touching devices.
+  const requestSaveShellyPw = () => {
+    if (shellyPwDraft === shellyLocalPassword) { setIsEditingShellyPw(false); return; }
+    setShowPwChangeModal(true);
+  };
+
+  // Confirmed: push the new password to every reachable Shelly device on this vehicle, then persist it.
+  const confirmChangeShellyPw = async () => {
+    const newPw = shellyPwDraft;
+    const oldPw = shellyLocalPassword;
+    setPwChangeBusy(true); setPwChangeMsg(null);
+    try {
+      const { shellyChangePassword } = await import('../utils/shellyRpc');
+      const targets = getDevices().filter(d => d.type === 'shelly_sensor' && (d.localIp || d.mdnsHost) && d.shellyDeviceId);
+      let ok = 0; const failed: string[] = [];
+      for (const d of targets) {
+        const host = d.localIp || d.mdnsHost!;
+        try {
+          await shellyChangePassword(host, d.shellyDeviceId!, newPw, oldPw || undefined);
+          ok++;
+        } catch (e: any) {
+          failed.push(d.name || d.shellyDeviceId || host);
+        }
+      }
+      // Persist the new password regardless (so the app authenticates with it going forward); the
+      // device list reflects which succeeded. Battery/sleeping sensors will fail until they next wake.
+      setShellyLocalPassword(newPw);
+      setIsEditingShellyPw(false);
+      setShowPwChangeModal(false);
+      if (failed.length === 0) {
+        setPwChangeMsg({ ok: true, text: targets.length ? `✓ Password updated on ${ok} device${ok === 1 ? '' : 's'}.` : '✓ Password saved (no reachable Shelly devices to update).' });
+      } else {
+        setPwChangeMsg({ ok: false, text: `Saved, but ${failed.length} device(s) did NOT update: ${failed.join(', ')}. Sleeping sensors update on next wake; otherwise re-secure them from the device panel (a factory reset + re-pair may be needed).` });
+      }
+    } finally {
+      setPwChangeBusy(false);
+    }
+  };
+
   const handleDeleteVehicle = () => {
     const idToDelete = activeVid;
     deleteVehicle(idToDelete);                       // local removal + tombstone + switch to fallback
@@ -832,35 +881,52 @@ export default function Settings({ user }: { user: any }) {
                     <input
                       className="form-input"
                       type={showShellyPw ? 'text' : 'password'}
-                      value={shellyLocalPassword}
-                      onChange={(e) => setShellyLocalPassword(e.target.value)}
+                      value={isEditingShellyPw ? shellyPwDraft : shellyLocalPassword}
+                      onChange={(e) => setShellyPwDraft(e.target.value)}
+                      readOnly={!isEditingShellyPw}
                       placeholder="Auto-generated per vehicle"
-                      style={{ paddingRight: '44px', width: '100%', fontFamily: 'monospace' }}
+                      style={{ paddingRight: '44px', width: '100%', fontFamily: 'monospace', opacity: isEditingShellyPw ? 1 : 0.75 }}
                     />
                     <button type="button" onClick={() => setShowShellyPw(s => !s)} aria-label={showShellyPw ? 'Hide' : 'Show'}
                       style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '4px' }}>
                       {showShellyPw ? '🙈' : '👁️'}
                     </button>
                   </div>
-                  <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                    onClick={async () => { const { generateShellyPassword } = await import('../utils/VehicleManager'); setShellyLocalPassword(generateShellyPassword()); }}>
-                    🎲 Regenerate
+                  {isEditingShellyPw && (
+                    <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                      onClick={async () => { const { generateShellyPassword } = await import('../utils/VehicleManager'); setShellyPwDraft(generateShellyPassword()); }}>
+                      🎲 Regenerate
+                    </button>
+                  )}
+                  <button className={isEditingShellyPw ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', height: '42px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                    onClick={() => isEditingShellyPw ? requestSaveShellyPw() : startEditShellyPw()}>
+                    {isEditingShellyPw ? 'Save' : 'Edit'}
                   </button>
+                  {isEditingShellyPw && (
+                    <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem' }}
+                      onClick={() => { setIsEditingShellyPw(false); setPwChangeMsg(null); }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
+                {pwChangeMsg && (
+                  <p style={{ fontSize: '0.78rem', color: pwChangeMsg.ok ? 'var(--success-color, #10b981)' : '#ffb3b3', margin: '6px 0 0 0' }}>{pwChangeMsg.text}</p>
+                )}
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '6px 0 0 0' }}>
-                  Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices.
+                  Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices. Changing it here pushes the new password to every Shelly device on this vehicle.
                 </p>
               </div>
 
-              {/* Custom Cloud Server URL — per-vehicle; for users running their own cloud server. */}
+              {/* Advanced Vehicle Settings (Custom Cloud Server URL, etc.) — collapsed by default. */}
               <div>
                 <button type="button" className="btn-secondary"
-                  onClick={() => setShowCustomCloudUrl(s => !s)}
+                  onClick={() => setShowAdvanced(s => !s)}
                   style={{ fontSize: '0.85rem', padding: '8px 14px' }}>
-                  {showCustomCloudUrl ? '▾' : '▸'} Custom Cloud Server URL
+                  {showAdvanced ? '▾' : '▸'} Advanced Vehicle Settings
                 </button>
-                {showCustomCloudUrl && (
+                {showAdvanced && (
                   <div style={{ marginTop: '12px' }}>
+                    <label className="form-label" style={{ fontWeight: 600 }}>Custom Cloud Server URL</label>
                     <label className="form-label">Cloud Alert Worker URL</label>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
                       For users running their own cloud server (the self-hostable Guardian cloud server, or a Cloudflare worker). Required for Shelly devices to push away-from-home alerts. Leave all three blank to use the default hosted server. Set this before adding devices.
@@ -2132,6 +2198,32 @@ export default function Settings({ user }: { user: any }) {
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button className="btn-secondary" onClick={() => setShowNewVehicleModal(false)} style={{ flex: 1 }}>Cancel</button>
               <button className="btn-primary" onClick={confirmAddNewVehicle} style={{ flex: 1 }} disabled={!newVehicleNameInput.trim()}>Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Shelly Local Password change confirmation */}
+      {showPwChangeModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(5px)'
+        }}>
+          <div className="glass-card" style={{ maxWidth: '440px', width: '90%' }}>
+            <h3 style={{ marginTop: 0, color: '#f59e0b' }}>Change local password?</h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              Are you sure you want to change the local password? This pushes the new password to every
+              Shelly device on this vehicle. <strong style={{ color: '#ffb3b3' }}>If it fails, a device can
+              become unavailable and might need to be factory reset and re-paired.</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+              <button className="btn-secondary" disabled={pwChangeBusy} onClick={() => setShowPwChangeModal(false)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn-primary" disabled={pwChangeBusy} onClick={confirmChangeShellyPw}
+                style={{ flex: 1, background: '#f59e0b', borderColor: '#f59e0b' }}>
+                {pwChangeBusy ? 'Updating…' : 'Yes, change it'}
+              </button>
             </div>
           </div>
         </div>
