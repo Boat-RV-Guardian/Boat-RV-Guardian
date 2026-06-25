@@ -136,25 +136,25 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
 **Priority:** Medium — refactor for maintainability; no behavior change. Do this *after*
 Task 2 has at least smoke coverage so the refactor is verifiable.
 
-- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 1371 lines (−41%, in progress).**
-      Split into per-section panels. Each section is a visually distinct block; extract into
-      `pages/settings/` child components (pure presentational, value/onChange props — the
-      `LocalServerPanel` pattern) with a thin `Settings.tsx` shell. Watch the `APP_VERSION` constant —
-      one of the 7 version locations (CLAUDE.md).
+- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 1024 lines (−56%).** All render
+      sections now live in `pages/settings/` child components (pure presentational, value/onChange
+      props — the `LocalServerPanel` pattern) behind a thin `Settings.tsx` shell. Watch the
+      `APP_VERSION` constant — one of the 7 version locations (CLAUDE.md).
   - [x] **2026-06-25:** extracted the battery-preset table + lookup rule into a tested pure util
         [utils/batteryPresets.ts](dashboard/src/utils/batteryPresets.ts) (`getBatteryThresholds`,
-        6 tests), then **nine** presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`,
+        6 tests), then **twelve** presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`,
         `NotificationsPanel`, `AdvancedDeviceSettingsPanel` (battery + shore thresholds, DRY
-        `VoltageField`), `FriendsPanel` (Sharing tab), `LinkTapAuthPanel` (Devices→LinkTap Auth),
-        `SettingsModals` (the 5 confirm dialogs, DRY `ModalOverlay`), `VehiclesPanel`, and
-        `AccountPanel`. Each increment behavior-preserving; tsc + 89 tests + build green. 2321 → 1371.
-  - [ ] **Remaining: the Devices→`config` per-device panel** (~225 lines) — the per-device list +
-        expanded settings (enable, firmware check/update, Normal Run Profile, Safety Limits, Shelly
-        local-IP test/secure/clear, voltmeter enable, voltage calibration, removal). **Deferred on
-        purpose:** it embeds live device RPC actions (voltmeter-enable *reboots* the device, SetAuth,
-        firmware update) so it warrants its own focused increment, ideally hardware-smoke-tested — not
-        bundled. Same pattern; likely splits into a device list + a per-device card. The small `add`
-        tab (two provisioning buttons) and the Device Preferences Units/Time-Zone shell can go anytime.
+        `VoltageField`), `FriendsPanel`, `LinkTapAuthPanel`, `SettingsModals` (the 5 confirm dialogs,
+        DRY `ModalOverlay`), `VehiclesPanel`, `AccountPanel`, `DeviceConfigPanel` (per-device config),
+        `DevicePreferencesPanel` (Units/Time-Zone shell, takes NotificationsPanel as children), and
+        `AddDevicePanel`. Each increment behavior-preserving; tsc + 89 tests + build green. 2321 → 1024.
+  - [ ] **(Optional follow-up)** the remaining ~1024 lines are the component's *logic* core — state
+        declarations + the two big effects (the `settings_updated` rehydrate + the localStorage-sync
+        effect with its ~50-dep array) + the handlers. Moving these into a `useSettingsState` hook
+        would slim the shell further but is a different (riskier) refactor than the panel extraction —
+        the mega-sync effect is easy to break. **DeviceConfigPanel** also embeds live device RPC
+        (voltmeter-enable *reboots* the device, SetAuth, firmware update); unchanged by the extraction
+        but those flows still want a hardware smoke test before further edits.
 - [ ] **[LinkTapWidget.tsx](dashboard/src/components/LinkTapWidget.tsx) — 1818 lines.** Pull the
       non-UI logic into hooks: polling/state, the Flooding Sentry automation, Tank-Fill / Wash-Down
       / Delayed-Start flows, and the usage-history + event-log persistence. Keep the `displayTz`
