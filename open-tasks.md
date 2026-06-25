@@ -231,6 +231,12 @@ that vehicle with inherit its tier *when accessing that vehicle*. (The scaffold 
 **Telemetry resolution is a tier axis** (`telemetryResolutionSec`): the worker PERSISTS less often
 for lower tiers — controls the dominant cost (per docs/COST_ANALYSIS.md §5) AND is an upgrade reason.
 
+**Safety model (owner, 2026-06-25):** the LinkTap valve only opens with a volume/duration **limit**,
+so it can't run long enough to sink the boat — *that limit* is the real safeguard. The flood→shutoff
+automation is a **convenience** (closes it sooner), so it sits fine in **Basic** with no
+safety/ethics concern — the earlier "should flood-shutoff be free as a safety goodwill" question is
+**moot**. (Implication for `canCloudFloodShutoff` staying a Basic+ feature: OK.)
+
 **Billing decision:** scaffold the **entitlement/gating layer + a manual tier switch now**; move to
 **Stripe when going live** (do NOT build payments this round).
 

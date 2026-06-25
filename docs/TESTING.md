@@ -6,11 +6,17 @@ how, and the gates that must pass before merge.
 
 ## Why this matters here
 
-This app controls **physical water valves on unattended boats/RVs**. A regression in the flood
-shutoff path is not a cosmetic bug — it's a flooded boat. Much of the logic also can't be exercised
-without real hardware (a sleeping flood sensor, a LinkTap gateway over RF). So our strategy is:
-**push as much logic as possible into pure, unit-tested functions**, and keep an explicit **manual
-hardware smoke-test checklist** for the irreducible rest.
+This app controls **physical water valves on unattended boats/RVs**, and much of the logic can't be
+exercised without real hardware (a sleeping flood sensor, a LinkTap gateway over RF). So our strategy
+is: **push as much logic as possible into pure, unit-tested functions**, and keep an explicit
+**manual hardware smoke-test checklist** for the irreducible rest.
+
+**Calibrate the stakes correctly** (owner, 2026-06-25): the LinkTap valve only opens with a
+volume/duration **limit**, so it physically can't run long enough to sink the boat — *that limit* is
+the primary safeguard. The flood→shutoff automation just closes the valve sooner; a missed shutoff
+means a bounded amount of water, not a sunk boat. So test the valve paths for **correctness** (no
+spurious open, no broken close, and **never drop the open-limit**), without treating a missed
+flood-automation as catastrophic.
 
 ## The pyramid (what lives where)
 

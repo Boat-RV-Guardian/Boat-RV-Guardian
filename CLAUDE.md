@@ -249,6 +249,16 @@ FIRST). Highlights:
   (`.github/workflows/ci.yml`). Found+fixed a real `historySync` NaN-ts bug along the way.
 - **⚠️ The LinkTap valve was left CLOSED** after the flood test (safe for an unattended boat).
 
+## Safety model — the valve self-limits (don't over-weight the flood automation)
+
+The LinkTap valve **only ever opens with a volume/duration limit** (the open command always carries
+`duration`/`volume_limit`), so it physically **cannot run long enough to sink the boat**. *That limit
+is the primary safeguard.* The flood-sensor→shutoff automation (local app close, and the worker cloud
+fallback) merely closes the valve **sooner** than the limit — it's a convenience, not the last line
+of defense. Practical implications: (1) a missed flood-shutoff = a bounded amount of water, not a
+catastrophe; test valve paths for correctness without dramatizing; (2) **never weaken the open-limit**
+— that's the real safety net; (3) gating the cloud flood-shutoff fallback behind Basic is fine.
+
 ## Session handoff — 2026-06-25, product-direction planning + safe groundwork (read open-tasks.md)
 
 Big planning session: defined subscription tiers + a slate of new initiatives, captured them in

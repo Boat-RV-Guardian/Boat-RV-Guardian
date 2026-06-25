@@ -4,8 +4,13 @@ Created 2026-06-25 (open-tasks Task 10). This is the **how we work** companion t
 [CLAUDE.md](CLAUDE.md) (which holds the domain facts). Read both. The guiding principle, in the
 owner's words: **as rapid development accelerates, don't break anything that works.**
 
-This app actuates **physical water valves on unattended vehicles**. Treat the flood→shutoff→push
-chain as safety-critical. When in doubt, be conservative and verifiable.
+This app actuates **physical water valves on unattended vehicles**, so be conservative and verifiable.
+But know the actual safety model (owner, 2026-06-25): **the LinkTap valve is the primary safeguard —
+it only ever opens with a volume/duration limit, so it physically can't run long enough to sink the
+boat.** The flood→shutoff automation closes it *sooner* than that limit; it's a convenience, not the
+last line of defense. So: don't introduce spurious valve behavior, but don't over-dramatize the
+flood-automation stakes either — a missed cloud shutoff means a bounded amount of water, not a sunk
+boat. **Never weaken the valve's open-limit, though** — that limit is the real safety net.
 
 ## The contract
 
@@ -29,10 +34,13 @@ chain as safety-critical. When in doubt, be conservative and verifiable.
    Anything that protects a resource or a paid feature must also be enforced where the user can't
    bypass it (the worker). The monitor-role gap (CLAUDE.md) is the cautionary tale.
 
-6. **Never weaken the safety chain.** Don't change `events.ts` flood classification, the worker
-   shutoff path, or the poll/command state machine without (a) a regression test and (b) a note that
-   it needs the hardware smoke test (docs/TESTING.md). Redundant/idempotent closes are fine; a
-   missed close is not.
+6. **Protect valve behavior; the valve's open-limit is the real safety net.** Don't change
+   `events.ts` flood classification, the worker shutoff path, or the poll/command state machine
+   without (a) a regression test and (b) a note that it needs the hardware smoke test
+   (docs/TESTING.md). Redundant/idempotent closes are fine. A missed flood-shutoff is bounded (the
+   valve self-limits), so it's not catastrophic — but **never remove or weaken the volume/duration
+   limit applied when opening the valve**: that limit, not the flood automation, is what prevents a
+   sunk boat.
 
 7. **Respect the documented invariants.** Especially: **time policy** — store UTC
    (`Date.now()`/ISO), display via `dashboard/src/utils/time.ts` in `lt_tz`; never call
