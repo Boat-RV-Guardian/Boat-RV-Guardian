@@ -18,8 +18,9 @@ import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
 import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
+import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
-import { BATTERY_PRESETS, getBatteryThresholds } from '../utils/batteryPresets';
+import { getBatteryThresholds } from '../utils/batteryPresets';
 
 const APP_VERSION = '1.0.45';
 
@@ -1726,169 +1727,20 @@ export default function Settings({ user }: { user: any }) {
           )}
 
           {devicesTab === 'advanced' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-            {/* Fresh Water */}
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Fresh Water</h3>
-              <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>
-                Normal Run Profile settings are now configured per device. Go to <strong>Configuration</strong> → select a valve → tap the ⚙️ gear icon.
-              </p>
-            </div>
-
-            {/* High Water/Flood */}
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>High Water/Flood</h3>
-              <p style={{ color: 'var(--text-secondary)', margin: 0 }}>No advanced settings currently available.</p>
-            </div>
-
-            {/* Batteries */}
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Batteries</h3>
-              <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>Alert thresholds applied to house and engine battery sensors.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px' }}>
-                <div>
-                  <label className="form-label">Battery Type</label>
-                  <select className="form-input" value={battType} onChange={(e) => applyBatteryPreset(e.target.value, battSystemV)}>
-                    {Object.entries(BATTERY_PRESETS).map(([key, p]) => (
-                      <option key={key} value={key}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">System</label>
-                  <select className="form-input" value={battSystemV} onChange={(e) => applyBatteryPreset(battType, e.target.value)}>
-                    <option value="12">12 V</option>
-                    <option value="24">24 V</option>
-                  </select>
-                </div>
-              </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '-6px 0 0 0' }}>
-                Choosing a battery type / system fills the thresholds below with recommended values. Pick <strong>Custom (manual)</strong> — or just edit any field — to set your own.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                <div>
-                  <label className="form-label">Critical Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="8" max="35" step="0.1" className="form-input"
-                      value={battCritVoltage}
-                      onChange={(e) => { setBattCritVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers critical alarm</div>
-                </div>
-                <div>
-                  <label className="form-label">Low Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="8" max="35" step="0.1" className="form-input"
-                      value={battLowVoltage}
-                      onChange={(e) => { setBattLowVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers low-battery warning</div>
-                </div>
-                <div>
-                  <label className="form-label">Normal Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="8" max="35" step="0.1" className="form-input"
-                      value={battNormalVoltage}
-                      onChange={(e) => { setBattNormalVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Nominal resting voltage</div>
-                </div>
-                <div>
-                  <label className="form-label">Charging</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="8" max="35" step="0.1" className="form-input"
-                      value={battChargeVoltage}
-                      onChange={(e) => { setBattChargeVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Indicates charging in progress</div>
-                </div>
-                <div>
-                  <label className="form-label">Over Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="8" max="35" step="0.1" className="form-input"
-                      value={battOverVoltage}
-                      onChange={(e) => { setBattOverVoltage(Number(Number(e.target.value).toFixed(1))); setBattType('custom'); }}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers over-voltage alarm</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Shore Power */}
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>⚡ Shore Power</h3>
-              <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.85rem' }}>Alert thresholds applied to shore power / AC inlet sensors.</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }}>
-                <div>
-                  <label className="form-label">Critical Low</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="0" max="120" step="1" className="form-input"
-                      value={shoreCritLowV}
-                      onChange={(e) => setShoreCritLowV(Number(e.target.value))}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers critical alarm</div>
-                </div>
-                <div>
-                  <label className="form-label">Low Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="0" max="120" step="1" className="form-input"
-                      value={shoreLowV}
-                      onChange={(e) => setShoreLowV(Number(e.target.value))}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers low-voltage warning</div>
-                </div>
-                <div>
-                  <label className="form-label">Normal Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="90" max="160" step="1" className="form-input"
-                      value={shoreNormalV}
-                      onChange={(e) => setShoreNormalV(Number(e.target.value))}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Nominal line voltage</div>
-                </div>
-                <div>
-                  <label className="form-label">High Voltage</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="110" max="160" step="1" className="form-input"
-                      value={shoreHighV}
-                      onChange={(e) => setShoreHighV(Number(e.target.value))}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers high-voltage warning</div>
-                </div>
-                <div>
-                  <label className="form-label">Critical High</label>
-                  <div style={{ position: 'relative' }}>
-                    <input type="number" min="110" max="160" step="1" className="form-input"
-                      value={shoreCritHighV}
-                      onChange={(e) => setShoreCritHighV(Number(e.target.value))}
-                      style={{ paddingRight: '32px' }} />
-                    <span style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.8rem', color: 'var(--text-secondary)', pointerEvents: 'none' }}>V</span>
-                  </div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Triggers critical alarm</div>
-                </div>
-              </div>
-            </div>
-
-          </div>
+            <AdvancedDeviceSettingsPanel
+              battType={battType} battSystemV={battSystemV}
+              onApplyBatteryPreset={applyBatteryPreset} onBattCustom={() => setBattType('custom')}
+              battCritVoltage={battCritVoltage} onBattCritChange={setBattCritVoltage}
+              battLowVoltage={battLowVoltage} onBattLowChange={setBattLowVoltage}
+              battNormalVoltage={battNormalVoltage} onBattNormalChange={setBattNormalVoltage}
+              battChargeVoltage={battChargeVoltage} onBattChargeChange={setBattChargeVoltage}
+              battOverVoltage={battOverVoltage} onBattOverChange={setBattOverVoltage}
+              shoreCritLowV={shoreCritLowV} onShoreCritLowChange={setShoreCritLowV}
+              shoreLowV={shoreLowV} onShoreLowChange={setShoreLowV}
+              shoreNormalV={shoreNormalV} onShoreNormalChange={setShoreNormalV}
+              shoreHighV={shoreHighV} onShoreHighChange={setShoreHighV}
+              shoreCritHighV={shoreCritHighV} onShoreCritHighChange={setShoreCritHighV}
+            />
           )}
         </>
       )}
