@@ -179,6 +179,171 @@ vehicle's cloud credentials could still call the device API directly.
 
 ---
 
+## 5. Local server OFF by default
+
+**Priority:** Medium — product/UX default change. Added 2026-06-25.
+**Context:** Today the local/self-hosted server path appears to default ON. Product direction:
+the **default experience is the hosted cloud (paid tiers)**; the local/self-hosted server is the
+open-source opt-in. So the local server toggle should ship **off** for new installs.
+
+- [ ] Find the local-server enable flag/default (likely a `localStorage` key + a Settings toggle;
+      candidates: `LOCAL_API_SETUP.md`, Settings → Hardware Connections, `utils/*`), and flip the
+      **default to off** without disabling it for users who already turned it on (migration-safe:
+      only unset installs default off).
+- [ ] Make sure the off-by-default path still lets self-hosters turn it on cleanly (document in
+      `LOCAL_API_SETUP.md`).
+
+---
+
+## 6. Subscription tiers — Free / Basic / Premium
+
+**Priority:** High (new product direction). Added 2026-06-25.
+**Model:** open-source **self-hosted** (local server / self-run workers) stays free forever; the
+**hosted cloud** is the paid convenience layer. **Decisions (2026-06-25):**
+
+- **Free** — **monitor vehicles (view only, NOT control)** + **cloud settings sync/backup** +
+  **vehicle sharing**. Rationale: a wife/friend/mechanic must be able to monitor the boat, and that
+  requires the configs/devices to sync. Maps onto the existing Friends **`monitor`** role.
+- **Basic — $3/mo or $12/yr** — adds **control** (hosted Cloudflare workers handle
+  actions/triggers/timers); history retention **1 week–1 month**.
+- **Premium — $5/mo or $30/yr** — history retention **1–3 years**; **SMS/voice (call) alerts** on
+  specific events; **premium support**; plus future premium-only extras.
+
+**Billing decision:** scaffold the **entitlement/gating layer + a manual tier switch now**; move to
+**Stripe when going live** (do NOT build payments this round).
+
+Tasks:
+- [ ] **Rebuild the pricing page** to reflect the tiers above. *(Deferred — do NOT act this round;
+      placeholder task per 2026-06-25.)*
+- [ ] **Backend administrative site** to manage users, tiers/entitlements, and other admin tasks
+      (see Task 12).
+- [ ] Wire **Stripe** when going live (deferred; entitlement layer must be provider-agnostic so this
+      is a drop-in).
+- [ ] Build a **tier/entitlement layer** independent of the payment provider: an `entitlements`
+      doc/claim per user (or per vehicle?), a `useEntitlements()` hook, and feature gates
+      (`canUseCloudActions`, `historyRetentionDays`, `canSmsAlert`, …). Gate features by entitlement,
+      not by hardcoded UI checks.
+- [ ] Enforce server-side in the worker too (history retention pruning, action/trigger handling,
+      SMS send) — client gating is advisory only (cf. Task 4 monitor-role lesson).
+- [ ] History retention enforcement: prune monthly rollups beyond the tier window (worker cron or
+      on-write TTL). Ties to Task 8 cost analysis.
+- [ ] SMS/voice alerts (Premium): provider (Twilio?) + per-event opt-in UI + worker send path.
+- [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
+      who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
+      Premium" mental model and the sharing goal (a shared mechanic sees the owner's history).
+- [ ] **SMS/voice = scaffold only (decided 2026-06-25):** per-event opt-in UI + a Premium-gated
+      worker send-path interface, **no live provider** (Twilio dropped in later).
+
+---
+
+## 12. Backend administrative site
+
+**Priority:** Medium-High (new, 2026-06-25). Needed to operate the paid service.
+**Context:** Manage users, view/set tiers & entitlements, support tasks, and monitoring. Lives on a
+`boatrvguardian.com` subdomain (Task 11), auth-gated to admins only.
+
+- [x] **Decided (2026-06-25): separate web app** on `admin.boatrvguardian.com`, admin-only auth.
+      Keeps the consumer app lean and the attack surface separate. *(Scaffold deferred until the
+      entitlement layer + cost-analysis backend choice land; spec stands now.)*
+- [ ] Admin-only auth (custom claim / allowlist), audit logging of admin actions.
+- [ ] User list + per-user/per-vehicle entitlement override (the manual "set tier" switch that
+      backs Task 6's scaffold-first billing), device/vehicle counts, history usage.
+- [ ] Operational views: worker health, recent webhook traffic, FCM/SMS send status.
+
+---
+
+## 7. Separate webhooks/actions server — repo, Docker, self-host
+
+**Priority:** High (enables Task 6). Added 2026-06-25.
+**Context:** The worker (`worker/`) must become a deployable, **self-hostable** product so the
+open-source story is real. Cloudflare Workers don't run in Docker directly; a self-host build is
+typically a Node server (or `workerd`). Likely outcome: a **shared core** (event classification,
+LinkTap/Shelly relay, entitlement checks) with two thin adapters — Cloudflare Worker + Node/Docker.
+
+- [ ] Decide repo strategy: **separate public repo** vs keep in monorepo under `worker/` + extract
+      later (see open questions).
+- [ ] Extract a transport-agnostic core (`events.ts` etc. — overlaps Task 2 worker test gate) so the
+      same logic runs on Workers and Node.
+- [ ] Node/Docker adapter: `Dockerfile`, `docker-compose.yml` (server + optional local DB), env-var
+      config, README for self-hosters.
+- [ ] **Storage question for self-host:** Firestore requires a Google project + service-account key
+      (works in Docker but ties self-hosters to Firebase). Evaluate a pluggable storage interface so
+      self-host can use SQLite/Postgres while hosted uses Firestore (or migrate hosted off Firestore
+      — see Task 8).
+- [ ] CI: build/publish the Docker image; keep the existing `worker/**` auto-deploy for hosted.
+
+---
+
+## 8. Data-volume & cost analysis (backend choice)
+
+**Priority:** High — informs Tasks 6 & 7. Added 2026-06-25.
+
+- [ ] Model ingest volume: per device, webhook frequency × bytes. Known rates: voltmeter telemetry
+      `voltmeter.measurement`/`.change` ~every 60s (per the remote-telemetry path); flood = rare
+      event-driven; LinkTap usage buckets hourly. Estimate per-vehicle/day and at N vehicles.
+- [ ] Estimate storage growth for history retention windows (1wk / 1mo / 1yr / 3yr) per tier and the
+      Firestore read/write/storage cost at each scale.
+- [ ] Compare hosted-backend options for the paid tiers: **stay Firestore** vs **Cloudflare-native**
+      (Workers + D1/KV/R2 — keeps everything in one vendor, likely cheaper at this scale, and pairs
+      with the self-host Docker story). Recommend one with numbers.
+- [ ] Free-tier ceilings: confirm Cloudflare Workers free/paid limits and Firestore free quota
+      against the projected volume; flag where a paid plan kicks in.
+
+---
+
+## 9. Test strategy (formalize — protect what works as dev accelerates)
+
+**Priority:** High — explicit ask 2026-06-25: "don't break anything that works." Builds on Task 2.
+
+- [ ] Write `docs/TESTING.md`: the testing pyramid for this repo — pure-util unit tests (have),
+      worker unit tests (Task 2 gap), hook tests, light component/integration tests, and a manual
+      **hardware smoke-test checklist** for the safety-critical paths (flood shutoff, valve
+      open/close, poll loop) that can't be fully unit-tested.
+- [ ] Define **CI gates that must pass before merge**: `tsc -b`, `npm test`, `wrangler --dry-run`,
+      and (Task 7) worker tests + Docker build. Make them required.
+- [ ] Add coverage reporting + a floor (don't let it regress).
+- [ ] Regression guard for the **safety chain**: a worker integration test that replays a
+      `flood.alarm` GET and asserts the close path + the `*.alarm_off`/telemetry exclusions
+      (overlaps Task 6 follow-up and Task 2).
+
+---
+
+## 10. Agent coding-discipline guide
+
+**Priority:** Medium — explicit ask 2026-06-25: better, more disciplined direction for agents.
+
+- [ ] Write `AGENTS.md` (or expand `CLAUDE.md`) with the working contract: small reviewable
+      increments; behavior-preserving refactors verified by `tsc`+tests+build each step (the Task 3
+      increment pattern is the model); **no new feature without a test**; keep files under a size
+      budget; commit-message + version-bump discipline (the 7-file rule); when to defer to a
+      hardware smoke test; never weaken the safety chain.
+- [ ] Add a PR checklist / template encoding the CI gates from Task 9.
+- [ ] Note conventions: time policy (UTC store / `lt_tz` display), entitlement-gating over ad-hoc
+      checks, server-side enforcement over client-only.
+
+---
+
+## 11. Domain migration → `boatrvguardian.com` subdomains
+
+**Priority:** Medium — user-facing URLs should not expose vendor domains. Added 2026-06-25.
+**Context:** Anything shown to the user (the cloud worker custom URL, web app, etc.) should live on
+a `boatrvguardian.com` subdomain, not `*.workers.dev` / `*.web.app` / `*.github.io`.
+
+- [ ] Inventory user-exposed URLs: `DEFAULT_WORKER_URL`
+      (`boat-rv-guardian-webhooks.jgearinger.workers.dev`), the web-app host, FCM/Firebase hosts in
+      configs, any links in Settings/README.
+- [x] **Decided (2026-06-25): `api.` = worker, `app.` = web app, `admin.` = admin site. Domain IS on
+      Cloudflare**, so a Worker custom domain can be attached; I prep the config + exact DNS records,
+      owner applies DNS.
+- [ ] Add the Cloudflare Worker **custom domain/route**; update `DEFAULT_WORKER_URL` and any
+      hardcoded references; keep `sh_webhook_url` per-vehicle override working.
+- [ ] Document the required **DNS records** the owner must add (DNS access is owner-only; I can
+      prepare code + the exact records but can't change DNS).
+- [ ] Re-register Shelly webhooks against the new URL once cut over (devices cache the old URL until
+      a successful poll re-registers — cf. CLAUDE.md).
+
+---
+
 ## Notes
 
 - **Version bumps touch 7 files** (per CLAUDE.md): `dashboard/package.json`,
