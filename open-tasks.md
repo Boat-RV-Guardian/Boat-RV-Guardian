@@ -347,8 +347,9 @@ merge). This delivers most of increments 2/3/5 at once, safely (no live-worker c
       pruning** (the `retentionDays` setting is stored but not yet enforced — no history store yet).
 - [ ] **Follow-up:** a Cloudflare adapter sharing this core, then unify with / retire the live worker;
       CI in brvg-cloud-server (tsc + tests + docker build); hardware smoke of the real LinkTap/FCM calls.
-- [ ] **App wiring:** make `ProvisionShellyModal` send `&key=<sh_webhook_key>` to a custom server (the
-      contract this server implements) — see the AP/BLE follow-up note.
+- [x] **App wiring DONE (2026-06-25):** `registerShellyWebhooks` appends `&key=<sh_webhook_key>` for
+      custom servers (default hosted worker gets none); worker `RESERVED_PARAMS` now drops `key` so an
+      auth key is never stored as telemetry. All 3 PRs (cloud-server #1, website #1/#2) merged.
 
 ---
 
