@@ -282,10 +282,11 @@ Tasks:
       — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
       tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
       the Task 3 panel-split pattern. Browser-verified (renders, reacts to `tier_updated`, no errors).
-- [ ] **Next:** wire functional gates (e.g. LinkTapWidget honors `canRemoteControl` off-LAN; hide
-      SMS-alert config unless `canSmsAlert`) — deferred to land alongside the admin "set tier" switch
-      so we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the
-      admin override + Stripe exist.
+- [x] **First functional gate (2026-06-25):** cloud-history toggle disabled for tiers with no
+      retention (free) — inert under grandfathering. See [Settings.tsx](dashboard/src/pages/Settings.tsx).
+- [ ] **Remaining gates:** LinkTapWidget honors `canRemoteControl` off-LAN (needs the local-vs-remote
+      seam — best with hardware), hide SMS-alert config unless `canSmsAlert` (no SMS UI yet). Drop
+      GRANDFATHERED_TIER to a real default once the admin override + Stripe exist.
 - [ ] Enforce server-side in the worker too (history retention pruning, action/trigger handling,
       SMS send) — client gating is advisory only (cf. Task 4 monitor-role lesson).
 - [ ] History retention enforcement: prune monthly rollups beyond the tier window (worker cron or
@@ -345,8 +346,10 @@ merge). This delivers most of increments 2/3/5 at once, safely (no live-worker c
 - [x] **History + retention DONE (2026-06-25, cloud-server PR #2):** tier-based telemetry history
       (free 0 / basic 30d / premium ~3y), retention pruning + 5000-sample cap, admin `retentionDays`
       as a self-host cap, and `GET /api/history`. Memory/File storage; 21 tests.
-- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the `Storage` interface; **hourly
-      downsampling** for long-term history (raw recent window → aggregates) per the cost analysis.
+- [x] **Hourly downsampling DONE (2026-06-25, cloud-server main):** raw samples for 7 days, then
+      one-per-hour for older data (`downsampleHistory`, tested) — bounds the premium ~3y window.
+- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the `Storage` interface (today:
+      Memory + File JSON). Native-dep or `node:sqlite` (experimental) tradeoff — defer until needed at scale.
 - [ ] **Follow-up:** a Cloudflare adapter sharing this core, then unify with / retire the live worker;
       CI in brvg-cloud-server (tsc + tests + docker build); hardware smoke of the real LinkTap/FCM calls.
 - [x] **App wiring DONE (2026-06-25):** `registerShellyWebhooks` appends `&key=<sh_webhook_key>` for
