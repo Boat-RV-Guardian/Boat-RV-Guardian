@@ -101,8 +101,10 @@ keep it dependency-light so the image stays small. Build it alongside the Node a
 3. ▢ Add `node.ts` + Dockerfile + compose + README. CI: build the image.
 4. ▢ Add `D1Storage` + `SqliteStorage`; wire telemetry downsampling/retention. Migrate hosted
    sensorState + history to D1 (keep Firestore for config/auth+FCM). **Smoke-test telemetry + flood.**
-5. ▢ (Later) Extract the server into its own public repo (the open-source deliverable) — see Task 7
-   note in open-tasks.md. Keep `worker/**` auto-deploy or move it to the new repo's CI.
+5. ▢ (Later) Extract the server into **[Boat-RV-Guardian/brvg-cloud-server](https://github.com/Boat-RV-Guardian/brvg-cloud-server)**
+   (repo provided by owner 2026-06-25) — the open-source deliverable. Move the shared core + adapters
+   + Dockerfile + self-host admin page there once increments 2–4 stabilize; keep `worker/**`
+   auto-deploy or move it to the new repo's CI.
 
 ## Why not just keep Cloudflare-only?
 

@@ -342,7 +342,11 @@ hardware smoke-tested, not unattended.
       operator console). Spec in [docs/SELF_HOST.md](docs/SELF_HOST.md).
 - [ ] **Increment 4:** `D1Storage` + `SqliteStorage`, telemetry downsampling/retention; migrate
       hosted sensorState + history to D1 (per cost analysis). Smoke-test telemetry + flood.
-- [ ] **Increment 5:** extract the server into its own public repo.
+- [ ] **Increment 5:** extract the server into its own repo —
+      **[Boat-RV-Guardian/brvg-cloud-server](https://github.com/Boat-RV-Guardian/brvg-cloud-server)
+      now exists** (provided by owner 2026-06-25) as the destination for the self-hostable cloud
+      server. Move the shared core + Cloudflare/Node adapters + Dockerfile + self-host admin page there
+      once increments 2–4 stabilize in-repo; point its CI at the new repo.
 
 ---
 
@@ -440,6 +444,39 @@ real updater behind it.)
 - [ ] Wire the in-app check/prompt/install flow (reuse the Settings → Updates surface); test the
       full update across a version bump. Keep the 7-file version-bump rule in sync.
 - [ ] Android updates go through Play, not the Tauri updater — scope this to desktop (Mac/Win).
+
+---
+
+## 14. Web user portal — subscription management (+ account)
+
+**Priority:** High (gates real billing). Added 2026-06-25. This is the **end-user** web portal the
+app links to via `UPGRADE_PORTAL_URL` (currently `app.boatrvguardian.com/account`) — distinct from
+the **operator** admin site (Task 12) and the **self-host** admin page (Task 7).
+
+**Recommendation on hosting:** build it as an authed **`/account` section of the existing web app**
+(`app.boatrvguardian.com`) — reuses Firebase auth + the entitlement model, one codebase. Delegate the
+heavy billing UI to **Stripe**: Stripe **Checkout** for purchase + the Stripe **Customer Portal**
+(hosted) for payment method / invoices / cancel, so we build less and stay PCI-light. The custom UI
+owns the parts Stripe doesn't know about (per-vehicle plan assignment, entitlements, trials).
+
+**Core (subscription management):**
+- [ ] View each **vehicle's** plan + status; **upgrade/downgrade**, start/cancel, monthly⇄yearly.
+- [ ] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
+      subscription applies to; manage multiple vehicles; (future) fleet/multi-vehicle discount.
+- [ ] **Trial** status + days left; enforce per-user+per-vehicle eligibility (ties to Task 6 trial).
+- [ ] Payment method, **invoices/receipts**, billing history (via Stripe Customer Portal).
+
+**Recommended additions (my suggestions — confirm scope):**
+- [ ] **Notification channels:** add/verify **phone number(s) for SMS/voice** (Premium) and manage
+      push devices — these are account-level and don't belong in per-device settings.
+- [ ] **Integrations/API tokens** (Premium): issue/rotate tokens for Home Assistant / MQTT / webhooks.
+- [ ] **Data & privacy:** export history (Premium), delete data, see retention window; **delete
+      account** (GDPR/Play/App-Store requirement).
+- [ ] **Usage vs plan:** storage used, device/vehicle counts, telemetry resolution in effect.
+- [ ] **Sharing overview** (read-only mirror of the app's Friends): who has access to each vehicle.
+- [ ] **Account basics:** email, password/SSO, display name; **priority-support** entry for Premium.
+- [ ] Receipts/billing emails (transactional email provider) — note: there's currently "no email
+      service" (see CLAUDE.md sharing); billing will need one (Stripe can send receipts).
 
 ---
 
