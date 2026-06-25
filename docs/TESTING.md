@@ -36,6 +36,9 @@ flood-automation as catastrophic.
 
 3. **Light component / integration tests.** For role-gating UI, entitlement gates, and any
    conditional rendering that encodes a rule. Render, assert the gated control is present/absent.
+   **Infra is in place** (`@testing-library/react`, jsdom) — first example:
+   `src/pages/settings/SubscriptionPanel.test.tsx` renders the real panel through the real
+   `useEntitlements` hook, driven by `localStorage`. Use this pattern for new gated UI.
 
 4. **Worker integration regression (safety).** A test that replays a `flood.alarm` GET against the
    worker's classification + close-decision path and asserts: real alarm → shutoff intended;
