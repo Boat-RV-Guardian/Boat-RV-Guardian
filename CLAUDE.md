@@ -328,6 +328,59 @@ was safe to do without the user / hardware / DNS+gcloud auth. Tree clean, all on
   pricing page + copy alignment, [website#2](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/2)
   pre-alpha popup) — **awaiting owner merge**.
 - New repo provided for the self-host server: **Boat-RV-Guardian/brvg-cloud-server** (Task 7 dest).
-- **v1.0.44 is committed + pushed but NOT git-tagged** — tagging triggers the public release build
-  (`release.yml`); left to the owner to cut. Run `git tag v1.0.44 && git push origin v1.0.44` to release.
 - **UI-verify policy:** use the native app (`npm run tauri dev`), NOT the web preview pane.
+
+## Session handoff — 2026-06-25 (late), v1.0.44 RELEASED + self-host server + mock billing (LAPTOP SWITCH)
+
+Switching laptops. **All three repos are clean, pushed, and in sync with origin; all gates green.**
+**v1.0.44 was tagged + released** (Mac/Win/APK + web all built green — installers published).
+
+### Repos (clone all three on the new machine)
+- **Boat-RV-Guardian/Boat-RV-Guardian** (this repo: app + worker) — `git@github.com:...` (SSH; workflows need SSH).
+- **Boat-RV-Guardian/brvg-cloud-server** — the self-hostable Node/Docker cloud server (Task 7). Has CI.
+- **Boat-RV-Guardian/website-boatrvguardian** — Astro marketing site (private). Cloudflare Pages auto-deploys `main`.
+- Per-repo setup: `npm i` (dashboard, worker, brvg-cloud-server, website each). **Push workflow files
+  over the SSH remote** (the HTTPS token lacks `workflow` scope — `gh repo clone` sets HTTPS; run
+  `git remote set-url origin git@github.com:Boat-RV-Guardian/<repo>.git`).
+
+### Shipped since v1.0.44 (all on `main`, CI green)
+- **brvg-cloud-server** (NEW, greenfield — does NOT touch the live worker): transport-agnostic DI
+  **core** (`core.ts`) + pure `events.ts` (classification/throttle) + pluggable `Storage`
+  (Memory/File-JSON) + LinkTap/FCM clients + **Node HTTP adapter** + basic-auth **`/admin`** (API key,
+  retention, vehicles, user FCM tokens) + **Dockerfile/compose** + **CI**. Plus **tier-based history**
+  (`/api/history`, retention pruning) and **hourly downsampling**. ~24 tests; safety decision fully
+  unit-tested with mocks (the regression coverage the live worker can't get).
+- **Mock billing + in-app `/account` portal** (Task 6/14): `utils/billing.ts` `redeemCoupon`
+  (`GUARDIANBASIC/PREMIUM/FREE`) → `setActiveVehicleTier` (the seam Stripe will drive). `tier` is now
+  a **synced per-vehicle config field**. **Subscription is WEB-first** (owner: autofill fails in the
+  native WKWebView): the native Plan button opens the web portal in the **system browser**
+  (`app.boatrvguardian.com/?view=account`, a new `?view=` deep link); the web build shows the in-app
+  Account view. Plan button is **always visible** (Manage/Upgrade).
+- **First entitlement gate:** cloud-history toggle disabled for tiers with no retention (Free).
+- **Force Cloud Sync** moved to the bottom of the Vehicles section; enabled only when signed in.
+- **Self-host auth wiring:** app sends `&key=<sh_webhook_key>` to custom servers; worker drops `key`
+  from stored telemetry.
+- **`remain_duration`** unit fix; **Settings split** started (`LocalServerPanel` extracted);
+  **RTL component tests** added; **coverage reporting** (no CI floor yet — IO modules untested).
+- **3 PRs merged this session:** website#1 (pricing+copy), website#2 (pre-alpha popup), cloud-server#1.
+
+### Decisions locked this session (owner)
+- **Stripe: scaffold/mock now, real later** — test the tier flow via coupon codes before any CC.
+- **Subscription portal: WEB-first** (browser), `/account` deep-link; not embedded in the native app.
+- **Tiers** (per-vehicle, "Plex"): Free=monitor/manual-view+sync+share; Basic=control+1mo history;
+  Premium=long history+SMS+integrations. Telemetry resolution + history retention are tier axes.
+- **Valve/flood is the LEAST-used feature** and the valve self-limits (volume/duration) — don't
+  over-invest; the flood automation is convenience, not the safety net.
+
+### Next up (owner had me working down: admin site → unify worker → polish)
+- **Admin/operator site** (Task 12): a real "set tier"/user console beyond coupons.
+- **Unify the live worker onto the brvg-cloud-server core** (greenfield port via a Firestore storage
+  + Cloudflare adapter; owner does the cutover) — kills the duplicated logic.
+- **Stripe** when ready (drop-in at `setActiveVehicleTier` / a webhook).
+
+### Still needs the OWNER (not blocking the above)
+- **Auto-update signing cert** (Task 13): `tauri signer generate` → secrets + pubkey in tauri.conf.
+- **Domain DNS** (Task 11): attach `api.boatrvguardian.com` to the worker, then flip `DEFAULT_WORKER_URL`.
+- **Branch protection** to make CI required.
+- **Hardware** (on the boat / home Wi-Fi): verify `shellyChangePassword`, AP/BLE provisioning
+  password-set, remote-telemetry, LinkTapWidget poll/command hooks.
