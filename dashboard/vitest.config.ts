@@ -14,5 +14,10 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     clearMocks: true,
     restoreMocks: true,
+    // Coverage REPORTING only (no CI floor yet): utils/ + hooks/ contain a lot of legitimately
+    // untested IO/device code (VehicleManager, shellyBle, localServer, nativeFetch), so a meaningful
+    // global threshold is premature. Add per-file/scoped thresholds once those gain tests (open-tasks
+    // Task 9). `npm run test:coverage` works via --coverage (v8) regardless.
+    coverage: { provider: 'v8' },
   },
 });
