@@ -20,6 +20,7 @@ import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
 import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
 import FriendsPanel from './settings/FriendsPanel';
+import LinkTapAuthPanel from './settings/LinkTapAuthPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 
@@ -1187,208 +1188,26 @@ export default function Settings({ user }: { user: any }) {
           )}
 
           {devicesTab === 'auth' && (
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>LinkTap Credentials</h3>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className={`status-dot ${connectionStatus === 'connected' ? 'online' : connectionStatus}`}></span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                  {connectionStatus === 'connected' ?
-                    (isCloudPollingActive && isLocalPollingActive ? 'CLOUD & LOCAL CONNECTED' :
-                    isCloudPollingActive ? 'CLOUD ONLY CONNECTED' :
-                    isLocalPollingActive ? 'LOCAL ONLY CONNECTED' : 'CONNECTED') :
-                   connectionStatus === 'connecting' ? 'CONNECTING...' : ''}
-                </span>
-              </div>
-            </div>
-            
-            <>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-cyan)', margin: 0 }}>☁️ Cloud Controller</h4>
-                    <button
-                      className={!isCloudPollingActive ? "btn-primary" : "btn-secondary"}
-                      onClick={() => {
-                        setIsCloudPollingActive(!isCloudPollingActive);
-                        if (!isCloudPollingActive && cloudUsername && cloudApiKey) handleRetrieveFromCloud();
-                      }}
-                      style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {!isCloudPollingActive ? 'Connect' : '✓ Connected'}
-                    </button>
-                  </div>
-                  <div><label className="form-label">Cloud Username</label><input type="text" className="form-input" value={cloudUsername} onChange={(e) => { setCloudUsername(e.target.value); setIsCloudPollingActive(false); }} placeholder="App Username" /></div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <label className="form-label" style={{ marginBottom: 0 }}>Cloud API Key</label>
-                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                      <input type={showCloudApiKey ? "text" : "password"} className="form-input" value={cloudApiKey} onChange={(e) => { setCloudApiKey(e.target.value); setIsCloudPollingActive(false); }} placeholder="Paste API Key" style={{ paddingRight: '40px' }} />
-                      <button
-                        className="btn-secondary"
-                        onClick={() => setShowCloudApiKey(!showCloudApiKey)}
-                        style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
-                      >
-                        {showCloudApiKey ? '👁️' : '👁️‍🗨️'}
-                      </button>
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
-                      ℹ️ Generate an API Key by visiting <a href="https://www.link-tap.com/#!/api-for-developers" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>LinkTap API for Developers</a>.
-                    </div>
-                  </div>
-                </div>
-
-                {/* Retrieve devices from cloud — shared discovery action, centered between the two controllers */}
-                <div style={{ display: 'flex', justifyContent: 'center' }}>
-                  <button
-                    className="btn-secondary"
-                    onClick={handleRetrieveFromCloud}
-                    disabled={isDiscovering || !cloudUsername || !cloudApiKey}
-                    style={{ padding: '8px 18px', fontSize: '0.8rem' }}
-                  >
-                    {isDiscovering ? 'Retrieving...' : '⬇️ Retrieve Devices from Cloud'}
-                  </button>
-                </div>
-
-                {/* Local Gateway Control */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-emerald)', margin: 0 }}>🏠 Local Gateway Control</h4>
-                    <button
-                      className={!isLocalPollingActive ? "btn-primary" : "btn-secondary"}
-                      onClick={() => setIsLocalPollingActive(!isLocalPollingActive)}
-                      disabled={!gatewayIp}
-                      title={!gatewayIp ? 'Enter or scan for a Gateway IP first' : ''}
-                      style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700 }}
-                    >
-                      {!isLocalPollingActive ? 'Connect' : '✓ Connected'}
-                    </button>
-                  </div>
-
-                  {discoveryMsg && (
-                    <div style={{ fontSize: '0.8rem', color: discoveryMsg.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-orange)' }}>
-                      {discoveryMsg.text}
-                    </div>
-                  )}
-
-                  {/* Gateway IP */}
-                  <div>
-                    <label className="form-label">Gateway IP</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <input type="text" className="form-input" value={gatewayIp}
-                        onChange={(e) => { setGatewayIp(e.target.value); setScanResults([]); }}
-                        placeholder="e.g. 192.168.1.100" style={{ flex: 1 }} />
-                      <button className="btn-secondary" onClick={handleScanGateway} disabled={isScanningGateway}
-                        style={{ padding: '8px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                        {isScanningGateway ? '⏳ Scanning subnet...' : '🔍 Scan for Gateway'}
-                      </button>
-                    </div>
-                    {scanMsg && (
-                      <div style={{ fontSize: '0.75rem', color: scanMsg.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-orange)', marginTop: '4px' }}>
-                        {scanMsg.text}
-                      </div>
-                    )}
-                    {scanResults.length > 1 && (
-                      <select className="form-input" style={{ marginTop: '8px' }}
-                        value={gatewayIp}
-                        onChange={(e) => { setGatewayIp(e.target.value); setScanResults([]); setScanMsg(null); }}>
-                        <option value="">— Select a gateway —</option>
-                        {scanResults.map(ip => (
-                          <option key={ip} value={ip}>{ip}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-
-                  {/* Gateway ID */}
-                  <div>
-                    <label className="form-label">Gateway ID</label>
-                    {cloudGateways.length > 0 && !gatewayIdManual ? (
-                      <select className="form-input" value={gatewayId}
-                        onChange={(e) => {
-                          if (e.target.value === '__manual__') { setGatewayIdManual(true); }
-                          else setGatewayId(e.target.value);
-                        }}>
-                        <option value="">— Select a Gateway —</option>
-                        {cloudGateways.map(gw => (
-                          <option key={gw.id} value={gw.id}>{gw.name !== gw.id ? `${gw.name} (${gw.id})` : gw.id}</option>
-                        ))}
-                        <option value="__manual__">✏️ Enter manually...</option>
-                      </select>
-                    ) : (
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input type="text" className="form-input" value={gatewayId}
-                          onChange={(e) => setGatewayId(e.target.value)}
-                          placeholder="16-char hex Gateway ID" style={{ flex: 1 }} />
-                        {cloudGateways.length > 0 && (
-                          <button className="btn-secondary" onClick={() => setGatewayIdManual(false)}
-                            style={{ padding: '6px 10px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>← List</button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Device IDs */}
-                  {primaryDeviceId && secondaryDeviceId && primaryDeviceId === secondaryDeviceId && (
-                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-orange)', background: 'rgba(251,146,60,0.1)', border: '1px solid rgba(251,146,60,0.3)', borderRadius: '8px', padding: '8px 12px' }}>
-                      ⚠️ Device ID 1 and Device ID 2 are the same — each field must reference a different TapLinker.
-                    </div>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    <div>
-                      <label className="form-label">TapLinker Device ID 1</label>
-                      {cloudTaplinkers.length > 0 && !device1Manual ? (
-                        <select className="form-input" value={primaryDeviceId}
-                          onChange={(e) => {
-                            if (e.target.value === '__manual__') { setDevice1Manual(true); }
-                            else setPrimaryDeviceId(e.target.value);
-                          }}>
-                          <option value="">— Select a Device —</option>
-                          {cloudTaplinkers.filter(tap => tap.id !== secondaryDeviceId).map(tap => (
-                            <option key={tap.id} value={tap.id}>{tap.name !== tap.id ? `${tap.name} (${tap.id})` : tap.id}</option>
-                          ))}
-                          <option value="__manual__">✏️ Enter manually...</option>
-                        </select>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <input type="text" className="form-input" value={primaryDeviceId}
-                            onChange={(e) => setPrimaryDeviceId(e.target.value)}
-                            placeholder="16-char hex Device ID" style={{ flex: 1 }} />
-                          {cloudTaplinkers.length > 0 && (
-                            <button className="btn-secondary" onClick={() => setDevice1Manual(false)}
-                              style={{ padding: '6px 10px', fontSize: '0.8rem' }}>← List</button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <label className="form-label">TapLinker Device ID 2</label>
-                      {cloudTaplinkers.length > 0 && !device2Manual ? (
-                        <select className="form-input" value={secondaryDeviceId}
-                          onChange={(e) => {
-                            if (e.target.value === '__manual__') { setDevice2Manual(true); }
-                            else setSecondaryDeviceId(e.target.value);
-                          }}>
-                          <option value="">— Select a Device (optional) —</option>
-                          {cloudTaplinkers.filter(tap => tap.id !== primaryDeviceId).map(tap => (
-                            <option key={tap.id} value={tap.id}>{tap.name !== tap.id ? `${tap.name} (${tap.id})` : tap.id}</option>
-                          ))}
-                          <option value="__manual__">✏️ Enter manually...</option>
-                        </select>
-                      ) : (
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <input type="text" className="form-input" value={secondaryDeviceId}
-                            onChange={(e) => setSecondaryDeviceId(e.target.value)}
-                            placeholder="16-char hex (optional)" style={{ flex: 1 }} />
-                          {cloudTaplinkers.length > 0 && (
-                            <button className="btn-secondary" onClick={() => setDevice2Manual(false)}
-                              style={{ padding: '6px 10px', fontSize: '0.8rem' }}>← List</button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </>
-          </div>
+            <LinkTapAuthPanel
+              connectionStatus={connectionStatus}
+              isCloudPollingActive={isCloudPollingActive} setIsCloudPollingActive={setIsCloudPollingActive}
+              isLocalPollingActive={isLocalPollingActive} setIsLocalPollingActive={setIsLocalPollingActive}
+              cloudUsername={cloudUsername} setCloudUsername={setCloudUsername}
+              cloudApiKey={cloudApiKey} setCloudApiKey={setCloudApiKey}
+              showCloudApiKey={showCloudApiKey} setShowCloudApiKey={setShowCloudApiKey}
+              handleRetrieveFromCloud={handleRetrieveFromCloud}
+              isDiscovering={isDiscovering} discoveryMsg={discoveryMsg}
+              gatewayIp={gatewayIp} setGatewayIp={setGatewayIp}
+              handleScanGateway={handleScanGateway} isScanningGateway={isScanningGateway}
+              scanMsg={scanMsg} setScanMsg={setScanMsg} scanResults={scanResults} setScanResults={setScanResults}
+              gatewayId={gatewayId} setGatewayId={setGatewayId}
+              cloudGateways={cloudGateways} gatewayIdManual={gatewayIdManual} setGatewayIdManual={setGatewayIdManual}
+              primaryDeviceId={primaryDeviceId} setPrimaryDeviceId={setPrimaryDeviceId}
+              secondaryDeviceId={secondaryDeviceId} setSecondaryDeviceId={setSecondaryDeviceId}
+              cloudTaplinkers={cloudTaplinkers}
+              device1Manual={device1Manual} setDevice1Manual={setDevice1Manual}
+              device2Manual={device2Manual} setDevice2Manual={setDevice2Manual}
+            />
           )}
 
           {devicesTab === 'config' && (
