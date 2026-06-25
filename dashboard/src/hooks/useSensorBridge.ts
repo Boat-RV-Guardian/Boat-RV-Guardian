@@ -87,7 +87,9 @@ export function useSensorBridge() {
     let lastBackground: boolean | null = null;
 
     const apply = async () => {
-      const enabled = localStorage.getItem('lt_local_server') !== 'false';
+      // Defaults OFF for new installs (opt-in local server; see open-tasks Task 5). main.tsx runs a
+      // one-time migration that sets this to 'true' for existing installs to preserve old behavior.
+      const enabled = localStorage.getItem('lt_local_server') === 'true';
       const background = localStorage.getItem('lt_local_server_bg') === 'true';
       if (enabled === lastEnabled && background === lastBackground) return;
       lastEnabled = enabled; lastBackground = background;

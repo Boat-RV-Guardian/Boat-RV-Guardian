@@ -39,10 +39,11 @@ LinkTap cloud activateInstantMode(action:false) → valve closes (~16s over RF)`
       → check `wrangler tail` shows **no** `FCM send failed: 403`, and your phone gets the push.
       NOTE: re-running that curl will **close the valve** (it's a real flood replay).
 
-- [ ] **Follow-up: `flood.alarm_off` also triggers a shutoff.** `FLOOD_EVENT_RE = /flood|leak|alarm/i`
-      matches `flood.alarm_off` too, so the "dried out" event also fires a (harmless, idempotent)
-      close. Consider excluding `*_off` / `*.alarm_off` from the shutoff trigger in
-      [worker/src/index.ts](worker/src/index.ts) `FLOOD_EVENT_RE` / the `isFlood` check.
+- [x] **Follow-up: `flood.alarm_off` also triggers a shutoff.** Fixed (2026-06-25, commit on main):
+      new `isFloodShutoff()` in [worker/src/events.ts](worker/src/events.ts) requires the flood family
+      AND excludes the `*_off`/`.off` cleared variant AND telemetry. Covered by worker unit tests.
+      **Note: deploy is automatic** (push to `worker/**` triggers `worker-deploy.yml`) — confirm the
+      new version is live.
 
 ### Hardware / environment facts discovered (for the next session)
 - **LinkTap gateway:** IP `172.31.0.245`, Gateway ID `1485A036004B1200`, valve/TapLinker ID
@@ -113,10 +114,10 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
       whole push — now guarded with `Number.isFinite`.
 - [x] Wire `npm test` into CI so PRs run it — [.github/workflows/ci.yml](.github/workflows/ci.yml)
       runs dashboard typecheck + unit tests and the worker wrangler dry-run on every PR / push to main.
-- [ ] Add a worker *unit* test gate: [worker/src/index.ts](worker/src/index.ts) inlines the
-      event-classification (`FLOOD_EVENT_RE`, `*.measurement`/`*.change` telemetry skip) and the
-      `sensorState` extra-param extraction. Extract those into a `worker/src/events.ts`, add Vitest
-      to the worker package, and cover them. (CI currently typechecks the worker but doesn't unit-test it.)
+- [x] Add a worker *unit* test gate (2026-06-25): extracted event-classification + `sensorState`
+      extra-param extraction into [worker/src/events.ts](worker/src/events.ts), added Vitest to the
+      worker package (12 tests), and wired `npm test` into the worker CI job. Also the foundation for
+      the shared self-host core (Task 7).
 - [ ] (Follow-up) Add component/integration tests for the role-gating UI behavior once Task 3
       extracts the logic into hooks (easier to test in isolation than the current big components).
 

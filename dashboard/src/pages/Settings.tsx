@@ -201,7 +201,10 @@ export default function Settings({ user }: { user: any }) {
   // Local Server Options (device-local). The app can act as a local listener so sleepy Shelly
   // sensors can push events straight to it with no internet. Background mode (Android foreground
   // service) keeps it alive when the app isn't open, at the cost of a persistent notification.
-  const [localServerEnabled, setLocalServerEnabled] = useState(() => localStorage.getItem('lt_local_server') !== 'false');
+  // Defaults OFF for new installs (hosted cloud is the default path; the local server is an opt-in
+  // for self-host — see open-tasks Task 5). A one-time migration in main.tsx preserves the old
+  // default-ON for EXISTING installs, so this `=== 'true'` read is safe.
+  const [localServerEnabled, setLocalServerEnabled] = useState(() => localStorage.getItem('lt_local_server') === 'true');
   const [localServerBackground, setLocalServerBackground] = useState(() => localStorage.getItem('lt_local_server_bg') === 'true');
 
   // Normal Run Profile Config

@@ -45,6 +45,26 @@ try {
   /* non-fatal: fall back to the widget's own auto-connect heuristic */
 }
 
+// One-time migration for the Shelly local-server listener default flip (open-tasks Task 5). It used
+// to default ON (`!== 'false'`); the new product direction makes the hosted cloud the default and the
+// local server an opt-in, so it now defaults OFF (`=== 'true'`). To avoid silently disabling the
+// listener for users who relied on the old default, preserve it for EXISTING installs: if the key is
+// unset but there's any sign of prior use, set it to 'true'. Brand-new installs (no prior keys) keep
+// the new OFF default. Runs once — once the key exists (here or via the user toggling it) it's a no-op.
+try {
+  if (localStorage.getItem('lt_local_server') === null) {
+    const hadPriorUse = !!(
+      localStorage.getItem('lt_devices') ||
+      localStorage.getItem('lt_cloud_user') ||
+      localStorage.getItem('lt_gateway_ip') ||
+      localStorage.getItem('lt_tz')
+    );
+    if (hadPriorUse) localStorage.setItem('lt_local_server', 'true');
+  }
+} catch (e) {
+  /* non-fatal: new default (OFF) applies */
+}
+
 let root = (window as any)._reactRoot;
 if (!root) {
   root = createRoot(document.getElementById('root')!);

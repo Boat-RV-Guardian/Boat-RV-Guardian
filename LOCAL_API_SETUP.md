@@ -1,5 +1,11 @@
 # Setting up the Local API on the Web Dashboard
 
+> **Note:** The on-device **Local Server** (the listener that lets sleepy Shelly sensors push events
+> straight to the app with no internet) is **OFF by default** as of the cloud-first release. The
+> default experience uses the hosted cloud. To use the local/self-hosted path, turn it on under
+> **Settings → Hardware Connections / Local Server**. Existing installs that were already using it
+> keep it enabled automatically.
+
 If you are using the downloaded Native Mac or Windows apps, the Local API works immediately with zero configuration. 
 
 However, if you prefer to use the **Live Web Dashboard** via a browser to connect to your LinkTap Gateway's Local API (`http://192.168.x.x`), you must bypass two strict browser security features: **CORS** and **Mixed Content Blocking**. 
