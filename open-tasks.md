@@ -24,7 +24,11 @@ LinkTap cloud activateInstantMode(action:false) → valve closes (~16s over RF)`
       Switched to `activateInstantMode` w/ `action:false, duration:0` (the call the app uses) —
       commit `a6ca1c3`, **deployed** (version `7ddb792a`). Verified: replayed `flood.alarm` →
       `shutoff:{ok:true,valves:1}` → valve physically closed in ~16s. ✅
-- [ ] **Break #2 — push notifications fail (`403`).** ⏳ **Owner is applying the IAM grant (2026-06-25).**
+- [x] **Break #2 — push notifications fail (`403`). RESOLVED 2026-06-25.** Owner applied the FCM IAM
+      grant; the safe test (`event=button.push`) returned `notified:1` with no 403. The worker now
+      also reports `pushFailed` so a future 403/stale-token shows up in the response (not just a
+      `notified` count). The flood→shutoff→**push** chain is now fully working end to end.
+- [x] ~~**Break #2 — push notifications fail (`403`).**~~ (history below — kept for context)
       The worker SA `linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com` had only
       `roles/datastore.user` — lacked `cloudmessaging.messages.create`, so FCM send 403s (valve still
       closes; only the alert push is missing). FCM API is already **enabled**. Fix:
@@ -233,9 +237,10 @@ for lower tiers — controls the dominant cost (per docs/COST_ANALYSIS.md §5) A
 
 **Safety model (owner, 2026-06-25):** the LinkTap valve only opens with a volume/duration **limit**,
 so it can't run long enough to sink the boat — *that limit* is the real safeguard. The flood→shutoff
-automation is a **convenience** (closes it sooner), so it sits fine in **Basic** with no
-safety/ethics concern — the earlier "should flood-shutoff be free as a safety goodwill" question is
-**moot**. (Implication for `canCloudFloodShutoff` staying a Basic+ feature: OK.)
+automation is a **convenience** (closes it sooner). **Decided: the cloud flood-shutoff fallback stays
+Basic — NOT offered free as a safety goodwill** (the valve already prevents the catastrophe). Also,
+the owner expects the **valve/flood feature to be the LEAST-used** of the product — so don't
+over-invest in it; prioritize monitoring / remote-view / history / alerts, which get used far more.
 
 **Billing decision:** scaffold the **entitlement/gating layer + a manual tier switch now**; move to
 **Stripe when going live** (do NOT build payments this round).
@@ -259,8 +264,10 @@ Tasks:
 - [ ] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
       AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
       server-side (worker/admin) and write `tier='basic'` for the trial window with an expiry; the
-      client matrix needs no change (it reads `tier`). Decide where eligibility is recorded
-      (`users/{uid}.trialsUsed[]` + `vehicles/{vid}.trialEndsAt`?).
+      client matrix needs no change (it reads `tier`). **Decided (2026-06-25): record eligibility at
+      `users/{uid}.trialsUsed[]` (vehicle ids the user has already trialed) + `vehicles/{vid}.trialEndsAt`
+      (expiry).** A trial is allowed only when the vid isn't in the user's `trialsUsed` AND the
+      vehicle has no prior `trialEndsAt`.
 - [ ] **Next:** wire gates into the UI (e.g. LinkTapWidget control buttons honor `canControl`; hide
       SMS-alert config unless `canSmsAlert`) — deferred to do alongside the admin "set tier" switch so
       we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the

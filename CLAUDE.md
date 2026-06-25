@@ -257,7 +257,10 @@ is the primary safeguard.* The flood-sensor→shutoff automation (local app clos
 fallback) merely closes the valve **sooner** than the limit — it's a convenience, not the last line
 of defense. Practical implications: (1) a missed flood-shutoff = a bounded amount of water, not a
 catastrophe; test valve paths for correctness without dramatizing; (2) **never weaken the open-limit**
-— that's the real safety net; (3) gating the cloud flood-shutoff fallback behind Basic is fine.
+— that's the real safety net; (3) gating the cloud flood-shutoff fallback behind Basic is fine (the
+owner explicitly declined making it a free safety goodwill). **Prioritization:** the owner expects
+the **valve/flood feature to be the LEAST-used** part of the product — don't over-invest in it;
+monitoring / remote-view / history / alerts get used far more and deserve the effort.
 
 ## Session handoff — 2026-06-25, product-direction planning + safe groundwork (read open-tasks.md)
 

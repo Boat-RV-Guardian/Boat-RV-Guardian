@@ -134,14 +134,19 @@ async function setFirestoreDoc(env: Env, token: string, path: string, fields: Re
   if (!res.ok) console.warn(`Firestore write failed: ${res.status} ${await res.text()}`);
 }
 
-/** Send an FCM HTTP v1 push to a single registration token. */
-async function sendFcmPush(env: Env, token: string, fcmToken: string, title: string, body: string): Promise<void> {
+/**
+ * Send an FCM HTTP v1 push to a single registration token. Returns whether FCM accepted it (200), so
+ * the caller can report REAL delivery counts — a 403 (missing IAM role) or invalid token no longer
+ * looks like a success.
+ */
+async function sendFcmPush(env: Env, token: string, fcmToken: string, title: string, body: string): Promise<boolean> {
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ message: { token: fcmToken, notification: { title, body } } }),
   });
-  if (!res.ok) console.warn(`FCM send failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) { console.warn(`FCM send failed: ${res.status} ${await res.text()}`); return false; }
+  return true;
 }
 
 /**
@@ -231,15 +236,18 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     ? (shutoff?.ok ? `Flood detected — valve closed automatically.` : `Flood detected: ${event}`)
     : `Sensor alert: ${event}`;
 
-  let sent = 0;
+  // `notified` counts only pushes FCM actually ACCEPTED (200); `pushFailed` counts users who had a
+  // token but whose send failed (e.g. 403 missing IAM role, stale token) — so the webhook response
+  // is a real verification signal, not just "a token existed".
+  let sent = 0; let pushFailed = 0;
   if (!telemetry) {
     for (const uid of uids) {
       const user = await getFirestoreDoc(env, token, `users/${uid}`);
       const fcmToken = strField(user, 'fcmToken');
-      if (fcmToken) { await sendFcmPush(env, token, fcmToken, title, body); sent++; }
+      if (fcmToken) { (await sendFcmPush(env, token, fcmToken, title, body)) ? sent++ : pushFailed++; }
     }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, event, telemetry, shutoff }), {
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, shutoff }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }
