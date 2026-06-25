@@ -328,24 +328,27 @@ pluggable storage; 5-step migration). ⚠️ **Implementation deferred on purpos
 LIVE flood-shutoff path and **auto-deploys on push to `worker/**`** — do the refactor when it can be
 hardware smoke-tested, not unattended.
 
-- [x] **Decided (2026-06-25): monorepo now, extract to its own public repo later** (Task 7 final step).
-- [x] **Increment 1 DONE:** transport-agnostic pure core started — [events.ts](worker/src/events.ts)
-      (classification + param extraction) extracted + unit-tested.
-- [ ] **Increment 2 (needs hardware smoke):** extract `linktap.ts`/`notify.ts`/`storage.ts` +
-      DI core handler; cover the shutoff decision end-to-end with mocked deps.
-- [ ] **Increment 3:** Node/Docker adapter (`adapters/node.ts`, `Dockerfile`, `docker-compose.yml`,
-      env config, self-host README); CI builds the image. **Includes a bundled "really basic" admin
-      page** (`/admin`, password-gated) to set up: local **usernames**, the **API key** (app↔server
-      auth), and **data limits** (retention / delete-old-data / storage cap + manual purge) + basic
-      storage/usage status. This is the SELF-HOST instance admin — distinct from Task 12 (SaaS
-      operator console). Spec in [docs/SELF_HOST.md](docs/SELF_HOST.md).
-- [ ] **Increment 4:** `D1Storage` + `SqliteStorage`, telemetry downsampling/retention; migrate
-      hosted sensorState + history to D1 (per cost analysis). Smoke-test telemetry + flood.
-- [ ] **Increment 5:** extract the server into its own repo —
-      **[Boat-RV-Guardian/brvg-cloud-server](https://github.com/Boat-RV-Guardian/brvg-cloud-server)
-      now exists** (provided by owner 2026-06-25) as the destination for the self-hostable cloud
-      server. Move the shared core + Cloudflare/Node adapters + Dockerfile + self-host admin page there
-      once increments 2–4 stabilize in-repo; point its CI at the new repo.
+**MAJOR UPDATE 2026-06-25:** rather than refactor the LIVE worker, the self-host server was built
+**greenfield** in its own repo — **PR
+[brvg-cloud-server#1](https://github.com/Boat-RV-Guardian/brvg-cloud-server/pull/1)** (awaiting owner
+merge). This delivers most of increments 2/3/5 at once, safely (no live-worker change):
+
+- [x] **Increment 1 DONE:** pure core started in-worker — [events.ts](worker/src/events.ts).
+- [x] **Increment 2 DONE (greenfield):** DI core (`core.ts`) with injected `Storage`/`Notifier`/
+      `LinkTapClient`; `events.ts`/`linktap.ts`/`notify.ts`/`storage.ts` as separate modules.
+      **Shutoff decision covered end-to-end with mocked deps (15 tests)** — the safety regression the
+      backlog wanted, now possible because it's greenfield + injectable.
+- [x] **Increment 3 DONE (greenfield):** Node HTTP adapter (`GET|POST /api/shelly`, `/healthz`),
+      Dockerfile (multi-stage) + docker-compose + `.env.example`, and the basic-auth **`/admin`** page
+      (instance API key, retention, vehicles w/ LinkTap creds, user→FCM tokens). Runtime smoke OK.
+- [x] **Increment 5 DONE:** lives in **brvg-cloud-server** (its own repo).
+- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the existing `Storage` interface
+      (today: `MemoryStorage` + `FileStorage` JSON); telemetry downsampling + **history-retention
+      pruning** (the `retentionDays` setting is stored but not yet enforced — no history store yet).
+- [ ] **Follow-up:** a Cloudflare adapter sharing this core, then unify with / retire the live worker;
+      CI in brvg-cloud-server (tsc + tests + docker build); hardware smoke of the real LinkTap/FCM calls.
+- [ ] **App wiring:** make `ProvisionShellyModal` send `&key=<sh_webhook_key>` to a custom server (the
+      contract this server implements) — see the AP/BLE follow-up note.
 
 ---
 
