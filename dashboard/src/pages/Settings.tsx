@@ -8,7 +8,7 @@ import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { usePendingInvites } from '../hooks/usePendingInvites';
 import {
-  ROLE_OPTIONS, ROLE_LABELS, getMyRole, getMembers, createInvite, acceptInvite, declineInvite,
+  getMyRole, getMembers, createInvite, acceptInvite, declineInvite,
   cancelInvite, removeMember, leaveVehicle, listSentInvites, ensureOwnerAdmin,
   type VehicleRole, type Invite, type Member,
 } from '../utils/sharing';
@@ -19,6 +19,7 @@ import LocalServerPanel from './settings/LocalServerPanel';
 import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
 import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
+import FriendsPanel from './settings/FriendsPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 
@@ -1746,137 +1747,21 @@ export default function Settings({ user }: { user: any }) {
       )}
 
       {activeTab === 'friends' && (
-        !user ? (
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', padding: '40px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem' }}>👥</div>
-            <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Friends & Family Access</h3>
-            <p style={{ color: 'var(--text-secondary)', maxWidth: '400px' }}>Sign in to share vehicle access with trusted friends or family.</p>
-            {!showLogin ? (
-              <button className="btn-primary" onClick={() => setShowLogin(true)}>Log into Boat-RV-Guardian.com</button>
-            ) : (
-              <div style={{ marginTop: '12px', width: '100%', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
-                <Login />
-                <button className="btn-secondary" onClick={() => setShowLogin(false)} style={{ fontSize: '0.85rem', marginTop: '10px' }}>Cancel</button>
-              </div>
-            )}
-          </div>
-        ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-          {shareMsg && (
-            <div style={{ fontSize: '0.85rem', padding: '10px', borderRadius: '8px',
-              color: shareMsg.type === 'success' ? '#10b981' : '#ef4444',
-              background: shareMsg.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)' }}>
-              {shareMsg.text}
-            </div>
-          )}
-
-          {/* Pending invitations addressed to me */}
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Pending Invitations</h3>
-            {pendingInvites.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>No pending invitations. When someone shares a vehicle with you, it appears here to accept.</p>
-            ) : pendingInvites.map(inv => (
-              <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px' }}>
-                <div style={{ fontSize: '0.85rem' }}>
-                  <strong>{inv.vehicleName}</strong> — {ROLE_LABELS[inv.role]}
-                  <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>from {inv.invitedByEmail}</div>
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button className="btn-primary" disabled={friendsBusy} onClick={() => handleAcceptInvite(inv)} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Accept</button>
-                  <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleDeclineInvite(inv)} style={{ padding: '6px 12px', fontSize: '0.8rem' }}>Decline</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Share a vehicle */}
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Share <span style={{ color: 'var(--text-primary)' }}>{activeVehicleName}</span></h3>
-            {!isActiveAdmin ? (
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>
-                {activeCloudVehicle
-                  ? 'Only an admin of the active vehicle can share it.'
-                  : 'The active vehicle isn’t synced to the cloud yet. Sign in and sync it to share.'}
-              </p>
-            ) : (
-              <>
-                <div>
-                  <label className="form-label">Friend's Email</label>
-                  <input className="form-input" type="email" value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="friend@example.com" />
-                </div>
-                <div>
-                  <label className="form-label">Privilege Level</label>
-                  <select className="form-input" value={shareRole} onChange={e => setShareRole(e.target.value as VehicleRole)}>
-                    {ROLE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-                  </select>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '6px 0 0 0' }}>
-                    {ROLE_OPTIONS.find(r => r.value === shareRole)?.desc}
-                  </p>
-                </div>
-                <button className="btn-primary" disabled={friendsBusy || !shareEmail} onClick={handleCreateInvite}>
-                  {friendsBusy ? 'Working…' : 'Create Invite'}
-                </button>
-
-                {lastInvite && (
-                  <div style={{ background: 'rgba(0,242,254,0.06)', border: '1px solid rgba(0,242,254,0.3)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                      Send this to <strong>{lastInvite.inviteeEmail}</strong> (no email is sent automatically):
-                    </div>
-                    {(() => {
-                      const msg = `You've been invited to "${lastInvite.vehicleName}" on Boat & RV Guardian as "${ROLE_LABELS[lastInvite.role]}". To accept: 1) Install Boat & RV Guardian, 2) Sign in with ${lastInvite.inviteeEmail}, 3) open Settings → Friends and accept the pending invitation.`;
-                      return (
-                        <>
-                          <textarea readOnly value={msg} rows={4} className="form-input" style={{ fontSize: '0.8rem', resize: 'vertical' }} />
-                          <button className="btn-secondary" style={{ fontSize: '0.8rem' }}
-                            onClick={() => { try { navigator.clipboard?.writeText(msg); setShareMsg({ text: 'Invitation message copied to clipboard.', type: 'success' }); } catch { /* ignore */ } }}>
-                            📋 Copy invitation message
-                          </button>
-                        </>
-                      );
-                    })()}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* People with access to the ACTIVE vehicle */}
-          {isActiveAdmin && (
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>People With Access</h3>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{activeVehicleName}</div>
-              {activeMembers.map(m => (
-                <div key={m.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                  <span>{m.email} {m.uid === user.uid && <em style={{ color: 'var(--text-muted)' }}>(you)</em>} — {ROLE_LABELS[m.role]}</span>
-                  {m.uid !== user.uid && (
-                    <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleRemoveMember(activeVid, m)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Revoke</button>
-                  )}
-                </div>
-              ))}
-              {(sentInvites[activeVid] || []).map(inv => (
-                <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  <span>{inv.inviteeEmail} — {ROLE_LABELS[inv.role]} <em>(pending)</em></span>
-                  <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleCancelInvite(inv.id)} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Cancel</button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Vehicles shared with me — leave/remove connection */}
-          {sharedWithMe.length > 0 && (
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Shared With Me</h3>
-              {sharedWithMe.map(cv => (
-                <div key={cv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-                  <span><strong>{cv.lt_vessel_name || cv.id}</strong> — {ROLE_LABELS[getMyRole(cv) as VehicleRole]}</span>
-                  <button className="btn-secondary" disabled={friendsBusy} onClick={() => handleLeaveVehicle(cv.id)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Leave</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        )
+        <FriendsPanel
+          user={user}
+          showLogin={showLogin} onShowLogin={setShowLogin}
+          shareMsg={shareMsg} onShareMsg={setShareMsg}
+          pendingInvites={pendingInvites} friendsBusy={friendsBusy}
+          onAcceptInvite={handleAcceptInvite} onDeclineInvite={handleDeclineInvite}
+          activeVehicleName={activeVehicleName} isActiveAdmin={isActiveAdmin}
+          hasActiveCloudVehicle={!!activeCloudVehicle}
+          shareEmail={shareEmail} onShareEmailChange={setShareEmail}
+          shareRole={shareRole} onShareRoleChange={setShareRole}
+          onCreateInvite={handleCreateInvite} lastInvite={lastInvite}
+          activeMembers={activeMembers} activeVid={activeVid} onRemoveMember={handleRemoveMember}
+          sentInvitesForActive={sentInvites[activeVid] || []} onCancelInvite={handleCancelInvite}
+          sharedWithMe={sharedWithMe} onLeaveVehicle={handleLeaveVehicle}
+        />
       )}
 
       {activeTab === 'updates' && (
