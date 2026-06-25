@@ -6,7 +6,7 @@ import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDu
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 
-const APP_VERSION = '1.0.44';
+const APP_VERSION = '1.0.45';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---

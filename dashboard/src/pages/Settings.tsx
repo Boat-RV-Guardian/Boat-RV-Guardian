@@ -18,7 +18,7 @@ import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
 
-const APP_VERSION = '1.0.44';
+const APP_VERSION = '1.0.45';
 
 // Battery voltage presets by chemistry, for 12 V and 24 V systems (24 V ≈ 2× the 12 V figures).
 // Values are marine/RV norms: crit = near-empty alarm, low = recharge warning, normal = resting-full
