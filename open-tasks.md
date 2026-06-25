@@ -136,20 +136,25 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
 **Priority:** Medium — refactor for maintainability; no behavior change. Do this *after*
 Task 2 has at least smoke coverage so the refactor is verifiable.
 
-- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 1927 lines (in progress).** Split
-      into per-section panels (Account, Vehicles, Devices/Batteries, Hardware Connections, etc.). Each
-      section is already a visually distinct block; extract into `pages/settings/` child components
-      (pure presentational, value/onChange props — the `LocalServerPanel` pattern) with a thin
-      `Settings.tsx` shell. Watch the `APP_VERSION` constant — one of the 7 version locations (CLAUDE.md).
+- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 1371 lines (−41%, in progress).**
+      Split into per-section panels. Each section is a visually distinct block; extract into
+      `pages/settings/` child components (pure presentational, value/onChange props — the
+      `LocalServerPanel` pattern) with a thin `Settings.tsx` shell. Watch the `APP_VERSION` constant —
+      one of the 7 version locations (CLAUDE.md).
   - [x] **2026-06-25:** extracted the battery-preset table + lookup rule into a tested pure util
         [utils/batteryPresets.ts](dashboard/src/utils/batteryPresets.ts) (`getBatteryThresholds`,
-        6 tests), then five presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`,
+        6 tests), then **nine** presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`,
         `NotificationsPanel`, `AdvancedDeviceSettingsPanel` (battery + shore thresholds, DRY
-        `VoltageField`), and `FriendsPanel` (the whole Sharing tab). Each increment behavior-preserving,
-        tsc + 89 tests + build green. 2321 → 1927 lines so far.
-  - [ ] **Remaining:** the `general` tab (Vehicles + Account Information + Device Preferences shells),
-        the Devices `config` per-device panel, the Devices `add`/`auth` (LinkTap creds + gateway) tabs,
-        and the trailing modals. Same pattern; mostly mechanical prop-drilling.
+        `VoltageField`), `FriendsPanel` (Sharing tab), `LinkTapAuthPanel` (Devices→LinkTap Auth),
+        `SettingsModals` (the 5 confirm dialogs, DRY `ModalOverlay`), `VehiclesPanel`, and
+        `AccountPanel`. Each increment behavior-preserving; tsc + 89 tests + build green. 2321 → 1371.
+  - [ ] **Remaining: the Devices→`config` per-device panel** (~225 lines) — the per-device list +
+        expanded settings (enable, firmware check/update, Normal Run Profile, Safety Limits, Shelly
+        local-IP test/secure/clear, voltmeter enable, voltage calibration, removal). **Deferred on
+        purpose:** it embeds live device RPC actions (voltmeter-enable *reboots* the device, SetAuth,
+        firmware update) so it warrants its own focused increment, ideally hardware-smoke-tested — not
+        bundled. Same pattern; likely splits into a device list + a per-device card. The small `add`
+        tab (two provisioning buttons) and the Device Preferences Units/Time-Zone shell can go anytime.
 - [ ] **[LinkTapWidget.tsx](dashboard/src/components/LinkTapWidget.tsx) — 1818 lines.** Pull the
       non-UI logic into hooks: polling/state, the Flooding Sentry automation, Tank-Fill / Wash-Down
       / Delayed-Start flows, and the usage-history + event-log persistence. Keep the `displayTz`
