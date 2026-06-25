@@ -14,7 +14,7 @@ import {
 } from '../utils/sharing';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
-import SubscriptionPanel from './settings/SubscriptionPanel';
+import PlanBadge from './settings/PlanBadge';
 
 const APP_VERSION = '1.0.43';
 
@@ -761,12 +761,12 @@ export default function Settings({ user }: { user: any }) {
 
       {activeTab === 'general' && (
         <>
-          {/* Subscription / plan for the active vehicle (read-only; per-vehicle entitlements) */}
-          <SubscriptionPanel />
-
           {/* Vehicles Sub-section (App & System Config) */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
+
+            {/* Per-vehicle plan + upgrade link (full comparison lives on the marketing pricing page) */}
+            <PlanBadge />
             
             <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px' }}>
               <div style={{ flex: 1 }}>

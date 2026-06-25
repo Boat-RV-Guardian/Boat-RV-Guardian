@@ -215,6 +215,13 @@ export function entitlementSummary(e: Entitlements): EntitlementLine[] {
   ];
 }
 
+/**
+ * Web user portal that handles the credit-card transaction / plan management (Stripe later). The app
+ * links non-Premium vehicles here to upgrade; the full plan comparison lives on the marketing site's
+ * pricing page, not in the app. Placeholder host until billing goes live — finalize with Task 11.
+ */
+export const UPGRADE_PORTAL_URL = 'https://app.boatrvguardian.com/account';
+
 /** Human-facing labels + prices for the pricing UI (Task 6 pricing-page rebuild). */
 export const TIER_LABELS: Record<Tier, string> = {
   free: 'Free',
