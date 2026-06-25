@@ -187,12 +187,15 @@ vehicle's cloud credentials could still call the device API directly.
 the **default experience is the hosted cloud (paid tiers)**; the local/self-hosted server is the
 open-source opt-in. So the local server toggle should ship **off** for new installs.
 
-- [ ] Find the local-server enable flag/default (likely a `localStorage` key + a Settings toggle;
-      candidates: `LOCAL_API_SETUP.md`, Settings → Hardware Connections, `utils/*`), and flip the
-      **default to off** without disabling it for users who already turned it on (migration-safe:
-      only unset installs default off).
-- [ ] Make sure the off-by-default path still lets self-hosters turn it on cleanly (document in
-      `LOCAL_API_SETUP.md`).
+- [x] **Done (2026-06-25).** The flag is `lt_local_server` (the on-device Shelly webhook listener).
+      Flipped its default read from `!== 'false'` (on) to `=== 'true'` (off) in
+      [Settings.tsx](dashboard/src/pages/Settings.tsx) and
+      [useSensorBridge.ts](dashboard/src/hooks/useSensorBridge.ts). Migration-safe: a one-time check
+      in [main.tsx](dashboard/src/main.tsx) sets it to `'true'` for existing installs (any prior
+      `lt_*` config) so they aren't silently disabled; new installs get OFF.
+- [x] **Done.** Documented the opt-in default in [LOCAL_API_SETUP.md](LOCAL_API_SETUP.md).
+      (`lt_is_local_polling` / `lt_is_cloud_polling` for LinkTap are separate and still auto-enable
+      from configured creds/IP — untouched.)
 
 ---
 
@@ -278,17 +281,21 @@ LinkTap/Shelly relay, entitlement checks) with two thin adapters — Cloudflare 
 ## 8. Data-volume & cost analysis (backend choice)
 
 **Priority:** High — informs Tasks 6 & 7. Added 2026-06-25.
+**DONE 2026-06-25 → [docs/COST_ANALYSIS.md](docs/COST_ANALYSIS.md)** (pricing verified against vendor
+pages). **Recommendation: Cloudflare-native (Workers + D1)** for hosted paid-tier data; keep Firebase
+Auth + FCM. One $5/mo Workers plan ≈ 100+ vehicles vs Firestore out-of-pocket past ~3–7. **Mandatory
+design rule: downsample telemetry** (raw recent window, hourly aggregates long-term).
 
-- [ ] Model ingest volume: per device, webhook frequency × bytes. Known rates: voltmeter telemetry
-      `voltmeter.measurement`/`.change` ~every 60s (per the remote-telemetry path); flood = rare
-      event-driven; LinkTap usage buckets hourly. Estimate per-vehicle/day and at N vehicles.
-- [ ] Estimate storage growth for history retention windows (1wk / 1mo / 1yr / 3yr) per tier and the
-      Firestore read/write/storage cost at each scale.
-- [ ] Compare hosted-backend options for the paid tiers: **stay Firestore** vs **Cloudflare-native**
-      (Workers + D1/KV/R2 — keeps everything in one vendor, likely cheaper at this scale, and pairs
-      with the self-host Docker story). Recommend one with numbers.
-- [ ] Free-tier ceilings: confirm Cloudflare Workers free/paid limits and Firestore free quota
-      against the projected volume; flag where a paid plan kicks in.
+- [x] Model ingest volume (4 devices/vehicle, 60s telemetry = ~2,900 webhooks/day/vehicle; that
+      telemetry is the entire cost driver).
+- [x] Estimate storage growth per retention window — raw 60s = ~84 MB/yr/vehicle (trap);
+      downsampled hourly = ~1.4 MB/yr/vehicle (non-issue).
+- [x] Compare Firestore vs Cloudflare D1/KV/R2 with numbers → D1 recommended (SQLite also fits the
+      Docker self-host story).
+- [x] Free-tier ceilings confirmed: Firestore Spark ~3–7 vehicles; Cloudflare free ~17–34/day;
+      Cloudflare $5/mo ~100 vehicles.
+- [ ] **Follow-up to act on:** implement telemetry downsampling + vehicle-doc caching + write
+      coalescing in the worker (cost levers §5) when building the history feature (Task 6).
 
 ---
 
