@@ -272,17 +272,21 @@ open-source story is real. Cloudflare Workers don't run in Docker directly; a se
 typically a Node server (or `workerd`). Likely outcome: a **shared core** (event classification,
 LinkTap/Shelly relay, entitlement checks) with two thin adapters — Cloudflare Worker + Node/Docker.
 
-- [ ] Decide repo strategy: **separate public repo** vs keep in monorepo under `worker/` + extract
-      later (see open questions).
-- [ ] Extract a transport-agnostic core (`events.ts` etc. — overlaps Task 2 worker test gate) so the
-      same logic runs on Workers and Node.
-- [ ] Node/Docker adapter: `Dockerfile`, `docker-compose.yml` (server + optional local DB), env-var
-      config, README for self-hosters.
-- [ ] **Storage question for self-host:** Firestore requires a Google project + service-account key
-      (works in Docker but ties self-hosters to Firebase). Evaluate a pluggable storage interface so
-      self-host can use SQLite/Postgres while hosted uses Firestore (or migrate hosted off Firestore
-      — see Task 8).
-- [ ] CI: build/publish the Docker image; keep the existing `worker/**` auto-deploy for hosted.
+**Design written 2026-06-25 → [docs/SELF_HOST.md](docs/SELF_HOST.md)** (shared core + thin adapters +
+pluggable storage; 5-step migration). ⚠️ **Implementation deferred on purpose:** the worker is the
+LIVE flood-shutoff path and **auto-deploys on push to `worker/**`** — do the refactor when it can be
+hardware smoke-tested, not unattended.
+
+- [x] **Decided (2026-06-25): monorepo now, extract to its own public repo later** (Task 7 final step).
+- [x] **Increment 1 DONE:** transport-agnostic pure core started — [events.ts](worker/src/events.ts)
+      (classification + param extraction) extracted + unit-tested.
+- [ ] **Increment 2 (needs hardware smoke):** extract `linktap.ts`/`notify.ts`/`storage.ts` +
+      DI core handler; cover the shutoff decision end-to-end with mocked deps.
+- [ ] **Increment 3:** Node/Docker adapter (`adapters/node.ts`, `Dockerfile`, `docker-compose.yml`,
+      env config, self-host README); CI builds the image.
+- [ ] **Increment 4:** `D1Storage` + `SqliteStorage`, telemetry downsampling/retention; migrate
+      hosted sensorState + history to D1 (per cost analysis). Smoke-test telemetry + flood.
+- [ ] **Increment 5:** extract the server into its own public repo.
 
 ---
 
