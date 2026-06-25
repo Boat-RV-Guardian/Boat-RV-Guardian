@@ -186,7 +186,12 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
   // --- Display Computed Values ---
   const displaySpeed = unitSystem === 'imperial' ? speed * 0.264172 : speed;
-  const displayVolume = unitSystem === 'imperial' ? Math.max(0, volume - volumeOffset) * 0.264172 : Math.max(0, volume - volumeOffset);
+  // "Volume Consumed" is the CURRENT session's usage, so show 0 when the valve is idle — mirroring how
+  // speed is 0 when not watering (line ~596). The device's `vol` field returns a large/garbage value
+  // when closed, which previously rendered as the raw total (e.g. ~95M gallons on a closed valve).
+  // (volumeOffset is retained for the existing tare hook but is currently always 0.)
+  const sessionVolume = isWatering ? Math.max(0, volume - volumeOffset) : 0;
+  const displayVolume = unitSystem === 'imperial' ? sessionVolume * 0.264172 : sessionVolume;
   const displayRemain = Math.max(0, remainDuration + durationOffset);
   const speedUnit = unitSystem === 'imperial' ? 'Gal/min' : 'L/min';
   const volUnit = unitSystem === 'imperial' ? 'Gallons' : 'Liters';
@@ -629,7 +634,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         }
 
         const currentVolume = Number(data.volume ?? data.vol ?? 0);
-        
+
         // Software-enforced volume cutoff
         // LinkTap hardware often ignores volume limits passed to cmd: 6, so we must enforce it here!
         if (newIsWatering && targetVolume > 0 && currentVolume > 0) {
