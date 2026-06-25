@@ -268,9 +268,13 @@ Tasks:
       `users/{uid}.trialsUsed[]` (vehicle ids the user has already trialed) + `vehicles/{vid}.trialEndsAt`
       (expiry).** A trial is allowed only when the vid isn't in the user's `trialsUsed` AND the
       vehicle has no prior `trialEndsAt`.
-- [ ] **Next:** wire gates into the UI (e.g. LinkTapWidget control buttons honor `canControl`; hide
-      SMS-alert config unless `canSmsAlert`) — deferred to do alongside the admin "set tier" switch so
-      we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the
+- [x] **Plan panel (2026-06-25):** [pages/settings/SubscriptionPanel.tsx](dashboard/src/pages/settings/SubscriptionPanel.tsx)
+      — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
+      tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
+      the Task 3 panel-split pattern. Browser-verified (renders, reacts to `tier_updated`, no errors).
+- [ ] **Next:** wire functional gates (e.g. LinkTapWidget honors `canRemoteControl` off-LAN; hide
+      SMS-alert config unless `canSmsAlert`) — deferred to land alongside the admin "set tier" switch
+      so we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the
       admin override + Stripe exist.
 - [ ] Enforce server-side in the worker too (history retention pruning, action/trigger handling,
       SMS send) — client gating is advisory only (cf. Task 4 monitor-role lesson).
