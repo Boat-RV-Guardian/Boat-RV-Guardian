@@ -177,6 +177,44 @@ export function automationAtLeast(level: AutomationLevel, min: AutomationLevel):
   return AUTOMATION_ORDER.indexOf(level) >= AUTOMATION_ORDER.indexOf(min);
 }
 
+/** One human-readable entitlement row for display (Settings plan panel / future pricing page). */
+export interface EntitlementLine {
+  label: string;
+  value: string;
+  /** Whether the feature is included at this tier (for check/✕ styling). */
+  on: boolean;
+}
+
+/** Format `historyRetentionDays` for display. */
+export function formatRetention(days: number): string {
+  if (days <= 0) return 'On-device only';
+  if (days >= 365) {
+    const yrs = Math.round(days / 365);
+    return `${yrs} year${yrs > 1 ? 's' : ''}`;
+  }
+  if (days >= 30) {
+    const mos = Math.round(days / 30);
+    return `${mos} month${mos > 1 ? 's' : ''}`;
+  }
+  return `${days} days`;
+}
+
+/** A readable feature list for an entitlement set — drives the Settings plan panel (pure → testable). */
+export function entitlementSummary(e: Entitlements): EntitlementLine[] {
+  return [
+    { label: 'Remote monitoring', value: e.canRemoteView ? (e.remoteViewManualOnly ? 'Manual refresh' : 'Automatic') : 'Local only', on: e.canRemoteView },
+    { label: 'Remote control', value: e.canRemoteControl ? 'Included' : 'Local only', on: e.canRemoteControl },
+    { label: 'Away push alerts', value: e.canAwayPush ? 'Included' : '—', on: e.canAwayPush },
+    { label: 'Cloud flood-shutoff', value: e.canCloudFloodShutoff ? 'Included' : '—', on: e.canCloudFloodShutoff },
+    { label: 'Cloud automation', value: e.automationLevel === 'none' ? '—' : e.automationLevel === 'essential' ? 'Essential' : 'Advanced', on: e.automationLevel !== 'none' },
+    { label: 'History', value: formatRetention(e.historyRetentionDays), on: e.historyRetentionDays > 0 },
+    { label: 'SMS / voice alerts', value: e.canSmsAlert ? 'Included' : '—', on: e.canSmsAlert },
+    { label: 'Integrations', value: e.canIntegrations ? 'Included' : '—', on: e.canIntegrations },
+    { label: 'Data export', value: e.canExport ? 'Included' : '—', on: e.canExport },
+    { label: 'Priority support', value: e.prioritySupport ? 'Included' : '—', on: e.prioritySupport },
+  ];
+}
+
 /** Human-facing labels + prices for the pricing UI (Task 6 pricing-page rebuild). */
 export const TIER_LABELS: Record<Tier, string> = {
   free: 'Free',

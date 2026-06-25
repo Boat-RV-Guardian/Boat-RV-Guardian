@@ -9,6 +9,8 @@ import {
   GRANDFATHERED_TIER,
   TIER_PRICING,
   BASIC_TRIAL_DAYS,
+  formatRetention,
+  entitlementSummary,
 } from './entitlements';
 
 describe('getVehicleTier', () => {
@@ -125,5 +127,34 @@ describe('pricing & trial', () => {
   });
   it('offers a one-month Basic trial', () => {
     expect(BASIC_TRIAL_DAYS).toBe(30);
+  });
+});
+
+describe('formatRetention', () => {
+  it('formats none / days / months / years', () => {
+    expect(formatRetention(0)).toBe('On-device only');
+    expect(formatRetention(7)).toBe('7 days');
+    expect(formatRetention(30)).toBe('1 month');
+    expect(formatRetention(1095)).toBe('3 years');
+  });
+});
+
+describe('entitlementSummary', () => {
+  it('free: local-only control, manual remote view, no history', () => {
+    const rows = entitlementSummary(TIER_FEATURES.free);
+    const byLabel = Object.fromEntries(rows.map(r => [r.label, r]));
+    expect(byLabel['Remote monitoring']).toMatchObject({ value: 'Manual refresh', on: true });
+    expect(byLabel['Remote control']).toMatchObject({ on: false });
+    expect(byLabel['History']).toMatchObject({ value: 'On-device only', on: false });
+  });
+  it('premium: advanced automation + 3 years + sms', () => {
+    const byLabel = Object.fromEntries(entitlementSummary(TIER_FEATURES.premium).map(r => [r.label, r]));
+    expect(byLabel['Cloud automation']).toMatchObject({ value: 'Advanced', on: true });
+    expect(byLabel['History']).toMatchObject({ value: '3 years', on: true });
+    expect(byLabel['SMS / voice alerts']).toMatchObject({ on: true });
+  });
+  it('returns the same row set for every tier (stable table shape)', () => {
+    const labels = (t: typeof TIER_FEATURES.free) => entitlementSummary(t).map(r => r.label);
+    expect(labels(TIER_FEATURES.free)).toEqual(labels(TIER_FEATURES.premium));
   });
 });
