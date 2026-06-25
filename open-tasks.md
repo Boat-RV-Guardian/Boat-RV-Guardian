@@ -342,9 +342,11 @@ merge). This delivers most of increments 2/3/5 at once, safely (no live-worker c
       Dockerfile (multi-stage) + docker-compose + `.env.example`, and the basic-auth **`/admin`** page
       (instance API key, retention, vehicles w/ LinkTap creds, user→FCM tokens). Runtime smoke OK.
 - [x] **Increment 5 DONE:** lives in **brvg-cloud-server** (its own repo).
-- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the existing `Storage` interface
-      (today: `MemoryStorage` + `FileStorage` JSON); telemetry downsampling + **history-retention
-      pruning** (the `retentionDays` setting is stored but not yet enforced — no history store yet).
+- [x] **History + retention DONE (2026-06-25, cloud-server PR #2):** tier-based telemetry history
+      (free 0 / basic 30d / premium ~3y), retention pruning + 5000-sample cap, admin `retentionDays`
+      as a self-host cap, and `GET /api/history`. Memory/File storage; 21 tests.
+- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the `Storage` interface; **hourly
+      downsampling** for long-term history (raw recent window → aggregates) per the cost analysis.
 - [ ] **Follow-up:** a Cloudflare adapter sharing this core, then unify with / retire the live worker;
       CI in brvg-cloud-server (tsc + tests + docker build); hardware smoke of the real LinkTap/FCM calls.
 - [x] **App wiring DONE (2026-06-25):** `registerShellyWebhooks` appends `&key=<sh_webhook_key>` for
