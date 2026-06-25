@@ -216,11 +216,11 @@ export function entitlementSummary(e: Entitlements): EntitlementLine[] {
 }
 
 /**
- * Web user portal that handles the credit-card transaction / plan management (Stripe later). The app
- * links non-Premium vehicles here to upgrade; the full plan comparison lives on the marketing site's
- * pricing page, not in the app. Placeholder host until billing goes live — finalize with Task 11.
+ * Web subscription portal — the WEB build of the app, deep-linked to the Account view. Signup/billing
+ * belong in a real browser (password managers/autofill don't work well in the native WKWebView), so
+ * the native app opens this in the system browser rather than embedding it. Finalize host with Task 11.
  */
-export const UPGRADE_PORTAL_URL = 'https://app.boatrvguardian.com/account';
+export const UPGRADE_PORTAL_URL = 'https://app.boatrvguardian.com/?view=account';
 
 /** Human-facing labels + prices for the pricing UI (Task 6 pricing-page rebuild). */
 export const TIER_LABELS: Record<Tier, string> = {

@@ -17,7 +17,17 @@ type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_powe
 export default function App() {
   usePushNotifications();
   useSensorBridge(); // app-level: handle sleepy-sensor local webhooks regardless of active page
-  const [currentView, setCurrentView] = useState<AppView>('home');
+  // Deep link (web): app.boatrvguardian.com/?view=account lands on the subscription portal. The
+  // native app's Plan "Upgrade/Manage" button opens that URL in the system browser.
+  const [currentView, setCurrentView] = useState<AppView>(() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get('view');
+      if (v && ['home', 'fresh_water', 'high_water', 'batteries', 'shore_power', 'settings', 'account'].includes(v)) {
+        return v as AppView;
+      }
+    } catch { /* no-op */ }
+    return 'home';
+  });
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   // Onboarding gate: with no vehicle the app is locked until the user signs in (cloud vehicles

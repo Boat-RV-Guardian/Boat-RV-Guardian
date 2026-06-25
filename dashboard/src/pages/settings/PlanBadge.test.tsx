@@ -10,10 +10,10 @@ beforeEach(() => {
 });
 
 describe('PlanBadge', () => {
-  it('shows the tier and NO upgrade button for Premium (grandfathered/unset)', () => {
+  it('shows the tier and a "Manage plan" button for Premium (grandfathered/unset)', () => {
     render(<PlanBadge />);
     expect(screen.getByText('Premium')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /upgrade/i })).toBeNull();
+    expect(screen.getByRole('button', { name: /manage plan/i })).toBeTruthy();
   });
 
   it('shows an Upgrade button for non-Premium tiers', () => {

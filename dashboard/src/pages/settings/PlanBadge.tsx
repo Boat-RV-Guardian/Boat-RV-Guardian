@@ -1,9 +1,16 @@
+import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useEntitlements } from '../../hooks/useEntitlements';
-import { TIER_LABELS } from '../../utils/entitlements';
+import { TIER_LABELS, UPGRADE_PORTAL_URL } from '../../utils/entitlements';
+import { isTauriEnv } from '../../utils/linktapHttp';
 
-// Compact per-vehicle plan indicator shown inside the Vehicles section: "Plan: <tier>" + an Upgrade
-// button (when not Premium) that opens the in-app Account/plan view. The full feature comparison
-// lives on the marketing site's pricing page, NOT in the app (per owner, 2026-06-25).
+// Compact per-vehicle plan indicator (Settings → Vehicles): "Plan: <tier>" + a Manage/Upgrade button.
+// Subscription/billing is a WEB experience (autofill works in a real browser, not the native
+// WKWebView), so on the native app the button opens the web portal in the system browser; on the web
+// build it just routes to the in-app Account view (already a browser).
+function openPortal() {
+  if (isTauriEnv()) shellOpen(UPGRADE_PORTAL_URL).catch(() => window.open(UPGRADE_PORTAL_URL, '_blank'));
+  else window.dispatchEvent(new CustomEvent('navigate_view', { detail: 'account' }));
+}
 
 export default function PlanBadge() {
   const ent = useEntitlements();
@@ -13,12 +20,9 @@ export default function PlanBadge() {
       <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
         Plan: <strong style={{ color: '#fff' }}>{TIER_LABELS[ent.tier]}</strong>
       </span>
-      {!isPremium && (
-        <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-          onClick={() => window.dispatchEvent(new CustomEvent('navigate_view', { detail: 'account' }))}>
-          Upgrade →
-        </button>
-      )}
+      <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }} onClick={openPortal}>
+        {isPremium ? 'Manage plan →' : 'Upgrade →'}
+      </button>
     </div>
   );
 }
