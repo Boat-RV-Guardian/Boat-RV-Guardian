@@ -41,6 +41,15 @@ export default function SyncModal() {
       localStorage.setItem('lt_my_role', role);
       window.dispatchEvent(new Event('role_updated'));
     }
+    // Stash the active vehicle's subscription tier the same way (per-vehicle entitlements, Task 6).
+    // Unset/legacy vehicles have no `tier` field → useEntitlements falls back to the grandfathered
+    // tier, so this changes no behavior until real tiers are assigned. We store the raw value (may
+    // be empty) and let getVehicleTier validate/fallback on read.
+    const tier = (activeVehicleConfig && (activeVehicleConfig as any).tier) || '';
+    if ((localStorage.getItem('lt_vehicle_tier') || '') !== tier) {
+      localStorage.setItem('lt_vehicle_tier', tier);
+      window.dispatchEvent(new Event('tier_updated'));
+    }
   }, [activeVehicleConfig, configVid, activeVid]);
 
   // Cloud-vehicle reconciliation — runs app-wide (SyncModal is always mounted), so a login

@@ -223,10 +223,18 @@ Tasks:
       (see Task 12).
 - [ ] Wire **Stripe** when going live (deferred; entitlement layer must be provider-agnostic so this
       is a drop-in).
-- [ ] Build a **tier/entitlement layer** independent of the payment provider: an `entitlements`
-      doc/claim per user (or per vehicle?), a `useEntitlements()` hook, and feature gates
-      (`canUseCloudActions`, `historyRetentionDays`, `canSmsAlert`, …). Gate features by entitlement,
-      not by hardcoded UI checks.
+- [x] **Scaffolded 2026-06-25 (provider-agnostic, additive, tested):**
+      [utils/entitlements.ts](dashboard/src/utils/entitlements.ts) — `Tier` model, `TIER_FEATURES`
+      matrix (free=monitor+sync+share, basic=+control+30d, premium=+1095d+sms+support),
+      `getVehicleTier`/`getEntitlements`/`tierAtLeast`, labels + pricing.
+      [hooks/useEntitlements.ts](dashboard/src/hooks/useEntitlements.ts) returns the active vehicle's
+      entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by SyncModal +
+      `tier_updated` event). 14 unit tests. **Legacy/unset vehicles grandfather to `premium` so this
+      changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
+- [ ] **Next:** wire gates into the UI (e.g. LinkTapWidget control buttons honor `canControl`; hide
+      SMS-alert config unless `canSmsAlert`) — deferred to do alongside the admin "set tier" switch so
+      we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the
+      admin override + Stripe exist.
 - [ ] Enforce server-side in the worker too (history retention pruning, action/trigger handling,
       SMS send) — client gating is advisory only (cf. Task 4 monitor-role lesson).
 - [ ] History retention enforcement: prune monthly rollups beyond the tier window (worker cron or
