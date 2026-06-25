@@ -1,5 +1,8 @@
 import { SignJWT, importPKCS8 } from 'jose';
-import { isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice } from './events';
+import {
+  isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
+  telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
+} from './events';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -202,11 +205,25 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
   for (const [k, val] of Object.entries(extractSensorStateExtras(url.searchParams))) {
     extra[k] = { stringValue: val };
   }
-  await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
-    event: { stringValue: event },
-    at: { integerValue: String(now) },
-    ...extra,
-  });
+
+  // Tier-aware telemetry throttle (cost lever + per-tier remote-view freshness, COST_ANALYSIS §5):
+  // for periodic telemetry, persist the cached state only every `telemetryResolutionSec`. NON-telemetry
+  // events (incl. every flood/alarm) ALWAYS persist — the safety path is never throttled. Premium /
+  // legacy vehicles use the 60s cadence, so for them we skip the extra read and behave as before.
+  let persisted = true;
+  const resolutionSec = telemetryResolutionSecForTier(strField(vehicle, 'tier'));
+  if (telemetry && resolutionSec > TELEMETRY_RESOLUTION_SEC.premium) {
+    const prev = await getFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`);
+    const lastAt = Number(prev?.at?.integerValue ?? prev?.at?.doubleValue);
+    persisted = shouldPersistTelemetry(now, Number.isFinite(lastAt) ? lastAt : null, resolutionSec);
+  }
+  if (persisted) {
+    await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
+      event: { stringValue: event },
+      at: { integerValue: String(now) },
+      ...extra,
+    });
+  }
 
   // SAFETY: on a flood/leak event, close every configured LinkTap valve via the cloud API. The app
   // (if open) also closes locally — redundant closes are harmless, and this guarantees shutoff when
@@ -247,7 +264,7 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
       if (fcmToken) { (await sendFcmPush(env, token, fcmToken, title, body)) ? sent++ : pushFailed++; }
     }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, shutoff }), {
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, persisted, shutoff }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }

@@ -5,6 +5,8 @@ import {
   isAlarmCleared,
   extractSensorStateExtras,
   sanitizeDevice,
+  telemetryResolutionSecForTier,
+  shouldPersistTelemetry,
 } from './events';
 
 describe('isFloodShutoff', () => {
@@ -71,6 +73,40 @@ describe('extractSensorStateExtras', () => {
   it('returns an empty object when only routing params are present', () => {
     const params = new URLSearchParams('vid=v_1&event=flood.alarm&device=abc');
     expect(extractSensorStateExtras(params)).toEqual({});
+  });
+});
+
+describe('telemetryResolutionSecForTier', () => {
+  it('maps known tiers', () => {
+    expect(telemetryResolutionSecForTier('free')).toBe(1800);
+    expect(telemetryResolutionSecForTier('basic')).toBe(300);
+    expect(telemetryResolutionSecForTier('premium')).toBe(60);
+  });
+  it('defaults unknown/legacy to premium cadence (unchanged behavior for grandfathered)', () => {
+    expect(telemetryResolutionSecForTier(undefined)).toBe(60);
+    expect(telemetryResolutionSecForTier(null)).toBe(60);
+    expect(telemetryResolutionSecForTier('gold')).toBe(60);
+  });
+});
+
+describe('shouldPersistTelemetry', () => {
+  it('persists when there is no prior write', () => {
+    expect(shouldPersistTelemetry(1_000_000, null, 300)).toBe(true);
+    expect(shouldPersistTelemetry(1_000_000, undefined, 300)).toBe(true);
+  });
+  it('persists once the resolution window has elapsed', () => {
+    const last = 1_000_000;
+    expect(shouldPersistTelemetry(last + 300_000, last, 300)).toBe(true); // exactly 300s
+    expect(shouldPersistTelemetry(last + 400_000, last, 300)).toBe(true);
+  });
+  it('skips within the resolution window', () => {
+    const last = 1_000_000;
+    expect(shouldPersistTelemetry(last + 60_000, last, 300)).toBe(false); // 60s < 300s
+    expect(shouldPersistTelemetry(last + 299_000, last, 300)).toBe(false);
+  });
+  it('persists defensively on non-finite timestamps', () => {
+    expect(shouldPersistTelemetry(NaN, 1_000_000, 300)).toBe(true);
+    expect(shouldPersistTelemetry(1_000_000, Infinity, 300)).toBe(true);
   });
 });
 

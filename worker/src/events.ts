@@ -66,3 +66,36 @@ export function extractSensorStateExtras(searchParams: Iterable<[string, string]
 export function sanitizeDevice(device: string | null | undefined): string {
   return (device || 'unknown').replace(/[\/#?]/g, '_');
 }
+
+// — Tier-aware telemetry persistence throttle (open-tasks Task 6 / cost lever, COST_ANALYSIS §5) —
+//
+// Telemetry (voltmeter etc.) pushes ~every 60s and is the dominant write cost. Lower tiers persist
+// LESS often: the worker keeps the freshest event but only WRITES the cached sensorState every
+// `telemetryResolutionSec`. This both controls cost AND is the per-tier "remote view freshness"
+// feature. ONLY telemetry is throttled — flood/alarm events and the shutoff path are never affected.
+//
+// NOTE: these resolution numbers mirror TIER_FEATURES in dashboard/src/utils/entitlements.ts. They're
+// duplicated here only until the shared self-host core lands (Task 7); keep them in sync.
+export const TELEMETRY_RESOLUTION_SEC: Record<'free' | 'basic' | 'premium', number> = {
+  free: 1800, // ~30 min
+  basic: 300, // ~5 min
+  premium: 60, // ~1 min
+};
+
+/**
+ * Persistence cadence for a vehicle's tier. Unknown/legacy tiers map to the premium cadence (60s) so
+ * the worker's behavior is unchanged for grandfathered vehicles (which persist on every push today).
+ */
+export function telemetryResolutionSecForTier(tier: string | null | undefined): number {
+  if (tier === 'free' || tier === 'basic' || tier === 'premium') return TELEMETRY_RESOLUTION_SEC[tier];
+  return TELEMETRY_RESOLUTION_SEC.premium;
+}
+
+/**
+ * Should this telemetry sample be persisted now, given when we last persisted? True if there's no
+ * prior write, the timestamps are unusable, or at least `resolutionSec` has elapsed. Pure.
+ */
+export function shouldPersistTelemetry(nowMs: number, lastAtMs: number | null | undefined, resolutionSec: number): boolean {
+  if (lastAtMs == null || !Number.isFinite(lastAtMs) || !Number.isFinite(nowMs)) return true;
+  return nowMs - lastAtMs >= resolutionSec * 1000;
+}
