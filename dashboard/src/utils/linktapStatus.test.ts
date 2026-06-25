@@ -29,11 +29,10 @@ describe('normalizeCloudStatus', () => {
     expect(out.target_volume).toBe(50);
     expect(out.target_duration).toBe(30);
     expect(out.is_broken).toBe(false);
-    // With `total` absent, remain falls to the `totalDuration*60 - onDuration` branch.
-    // NOTE: that branch subtracts onDuration as raw seconds (1800 - 10 = 1790), a unit
-    // inconsistency carried over verbatim from the original poll code (onDuration is minutes).
-    // Captured here to lock current behavior; see open-tasks.md for the cleanup follow-up.
-    expect(out.remain_duration).toBe(1790);
+    // With `total` absent, remain falls to the totalDuration/onDuration branch. Both are minutes, so
+    // remaining = (30 - 10) * 60 = 1200s. (Previously this subtracted onDuration as raw seconds →
+    // 1790; fixed 2026-06-25.)
+    expect(out.remain_duration).toBe(1200);
   });
 
   it('marks the device offline and defaults battery/signal when uncached', () => {
