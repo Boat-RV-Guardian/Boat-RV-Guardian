@@ -650,9 +650,31 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
   };
 
-  const handleSwitchVehicle = (vid: string) => {
+  // Switching vehicles while the on-device local server is running would leave it serving the wrong
+  // vehicle, so we confirm first and stop it on the way out (it's device-global, off by default).
+  const [pendingSwitchVid, setPendingSwitchVid] = useState<string | null>(null);
+
+  const doSwitchVehicle = (vid: string) => {
     switchVehicle(vid);
     // State will naturally update via the settings_updated event listener
+  };
+
+  const handleSwitchVehicle = (vid: string) => {
+    if (localStorage.getItem('lt_local_server') === 'true') {
+      setPendingSwitchVid(vid); // ask before stopping the running local server
+      return;
+    }
+    doSwitchVehicle(vid);
+  };
+
+  const confirmSwitchAndStopLocalServer = () => {
+    const vid = pendingSwitchVid;
+    // Stop the local server before switching: persist OFF + notify useSensorBridge to tear it down.
+    localStorage.setItem('lt_local_server', 'false');
+    setLocalServerEnabled(false);
+    window.dispatchEvent(new Event('settings_updated'));
+    setPendingSwitchVid(null);
+    if (vid) doSwitchVehicle(vid);
   };
 
   const handleAddNewVehicle = () => {
@@ -2198,6 +2220,32 @@ export default function Settings({ user }: { user: any }) {
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button className="btn-secondary" onClick={() => setShowNewVehicleModal(false)} style={{ flex: 1 }}>Cancel</button>
               <button className="btn-primary" onClick={confirmAddNewVehicle} style={{ flex: 1 }} disabled={!newVehicleNameInput.trim()}>Create</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Switching vehicles while the local server runs — confirm it will be stopped */}
+      {pendingSwitchVid && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          backdropFilter: 'blur(5px)'
+        }}>
+          <div className="glass-card" style={{ maxWidth: '420px', width: '90%' }}>
+            <h3 style={{ marginTop: 0, color: '#f59e0b' }}>Stop the local server?</h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+              The on-device local sensor server is running for this vehicle. Switching vehicles will
+              <strong> stop it</strong> — sleepy Shelly sensors won't be able to push events to this
+              device until you turn it back on. Continue?
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button className="btn-secondary" onClick={() => setPendingSwitchVid(null)} style={{ flex: 1 }}>Cancel</button>
+              <button className="btn-primary" onClick={confirmSwitchAndStopLocalServer}
+                style={{ flex: 1, background: '#f59e0b', borderColor: '#f59e0b' }}>
+                Stop &amp; switch
+              </button>
             </div>
           </div>
         </div>
