@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Sensors from './pages/Sensors';
 import Settings from './pages/Settings';
+import Account from './pages/Account';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useSensorBridge } from './hooks/useSensorBridge';
 import { auth, onAuthStateChanged } from './services/firebase';
@@ -11,7 +12,7 @@ import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
 import { migrateAllVehiclesThresholds } from './utils/configSync';
 
-type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'settings';
+type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'settings' | 'account';
 
 export default function App() {
   usePushNotifications();
@@ -32,6 +33,13 @@ export default function App() {
     window.addEventListener('settings_updated', sync);
     window.addEventListener('role_updated', sync);
     return () => { window.removeEventListener('settings_updated', sync); window.removeEventListener('role_updated', sync); };
+  }, []);
+
+  // In-app navigation requests (e.g. the Plan badge's "Upgrade" button → Account view).
+  useEffect(() => {
+    const go = (e: Event) => { const v = (e as CustomEvent).detail; if (typeof v === 'string') setCurrentView(v as AppView); };
+    window.addEventListener('navigate_view', go);
+    return () => window.removeEventListener('navigate_view', go);
   }, []);
 
   useEffect(() => {
@@ -153,6 +161,7 @@ export default function App() {
         {currentView === 'batteries' && <Sensors category="batteries" />}
         {currentView === 'shore_power' && <Sensors category="shore_power" />}
         {currentView === 'settings' && <Settings user={user} />}
+        {currentView === 'account' && <Account />}
       </div>
     </div>
   );
