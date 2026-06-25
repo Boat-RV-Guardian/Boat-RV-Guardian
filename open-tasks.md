@@ -203,15 +203,29 @@ open-source opt-in. So the local server toggle should ship **off** for new insta
 
 **Priority:** High (new product direction). Added 2026-06-25.
 **Model:** open-source **self-hosted** (local server / self-run workers) stays free forever; the
-**hosted cloud** is the paid convenience layer. **Decisions (2026-06-25):**
+**hosted cloud is the paid product**. **The matrix is encoded in
+[utils/entitlements.ts](dashboard/src/utils/entitlements.ts).** Refined decisions (2026-06-25):
 
-- **Free** — **monitor vehicles (view only, NOT control)** + **cloud settings sync/backup** +
-  **vehicle sharing**. Rationale: a wife/friend/mechanic must be able to monitor the boat, and that
-  requires the configs/devices to sync. Maps onto the existing Friends **`monitor`** role.
-- **Basic — $3/mo or $12/yr** — adds **control** (hosted Cloudflare workers handle
-  actions/triggers/timers); history retention **1 week–1 month**.
-- **Premium — $5/mo or $30/yr** — history retention **1–3 years**; **SMS/voice (call) alerts** on
-  specific events; **premium support**; plus future premium-only extras.
+**Key reframe:** separate remote **view** (monitor) from remote **control** (act). "Control" =
+LOCAL control is always free; the gated thing is REMOTE (off-LAN) control. "Automation" = CLOUD
+automation run by the worker (the in-app Flooding Sentry while the app is open is local & free).
+
+- **Free** — **manual remote view** (pull-only: open app + tap "Update", throttled ~once / 3 min,
+  band 2–5 min; **no notifications, no auto-refresh**), cloud settings sync, vehicle sharing, local
+  control + local flood shutoff. Telemetry persisted ~every 30 min (cheap).
+- **Basic — $3/mo · $12/yr** — automatic remote view + **remote control** + away push + **cloud
+  flood-shutoff fallback** + **essential automation** (timers/schedules, single-condition rules) +
+  ~1 month history. Telemetry ~every 5 min. **1-month free trial** (see trial task).
+- **Premium — $5/mo · $30/yr** — high-res telemetry (~1 min) + **1–3 yr history + CSV export** +
+  **advanced automation** (conditional/chained, sequences, away-mode) + **SMS/voice escalation** +
+  **integrations** (Home Assistant / MQTT / IFTTT / webhooks) + season reports + priority support.
+
+**"Plex" sharing model:** entitlements are PER-VEHICLE — the vehicle owner pays and people they share
+that vehicle with inherit its tier *when accessing that vehicle*. (The scaffold already does this:
+`getVehicleTier` reads the vehicle doc, which every shared user resolves against.)
+
+**Telemetry resolution is a tier axis** (`telemetryResolutionSec`): the worker PERSISTS less often
+for lower tiers — controls the dominant cost (per docs/COST_ANALYSIS.md §5) AND is an upgrade reason.
 
 **Billing decision:** scaffold the **entitlement/gating layer + a manual tier switch now**; move to
 **Stripe when going live** (do NOT build payments this round).
@@ -223,14 +237,20 @@ Tasks:
       (see Task 12).
 - [ ] Wire **Stripe** when going live (deferred; entitlement layer must be provider-agnostic so this
       is a drop-in).
-- [x] **Scaffolded 2026-06-25 (provider-agnostic, additive, tested):**
-      [utils/entitlements.ts](dashboard/src/utils/entitlements.ts) — `Tier` model, `TIER_FEATURES`
-      matrix (free=monitor+sync+share, basic=+control+30d, premium=+1095d+sms+support),
-      `getVehicleTier`/`getEntitlements`/`tierAtLeast`, labels + pricing.
-      [hooks/useEntitlements.ts](dashboard/src/hooks/useEntitlements.ts) returns the active vehicle's
-      entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by SyncModal +
-      `tier_updated` event). 14 unit tests. **Legacy/unset vehicles grandfather to `premium` so this
+- [x] **Scaffolded + refined 2026-06-25 (provider-agnostic, additive, tested, 16 tests):**
+      [utils/entitlements.ts](dashboard/src/utils/entitlements.ts) — `Tier` + `AutomationLevel`,
+      full `TIER_FEATURES` matrix (remote view manual-only/throttle, remote control, away push, cloud
+      flood-shutoff, automation level, telemetry resolution, history, export, integrations, sms,
+      support), `getVehicleTier`/`getEntitlements`/`tierAtLeast`/`automationAtLeast`, `BASIC_TRIAL_DAYS`,
+      labels + pricing. [hooks/useEntitlements.ts](dashboard/src/hooks/useEntitlements.ts) returns the
+      active vehicle's entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by
+      SyncModal + `tier_updated` event). **Legacy/unset vehicles grandfather to `premium` so this
       changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
+- [ ] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
+      AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
+      server-side (worker/admin) and write `tier='basic'` for the trial window with an expiry; the
+      client matrix needs no change (it reads `tier`). Decide where eligibility is recorded
+      (`users/{uid}.trialsUsed[]` + `vehicles/{vid}.trialEndsAt`?).
 - [ ] **Next:** wire gates into the UI (e.g. LinkTapWidget control buttons honor `canControl`; hide
       SMS-alert config unless `canSmsAlert`) — deferred to do alongside the admin "set tier" switch so
       we never strand an owner without control. Drop GRANDFATHERED_TIER to a real default once the
