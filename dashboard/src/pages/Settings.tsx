@@ -197,6 +197,11 @@ export default function Settings({ user }: { user: any }) {
   // Custom cloud worker URL — per-vehicle config; blank ⇒ DEFAULT_WORKER_URL is used. Hidden behind
   // a toggle (only relevant for users running their own cloud server).
   const [webhookUrl, setWebhookUrl] = useState(() => localStorage.getItem('sh_webhook_url') || '');
+  // Credentials for a self-hosted cloud server (issued by its admin page — see Task 7). Sent to the
+  // custom server to authenticate; ignored for the default hosted worker.
+  const [webhookUser, setWebhookUser] = useState(() => localStorage.getItem('sh_webhook_user') || '');
+  const [webhookKey, setWebhookKey] = useState(() => localStorage.getItem('sh_webhook_key') || '');
+  const [showWebhookKey, setShowWebhookKey] = useState(false);
   const [showCustomCloudUrl, setShowCustomCloudUrl] = useState(() => !!localStorage.getItem('sh_webhook_url'));
 
   // Local Server Options (device-local). The app can act as a local listener so sleepy Shelly
@@ -333,7 +338,11 @@ export default function Settings({ user }: { user: any }) {
       setTimeZone(localStorage.getItem('lt_tz') || ((Intl as any).supportedValuesOf ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC'));
       setShellyLocalPassword(localStorage.getItem('sh_local_password') || '');
       setWebhookUrl(localStorage.getItem('sh_webhook_url') || '');
-      setLocalServerEnabled(localStorage.getItem('lt_local_server') !== 'false');
+      setWebhookUser(localStorage.getItem('sh_webhook_user') || '');
+      setWebhookKey(localStorage.getItem('sh_webhook_key') || '');
+      // Default OFF (=== 'true') to match the off-by-default change (Task 5); the main.tsx migration
+      // sets it 'true' for existing installs.
+      setLocalServerEnabled(localStorage.getItem('lt_local_server') === 'true');
       setLocalServerBackground(localStorage.getItem('lt_local_server_bg') === 'true');
       setVesselNickname(localStorage.getItem('lt_vessel_name') || '');
       setNormalRunHours(Number(localStorage.getItem('lt_nr_hrs') || '0'));
@@ -415,6 +424,8 @@ export default function Settings({ user }: { user: any }) {
     localStorage.setItem('lt_vessel_name', vesselNickname);
     localStorage.setItem('sh_local_password', shellyLocalPassword);
     localStorage.setItem('sh_webhook_url', webhookUrl.trim());
+    localStorage.setItem('sh_webhook_user', webhookUser.trim());
+    localStorage.setItem('sh_webhook_key', webhookKey.trim());
     localStorage.setItem('lt_local_server', localServerEnabled.toString());
     localStorage.setItem('lt_local_server_bg', localServerBackground.toString());
     localStorage.setItem('lt_unit', unitSystem);
@@ -474,7 +485,7 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
     syncDispatchRef.current = false;
   }, [
-    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, localServerEnabled, localServerBackground, unitSystem, timeZone,
+    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, webhookUser, webhookKey, localServerEnabled, localServerBackground, unitSystem, timeZone,
     normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
     isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
     gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
@@ -852,9 +863,22 @@ export default function Settings({ user }: { user: any }) {
                   <div style={{ marginTop: '12px' }}>
                     <label className="form-label">Cloud Alert Worker URL</label>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                      For users running their own cloud server. Your deployed Cloudflare worker (e.g. <code>https://boat-rv-guardian-webhooks.&lt;you&gt;.workers.dev</code>). Required for Shelly devices to push away-from-home alerts. Leave blank to use the default server. Set this before adding devices.
+                      For users running their own cloud server (the self-hostable Guardian cloud server, or a Cloudflare worker). Required for Shelly devices to push away-from-home alerts. Leave all three blank to use the default hosted server. Set this before adding devices.
                     </p>
-                    <input className="form-input" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://…workers.dev (blank = default server)" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                    <input className="form-input" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://your-server.example.com (blank = default server)" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+                    <label className="form-label" style={{ marginTop: '12px' }}>Username</label>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
+                      The username created in your server's admin page. Leave blank if your server doesn't require auth.
+                    </p>
+                    <input className="form-input" type="text" value={webhookUser} onChange={(e) => setWebhookUser(e.target.value)} placeholder="self-host server username" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" />
+                    <label className="form-label" style={{ marginTop: '12px' }}>API Key</label>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
+                      The API key paired with that username. Stored with this vehicle and used to authenticate to your server.
+                    </p>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input className="form-input" type={showWebhookKey ? 'text' : 'password'} value={webhookKey} onChange={(e) => setWebhookKey(e.target.value)} placeholder="self-host server API key" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoComplete="off" style={{ flex: 1 }} />
+                      <button type="button" className="btn-secondary" onClick={() => setShowWebhookKey(s => !s)} style={{ fontSize: '0.8rem', padding: '8px 12px' }}>{showWebhookKey ? 'Hide' : 'Show'}</button>
+                    </div>
                   </div>
                 )}
               </div>

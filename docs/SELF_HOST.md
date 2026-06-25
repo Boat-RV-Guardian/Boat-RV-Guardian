@@ -92,6 +92,18 @@ Implementation: a tiny server-rendered page or a few JSON endpoints (`/admin/api
 config persisted in the SQLite db (a `settings` table) or a mounted config file. No heavy framework —
 keep it dependency-light so the image stays small. Build it alongside the Node adapter (Increment 3).
 
+**App ↔ self-host server auth contract.** The app already has per-vehicle fields for this
+(`sh_webhook_url` + `sh_webhook_user` + `sh_webhook_key` in `configSync.ts`, edited under Settings →
+Vehicles → Custom Cloud Server URL). The admin page issues the username + API key; the app sends them
+to the server. Proposed contract (define here since we own both sides):
+- **Device webhooks** (Shelly POSTs, can't send headers easily): authenticate with the key as a query
+  param — `…/api/shelly?vid=…&event=…&key=<sh_webhook_key>`. The server rejects unknown keys.
+- **App→server API** (admin/control calls): HTTP Basic or a bearer token from `user:key`.
+- ⏳ **Wiring TODO:** `ProvisionShellyModal` currently builds the webhook base from `sh_webhook_url`
+  only — once the server exists, append `&key=<sh_webhook_key>` (only for custom servers, not the
+  default hosted worker) so devices authenticate. The fields are stored now; the send-side wiring
+  lands with the server (Increment 3) so it can be tested against a real instance.
+
 ## Migration steps (each its own small, green PR; hardware-smoke the safety ones)
 
 1. ✅ Extract `events.ts` (pure) + worker Vitest. **Done.**
