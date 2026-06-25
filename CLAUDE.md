@@ -249,6 +249,15 @@ FIRST). Highlights:
   (`.github/workflows/ci.yml`). Found+fixed a real `historySync` NaN-ts bug along the way.
 - **⚠️ The LinkTap valve was left CLOSED** after the flood test (safe for an unattended boat).
 
+## Verifying UI changes — use the NATIVE app, not the web preview pane
+
+**Do NOT use the browser/preview pane** (the `preview_*` MCP tools) to verify changes. To see the
+app, **launch the native app**: `cd dashboard && npm run tauri dev` (owner preference, 2026-06-25 —
+this is a Tauri + Capacitor app and the native runtime is the real target). Only use the web dev
+server (`npm run dev`) if explicitly asked. For most logic/UI changes, the gates (`tsc -b` +
+`npm test`, incl. component tests via RTL + `npm run build`) are the primary verification; reach for
+the native app when you need to actually see/interact with a change.
+
 ## Safety model — the valve self-limits (don't over-weight the flood automation)
 
 The LinkTap valve **only ever opens with a volume/duration limit** (the open command always carries

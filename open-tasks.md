@@ -246,8 +246,16 @@ over-invest in it; prioritize monitoring / remote-view / history / alerts, which
 **Stripe when going live** (do NOT build payments this round).
 
 Tasks:
-- [ ] **Rebuild the pricing page** to reflect the tiers above. *(Deferred — do NOT act this round;
-      placeholder task per 2026-06-25.)*
+- [ ] **Rebuild the pricing page** to reflect the tiers above. ⏳ **Kicked off 2026-06-25.** Lives in
+      the **separate `website-boatrvguardian` repo** (Astro, Cloudflare Pages) — NOT this repo. Also
+      **review all marketing copy** there for alignment with the new financial model (per-vehicle
+      "Plex" plans, Free=monitor/manual-view, Basic=control+1mo, Premium=long history+SMS+integrations,
+      1-mo Basic trial). The app links non-Premium vehicles to `UPGRADE_PORTAL_URL`; the full feature
+      comparison belongs here, not in the app. Source the feature rows from `entitlementSummary`/
+      `TIER_FEATURES`/`TIER_PRICING` (dashboard `utils/entitlements.ts`) so they stay in sync.
+- [x] **In-app plan indicator (2026-06-25):** compact `PlanBadge` in Settings → Vehicles shows the
+      active vehicle's tier + an Upgrade link (to `UPGRADE_PORTAL_URL`) when not Premium. Replaced the
+      verbose in-app feature panel (owner: keep the comparison on the website).
 - [ ] **Backend administrative site** to manage users, tiers/entitlements, and other admin tasks
       (see Task 12).
 - [ ] Wire **Stripe** when going live (deferred; entitlement layer must be provider-agnostic so this
@@ -406,6 +414,29 @@ a `boatrvguardian.com` subdomain, not `*.workers.dev` / `*.web.app` / `*.github.
       prepare code + the exact records but can't change DNS).
 - [ ] Re-register Shelly webhooks against the new URL once cut over (devices cache the old URL until
       a successful poll re-registers — cf. CLAUDE.md).
+
+---
+
+## 13. In-app auto-update (Tauri updater) — needs owner-generated signing certificate
+
+**Priority:** Medium. Added 2026-06-25. **Requires the owner to generate a signing key/certificate.**
+**Context:** Today releases are built+published by `release.yml` on a tag, but the desktop app doesn't
+auto-update — users re-download. Add the Tauri updater so the native app checks for and installs
+updates in-app. (The app already surfaces a "latestVersion" in Settings → Updates; this wires the
+real updater behind it.)
+
+- [ ] **Owner action:** generate the updater signing keypair (`npm run tauri signer generate` /
+      `tauri signer generate`) and store the **private key + password as CI secrets**
+      (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); put the **public key** in
+      `tauri.conf.json` `plugins.updater.pubkey`.
+- [ ] Add `@tauri-apps/plugin-updater` (+ `plugin-process` for relaunch); configure
+      `plugins.updater` with the endpoint(s) and pubkey.
+- [ ] Publish an **update manifest** (`latest.json`) + the signed bundles from `release.yml` (the
+      updater action can generate these), served from a stable URL (a `boatrvguardian.com` subdomain
+      or the GitHub release assets) — ties into Task 11.
+- [ ] Wire the in-app check/prompt/install flow (reuse the Settings → Updates surface); test the
+      full update across a version bump. Keep the 7-file version-bump rule in sync.
+- [ ] Android updates go through Play, not the Tauri updater — scope this to desktop (Mac/Win).
 
 ---
 
