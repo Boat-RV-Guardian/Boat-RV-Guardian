@@ -24,20 +24,24 @@ LinkTap cloud activateInstantMode(action:false) → valve closes (~16s over RF)`
       Switched to `activateInstantMode` w/ `action:false, duration:0` (the call the app uses) —
       commit `a6ca1c3`, **deployed** (version `7ddb792a`). Verified: replayed `flood.alarm` →
       `shutoff:{ok:true,valves:1}` → valve physically closed in ~16s. ✅
-- [ ] **Break #2 — push notifications fail (`403`).** ⬅️ **IMMEDIATE NEXT ACTION.** The worker's
-      service account `linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com` has only
-      `roles/datastore.user` — it lacks `cloudmessaging.messages.create`, so FCM send 403s (valve
-      still closes; only the alert push is missing). FCM API is already **enabled**. **Fix = grant
-      the FCM role** (was authorized-pending when the session ended):
+- [ ] **Break #2 — push notifications fail (`403`).** ⏳ **Owner is applying the IAM grant (2026-06-25).**
+      The worker SA `linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com` had only
+      `roles/datastore.user` — lacked `cloudmessaging.messages.create`, so FCM send 403s (valve still
+      closes; only the alert push is missing). FCM API is already **enabled**. Fix:
       ```
       gcloud projects add-iam-policy-binding boat-rv-guardian-9f8a4 \
         --member="serviceAccount:linktap-worker@boat-rv-guardian-9f8a4.iam.gserviceaccount.com" \
         --role="roles/firebasecloudmessaging.admin" --condition=None
       ```
-      (Or in the Cloud console: IAM → grant that SA **Firebase Cloud Messaging API Admin**.)
-      Then verify: `curl "https://boat-rv-guardian-webhooks.jgearinger.workers.dev/api/shelly?vid=v_uusajkm88&device=diag&event=flood.alarm"`
-      → check `wrangler tail` shows **no** `FCM send failed: 403`, and your phone gets the push.
-      NOTE: re-running that curl will **close the valve** (it's a real flood replay).
+      (Or Cloud console: IAM → grant that SA **Firebase Cloud Messaging API Admin**.)
+      **SAFE verify (does NOT close the valve)** — use a non-flood, non-telemetry event so the worker
+      pushes but never triggers shutoff (`isFloodShutoff` only fires on flood/leak/alarm):
+      ```
+      curl "https://boat-rv-guardian-webhooks.jgearinger.workers.dev/api/shelly?vid=v_uusajkm88&device=diag&event=button.push"
+      ```
+      → returns `shutoff:null`; `wrangler tail … --format pretty` should show **no** `FCM send failed:
+      403` and your phone gets the push. (The old `flood.alarm` verify works too but **closes the
+      valve** — avoid it.)
 
 - [x] **Follow-up: `flood.alarm_off` also triggers a shutoff.** Fixed (2026-06-25, commit on main):
       new `isFloodShutoff()` in [worker/src/events.ts](worker/src/events.ts) requires the flood family
@@ -303,7 +307,11 @@ hardware smoke-tested, not unattended.
 - [ ] **Increment 2 (needs hardware smoke):** extract `linktap.ts`/`notify.ts`/`storage.ts` +
       DI core handler; cover the shutoff decision end-to-end with mocked deps.
 - [ ] **Increment 3:** Node/Docker adapter (`adapters/node.ts`, `Dockerfile`, `docker-compose.yml`,
-      env config, self-host README); CI builds the image.
+      env config, self-host README); CI builds the image. **Includes a bundled "really basic" admin
+      page** (`/admin`, password-gated) to set up: local **usernames**, the **API key** (app↔server
+      auth), and **data limits** (retention / delete-old-data / storage cap + manual purge) + basic
+      storage/usage status. This is the SELF-HOST instance admin — distinct from Task 12 (SaaS
+      operator console). Spec in [docs/SELF_HOST.md](docs/SELF_HOST.md).
 - [ ] **Increment 4:** `D1Storage` + `SqliteStorage`, telemetry downsampling/retention; migrate
       hosted sensorState + history to D1 (per cost analysis). Smoke-test telemetry + flood.
 - [ ] **Increment 5:** extract the server into its own public repo.

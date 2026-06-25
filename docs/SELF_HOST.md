@@ -69,8 +69,28 @@ interface Storage {
   Node 20 has global `fetch`, so the LinkTap/FCM HTTP calls port unchanged.
 - `Dockerfile` (multi-stage: build TS → slim runtime), `docker-compose.yml` (server + a volume for
   the SQLite db). Config via env: `FIREBASE_*` (for FCM/Firestore if used), `STORAGE=sqlite|d1`,
-  `DB_PATH`, `PORT`.
+  `DB_PATH`, `PORT`, `ADMIN_PASSWORD` (or first-run setup).
 - `worker/README.md` (or the future dedicated repo): self-host quickstart.
+
+### Self-host admin page (bundled, "really basic")
+
+The Docker image serves a small admin UI (e.g. at `/admin`) so a self-hoster can configure their
+instance without editing files. **This is the SELF-HOST instance admin — distinct from Task 12, the
+hosted SaaS operator console.** Requirements (2026-06-25):
+
+- **First-run setup / auth:** set an admin password on first launch (or via `ADMIN_PASSWORD`); the
+  admin page is password-gated.
+- **Usernames:** create/manage the local user(s) allowed to use this instance (the people whose app
+  talks to it). Minimal — username + access, no SaaS tiers here.
+- **API key:** generate / view / rotate the API key the dashboard app (and device webhooks) use to
+  authenticate to this self-hosted server. (This is the local-auth seam.)
+- **Data limits:** retention (auto-**delete data older than N days**), max storage / DB size cap, and
+  a manual **"purge old data now"** action — important because self-host has finite disk.
+- **Status (basic):** current storage used, row counts, recent webhook activity.
+
+Implementation: a tiny server-rendered page or a few JSON endpoints (`/admin/api/*`) + minimal HTML;
+config persisted in the SQLite db (a `settings` table) or a mounted config file. No heavy framework —
+keep it dependency-light so the image stays small. Build it alongside the Node adapter (Increment 3).
 
 ## Migration steps (each its own small, green PR; hardware-smoke the safety ones)
 
