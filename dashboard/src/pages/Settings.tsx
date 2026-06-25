@@ -976,6 +976,28 @@ export default function Settings({ user }: { user: any }) {
                   </div>
                 )}
               </div>
+
+              {/* Force Cloud Sync — bottom of the Vehicles section; only usable when signed in to the
+                  cloud (otherwise there's nothing to sync with). */}
+              <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button className="btn-primary" onClick={handleManualSync} disabled={!user || isManualSyncing}>
+                  {isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
+                </button>
+                {!user && (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'center' }}>
+                    Sign in (Account Information below) to sync with the cloud.
+                  </p>
+                )}
+                {manualSyncMsg && (
+                  <div style={{
+                    fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
+                    color: manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
+                    background: manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
+                  }}>
+                    {manualSyncMsg.text}
+                  </div>
+                )}
+              </div>
           </div>
 
           {/* Account Information (moved below Vehicles) */}
@@ -1094,26 +1116,6 @@ export default function Settings({ user }: { user: any }) {
                   </div>
                 );
               })()}
-
-              {/* Manual Sync Button */}
-              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <button
-                  className="btn-primary"
-                  onClick={handleManualSync}
-                  disabled={isManualSyncing}
-                >
-                  {isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
-                </button>
-                {manualSyncMsg && (
-                  <div style={{ 
-                    fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
-                    color: manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
-                    background: manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-                  }}>
-                    {manualSyncMsg.text}
-                  </div>
-                )}
-              </div>
 
             </div>
           )}
