@@ -246,13 +246,16 @@ over-invest in it; prioritize monitoring / remote-view / history / alerts, which
 **Stripe when going live** (do NOT build payments this round).
 
 Tasks:
-- [ ] **Rebuild the pricing page** to reflect the tiers above. ⏳ **Kicked off 2026-06-25.** Lives in
-      the **separate `website-boatrvguardian` repo** (Astro, Cloudflare Pages) — NOT this repo. Also
-      **review all marketing copy** there for alignment with the new financial model (per-vehicle
-      "Plex" plans, Free=monitor/manual-view, Basic=control+1mo, Premium=long history+SMS+integrations,
-      1-mo Basic trial). The app links non-Premium vehicles to `UPGRADE_PORTAL_URL`; the full feature
-      comparison belongs here, not in the app. Source the feature rows from `entitlementSummary`/
-      `TIER_FEATURES`/`TIER_PRICING` (dashboard `utils/entitlements.ts`) so they stay in sync.
+- [x] **Pricing page + copy alignment — PR open 2026-06-25:**
+      [website-boatrvguardian#1](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/1)
+      (separate Astro repo). New `/pricing` (Free/Basic/Premium cards + comparison table + per-vehicle
+      "Plex" note + 1-mo trial + self-host=free + FAQ), nav/footer link, and aligned the stale "free
+      for everyone / free and always will be" copy (footer, devices, homepage) to "app + self-host
+      free; hosted cloud optional paid." **Awaiting owner review/merge.** Rows mirror `TIER_FEATURES`/
+      `TIER_PRICING` — keep in sync; upgrade links use the `UPGRADE_PORTAL_URL` placeholder.
+  - [ ] **Follow-up:** decide whether to tier-qualify capability copy on the homepage/features pages
+        (e.g. "Instant cloud alerts" is a Basic+ feature) — left as-is for now (pricing page is the
+        tier source of truth).
 - [x] **In-app plan indicator (2026-06-25):** compact `PlanBadge` in Settings → Vehicles shows the
       active vehicle's tier + an Upgrade link (to `UPGRADE_PORTAL_URL`) when not Premium. Replaced the
       verbose in-app feature panel (owner: keep the comparison on the website).
