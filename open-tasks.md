@@ -303,16 +303,14 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
 
 **Priority:** High — explicit ask 2026-06-25: "don't break anything that works." Builds on Task 2.
 
-- [ ] Write `docs/TESTING.md`: the testing pyramid for this repo — pure-util unit tests (have),
-      worker unit tests (Task 2 gap), hook tests, light component/integration tests, and a manual
-      **hardware smoke-test checklist** for the safety-critical paths (flood shutoff, valve
-      open/close, poll loop) that can't be fully unit-tested.
-- [ ] Define **CI gates that must pass before merge**: `tsc -b`, `npm test`, `wrangler --dry-run`,
-      and (Task 7) worker tests + Docker build. Make them required.
+- [x] **Done 2026-06-25:** [docs/TESTING.md](docs/TESTING.md) — testing pyramid, run commands, CI
+      gates table, "what every change adds", and the hardware smoke-test checklist.
+- [x] **Done:** worker unit-test gate added to CI (Task 2). The four required gates are documented.
+- [x] **Done (partial):** safety-chain regression — `isFloodShutoff` unit tests assert the
+      `*.alarm_off`/telemetry exclusions. Expand toward the worker handler as it's made injectable.
 - [ ] Add coverage reporting + a floor (don't let it regress).
-- [ ] Regression guard for the **safety chain**: a worker integration test that replays a
-      `flood.alarm` GET and asserts the close path + the `*.alarm_off`/telemetry exclusions
-      (overlaps Task 6 follow-up and Task 2).
+- [ ] Make the CI checks **required** via branch protection (repo setting — owner action).
+- [ ] Add the Docker image build to CI once Task 7 lands.
 
 ---
 
@@ -320,14 +318,13 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
 
 **Priority:** Medium — explicit ask 2026-06-25: better, more disciplined direction for agents.
 
-- [ ] Write `AGENTS.md` (or expand `CLAUDE.md`) with the working contract: small reviewable
-      increments; behavior-preserving refactors verified by `tsc`+tests+build each step (the Task 3
-      increment pattern is the model); **no new feature without a test**; keep files under a size
-      budget; commit-message + version-bump discipline (the 7-file rule); when to defer to a
-      hardware smoke test; never weaken the safety chain.
-- [ ] Add a PR checklist / template encoding the CI gates from Task 9.
-- [ ] Note conventions: time policy (UTC store / `lt_tz` display), entitlement-gating over ad-hoc
-      checks, server-side enforcement over client-only.
+- [x] **Done 2026-06-25:** [AGENTS.md](AGENTS.md) — 12-point working contract (small increments,
+      no feature without a test, gates-green-before-done, server-side enforcement, never weaken the
+      safety chain, time policy, per-vehicle entitlements, file-size budget, 7-file version rule,
+      subdomain rule, commit conventions).
+- [x] **Done:** PR template at [.github/pull_request_template.md](.github/pull_request_template.md)
+      encoding the four CI gates + safety check.
+- [x] **Done:** conventions captured in AGENTS.md.
 
 ---
 
