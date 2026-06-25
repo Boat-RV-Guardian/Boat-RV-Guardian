@@ -16,6 +16,7 @@ import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
+import { useEntitlements } from '../hooks/useEntitlements';
 
 const APP_VERSION = '1.0.44';
 
@@ -187,6 +188,10 @@ export default function Settings({ user }: { user: any }) {
   // Sync Toggles
   const [syncSettingsCloud, setSyncSettingsCloud] = useState(() => localStorage.getItem('lt_sync_cloud') !== 'false');
   const [storeHistoryCloud, setStoreHistoryCloud] = useState(() => localStorage.getItem('lt_store_history_cloud') === 'true');
+  // Active vehicle's entitlements (per-vehicle tier). Cloud history is a Basic+ feature. Legacy/unset
+  // vehicles grandfather to premium, so this gates nothing until real tiers are assigned.
+  const entitlements = useEntitlements();
+  const canCloudHistory = entitlements.historyRetentionDays > 0;
 
   // App Settings State
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
@@ -1020,12 +1025,14 @@ export default function Settings({ user }: { user: any }) {
                   <input type="checkbox" checked={syncSettingsCloud} onChange={(e) => setSyncSettingsCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: canCloudHistory ? 1 : 0.6 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', cursor: canCloudHistory ? 'pointer' : 'not-allowed' }}>
                     <span style={{ fontWeight: 600 }}>Store historical data in the cloud</span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Sync your water flow history for long-term storage</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      {canCloudHistory ? 'Sync your water flow history for long-term storage' : 'Cloud history is a Basic/Premium feature — upgrade to enable.'}
+                    </span>
                   </label>
-                  <input type="checkbox" checked={storeHistoryCloud} onChange={(e) => setStoreHistoryCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
+                  <input type="checkbox" disabled={!canCloudHistory} checked={canCloudHistory && storeHistoryCloud} onChange={(e) => setStoreHistoryCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: canCloudHistory ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-cyan)' }} />
                 </div>
               </div>
 
