@@ -60,8 +60,8 @@ describe('isTelemetry', () => {
 });
 
 describe('extractSensorStateExtras', () => {
-  it('keeps telemetry params, drops routing params', () => {
-    const params = new URLSearchParams('vid=v_1&event=voltmeter.measurement&device=abc&v=12.6&vraw=12.28&tC=21');
+  it('keeps telemetry params, drops routing + auth params', () => {
+    const params = new URLSearchParams('vid=v_1&event=voltmeter.measurement&device=abc&key=secret&v=12.6&vraw=12.28&tC=21');
     expect(extractSensorStateExtras(params)).toEqual({ v: '12.6', vraw: '12.28', tC: '21' });
   });
 

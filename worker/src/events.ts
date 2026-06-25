@@ -44,8 +44,8 @@ export function isFloodShutoff(event: string): boolean {
   return FLOOD_EVENT_RE.test(event) && !isAlarmCleared(event) && !isTelemetry(event);
 }
 
-/** Query params that are routing/identity, not sensor telemetry to cache. */
-export const RESERVED_PARAMS: ReadonlySet<string> = new Set(['vid', 'event', 'device']);
+/** Query params that are routing/identity/auth, not sensor telemetry to cache. */
+export const RESERVED_PARAMS: ReadonlySet<string> = new Set(['vid', 'event', 'device', 'key']);
 
 /**
  * Extract the telemetry params a device embedded in its webhook URL (e.g. `?v=<calibrated volts>`

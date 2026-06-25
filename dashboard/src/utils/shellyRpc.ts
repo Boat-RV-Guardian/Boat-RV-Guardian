@@ -101,6 +101,7 @@ export async function registerShellyWebhooks(
   baseUrl: string,
   vid: string,
   deviceId = '',
+  key = '',
 ): Promise<string[]> {
   let supported: string[] = [];
   try {
@@ -112,13 +113,15 @@ export async function registerShellyWebhooks(
   const events = (alertish.length ? alertish : supported).slice(0, 10);
   const root = baseUrl.replace(/\/$/, '');
   const dev = deviceId ? `&device=${encodeURIComponent(deviceId)}` : '';
+  // Auth key for a self-hosted cloud server (the default hosted worker doesn't use one).
+  const auth = key ? `&key=${encodeURIComponent(key)}` : '';
 
   let cidMap: Record<string, number> = {};
   try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
 
   const created: string[] = [];
   for (const event of events) {
-    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}`;
+    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}`;
     try {
       await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, urls: [url] });
       created.push(event);
