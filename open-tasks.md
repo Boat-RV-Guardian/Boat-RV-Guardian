@@ -346,9 +346,12 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
 **Context:** Anything shown to the user (the cloud worker custom URL, web app, etc.) should live on
 a `boatrvguardian.com` subdomain, not `*.workers.dev` / `*.web.app` / `*.github.io`.
 
-- [ ] Inventory user-exposed URLs: `DEFAULT_WORKER_URL`
-      (`boat-rv-guardian-webhooks.jgearinger.workers.dev`), the web-app host, FCM/Firebase hosts in
-      configs, any links in Settings/README.
+- [x] **Done 2026-06-25 → [docs/DOMAIN_MIGRATION.md](docs/DOMAIN_MIGRATION.md)**: inventoried the
+      user-exposed URLs (the critical one is `DEFAULT_WORKER_URL` in
+      [configSync.ts:75](dashboard/src/utils/configSync.ts), baked into Shelly devices), wrote the
+      cutover order (attach custom domain → verify → flip → re-register; keep old route live), and
+      the exact Cloudflare DNS records the owner must add. **No code flipped** (flipping
+      `DEFAULT_WORKER_URL` before the custom domain is attached would break webhooks).
 - [x] **Decided (2026-06-25): `api.` = worker, `app.` = web app, `admin.` = admin site. Domain IS on
       Cloudflare**, so a Worker custom domain can be attached; I prep the config + exact DNS records,
       owner applies DNS.
