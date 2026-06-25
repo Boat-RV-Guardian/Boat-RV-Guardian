@@ -16,6 +16,7 @@ import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
+import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { BATTERY_PRESETS, getBatteryThresholds } from '../utils/batteryPresets';
 
@@ -2094,28 +2095,7 @@ export default function Settings({ user }: { user: any }) {
       )}
 
       {activeTab === 'updates' && (
-        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Software Updates</h3>
-          
-          {latestVersion && latestVersion !== APP_VERSION ? (
-            <div style={{ padding: '16px', background: 'rgba(16, 185, 129, 0.1)', border: '1px solid var(--accent-emerald)', borderRadius: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '1.2rem', marginBottom: '8px' }}>🎉 New Update Available!</div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Version <strong>{latestVersion}</strong> is ready to download.</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>You are currently running v{APP_VERSION}</div>
-            </div>
-          ) : (
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-              Current Version: Boat &amp; RV Guardian v{APP_VERSION}
-              {latestVersion === APP_VERSION && <div style={{ color: 'var(--accent-cyan)', marginTop: '8px' }}>You are up to date!</div>}
-            </div>
-          )}
-
-          <a href="https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/releases" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-            <button className="btn-secondary" style={{ width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.9rem', background: latestVersion && latestVersion !== APP_VERSION ? 'var(--accent-emerald)' : '', color: latestVersion && latestVersion !== APP_VERSION ? '#fff' : '', borderColor: latestVersion && latestVersion !== APP_VERSION ? 'var(--accent-emerald)' : '' }}>
-              {latestVersion && latestVersion !== APP_VERSION ? '⬇️ Download Update' : '🔄 Check for Updates on GitHub'}
-            </button>
-          </a>
-        </div>
+        <SoftwareUpdatesPanel appVersion={APP_VERSION} latestVersion={latestVersion} />
       )}
       
       {/* Remove Device confirmation */}
