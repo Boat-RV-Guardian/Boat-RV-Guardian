@@ -21,6 +21,7 @@ import NotificationsPanel from './settings/NotificationsPanel';
 import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
 import FriendsPanel from './settings/FriendsPanel';
 import LinkTapAuthPanel from './settings/LinkTapAuthPanel';
+import SettingsModals from './settings/SettingsModals';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 
@@ -1587,158 +1588,23 @@ export default function Settings({ user }: { user: any }) {
         <SoftwareUpdatesPanel appVersion={APP_VERSION} latestVersion={latestVersion} />
       )}
       
-      {/* Remove Device confirmation */}
-      {deviceToRemove && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
-          <div className="glass-card" style={{ maxWidth: '420px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: '#ef4444' }}>Remove Device</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              Remove <strong>{deviceToRemove.name || deviceToRemove.role}</strong> from this vehicle? It will no longer be monitored in the app.
-            </p>
+      <SettingsModals
+        deviceToRemove={deviceToRemove} factoryResetOnRemove={factoryResetOnRemove}
+        setFactoryResetOnRemove={setFactoryResetOnRemove} removingDevice={removingDevice}
+        onCancelRemoveDevice={() => { setDeviceToRemove(null); setFactoryResetOnRemove(false); }}
+        onConfirmRemoveDevice={confirmRemoveDevice}
+        showNewVehicleModal={showNewVehicleModal} newVehicleNameInput={newVehicleNameInput}
+        setNewVehicleNameInput={setNewVehicleNameInput}
+        onCancelNewVehicle={() => setShowNewVehicleModal(false)} onConfirmNewVehicle={confirmAddNewVehicle}
+        pendingSwitchVid={pendingSwitchVid}
+        onCancelSwitch={() => setPendingSwitchVid(null)} onConfirmSwitch={confirmSwitchAndStopLocalServer}
+        showPwChangeModal={showPwChangeModal} pwChangeBusy={pwChangeBusy}
+        onCancelPwChange={() => setShowPwChangeModal(false)} onConfirmPwChange={confirmChangeShellyPw}
+        showDeleteModal={showDeleteModal} vesselNickname={vesselNickname}
+        deleteConfirmChecked={deleteConfirmChecked} setDeleteConfirmChecked={setDeleteConfirmChecked}
+        onCancelDelete={() => setShowDeleteModal(false)} onConfirmDelete={handleDeleteVehicle}
+      />
 
-            {deviceToRemove.type === 'shelly_sensor' && (
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '12px', marginTop: '8px' }}>
-                <input type="checkbox" checked={factoryResetOnRemove} onChange={(e) => setFactoryResetOnRemove(e.target.checked)} style={{ marginTop: '2px', accentColor: 'var(--accent-cyan)' }} />
-                <span style={{ fontSize: '0.82rem' }}>
-                  <strong>Also factory reset the device</strong> — erases its Wi-Fi credentials and settings so it can be set up fresh.
-                  {!deviceToRemove.localIp && <span style={{ display: 'block', color: '#fde68a', marginTop: '4px' }}>⚠️ This device's local IP isn't known, so the reset signal can't be sent. It will only be removed from the app.</span>}
-                  {deviceToRemove.localIp && <span style={{ display: 'block', color: 'var(--text-muted)', marginTop: '4px' }}>Requires being on the same Wi-Fi network as the device.</span>}
-                </span>
-              </label>
-            )}
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn-secondary" onClick={() => { setDeviceToRemove(null); setFactoryResetOnRemove(false); }} style={{ flex: 1 }} disabled={removingDevice}>Cancel</button>
-              <button className="btn-primary" onClick={confirmRemoveDevice} style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }} disabled={removingDevice}>
-                {removingDevice ? 'Removing…' : (factoryResetOnRemove && deviceToRemove.localIp ? 'Reset & Remove' : 'Remove')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Vehicle Modal */}
-      {showNewVehicleModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(5px)'
-        }}>
-          <div className="glass-card" style={{ maxWidth: '400px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: 'var(--accent-cyan)' }}>Add New Vehicle</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              What would you like to call this new vehicle?
-            </p>
-            <input 
-              type="text" 
-              className="form-input" 
-              placeholder="e.g. Tow Truck, Main Boat..." 
-              value={newVehicleNameInput} 
-              onChange={(e) => setNewVehicleNameInput(e.target.value)}
-              autoFocus
-            />
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn-secondary" onClick={() => setShowNewVehicleModal(false)} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn-primary" onClick={confirmAddNewVehicle} style={{ flex: 1 }} disabled={!newVehicleNameInput.trim()}>Create</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Switching vehicles while the local server runs — confirm it will be stopped */}
-      {pendingSwitchVid && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(5px)'
-        }}>
-          <div className="glass-card" style={{ maxWidth: '420px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: '#f59e0b' }}>Stop the local server?</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              The on-device local sensor server is running for this vehicle. Switching vehicles will
-              <strong> stop it</strong> — sleepy Shelly sensors won't be able to push events to this
-              device until you turn it back on. Continue?
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-secondary" onClick={() => setPendingSwitchVid(null)} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn-primary" onClick={confirmSwitchAndStopLocalServer}
-                style={{ flex: 1, background: '#f59e0b', borderColor: '#f59e0b' }}>
-                Stop &amp; switch
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Shelly Local Password change confirmation */}
-      {showPwChangeModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(5px)'
-        }}>
-          <div className="glass-card" style={{ maxWidth: '440px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: '#f59e0b' }}>Change local password?</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Are you sure you want to change the local password? This pushes the new password to every
-              Shelly device on this vehicle. <strong style={{ color: '#ffb3b3' }}>If it fails, a device can
-              become unavailable and might need to be factory reset and re-paired.</strong>
-            </p>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-              <button className="btn-secondary" disabled={pwChangeBusy} onClick={() => setShowPwChangeModal(false)} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn-primary" disabled={pwChangeBusy} onClick={confirmChangeShellyPw}
-                style={{ flex: 1, background: '#f59e0b', borderColor: '#f59e0b' }}>
-                {pwChangeBusy ? 'Updating…' : 'Yes, change it'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Vehicle Modal */}
-      {showDeleteModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(0,0,0,0.8)', zIndex: 10000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(5px)'
-        }}>
-          <div className="glass-card" style={{ maxWidth: '400px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: '#ef4444' }}>Delete Vehicle</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              Are you sure you want to delete <strong>{vesselNickname || 'this vehicle'}</strong>? This action cannot be undone.
-            </p>
-            
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', background: 'rgba(239, 68, 68, 0.1)', padding: '12px', borderRadius: '8px', cursor: 'pointer', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
-              <input 
-                type="checkbox" 
-                checked={deleteConfirmChecked} 
-                onChange={(e) => setDeleteConfirmChecked(e.target.checked)} 
-                style={{ marginTop: '2px', width: '18px', height: '18px', accentColor: '#ef4444' }} 
-              />
-              <span style={{ fontSize: '0.85rem', color: '#ffb3b3' }}>
-                I understand that all account information and device data for this vehicle will be permanently deleted.
-              </span>
-            </label>
-
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button className="btn-secondary" onClick={() => setShowDeleteModal(false)} style={{ flex: 1 }}>Cancel</button>
-              <button 
-                className="btn-primary" 
-                onClick={handleDeleteVehicle} 
-                style={{ flex: 1, background: '#ef4444', borderColor: '#ef4444' }} 
-                disabled={!deleteConfirmChecked}
-              >
-                Delete Permanently
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      
       {isProvisionModalOpen && <ProvisionShellyModal onClose={() => { setIsProvisionModalOpen(false); setDevices(getDevices()); }} />}
       {isProvisionLinkTapModalOpen && <ProvisionLinkTapModal onClose={() => { setIsProvisionLinkTapModalOpen(false); setDevices(getDevices()); }} />}
     </div>
