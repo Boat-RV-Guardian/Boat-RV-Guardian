@@ -248,3 +248,47 @@ FIRST). Highlights:
 - **Tests:** Vitest 4 + jsdom stood up in `dashboard/` (`npm test`, 53 tests) + CI workflow
   (`.github/workflows/ci.yml`). Found+fixed a real `historySync` NaN-ts bug along the way.
 - **⚠️ The LinkTap valve was left CLOSED** after the flood test (safe for an unattended boat).
+
+## Session handoff — 2026-06-25, product-direction planning + safe groundwork (read open-tasks.md)
+
+Big planning session: defined subscription tiers + a slate of new initiatives, captured them in
+[open-tasks.md](open-tasks.md) (Tasks 5–12, with decisions baked in), and executed every item that
+was safe to do without the user / hardware / DNS+gcloud auth. Tree clean, all on `main`.
+
+**Decisions locked (2026-06-25):**
+- **Tiers:** Free = monitor-only (no control) + cloud settings sync + vehicle sharing (maps to the
+  Friends `monitor` role). Basic $3/mo·$12/yr = + control (hosted actions/triggers/timers) + ~1mo
+  history. Premium $5/mo·$30/yr = + 1–3yr history + SMS/voice alerts + priority support.
+- **Entitlements are PER-VEHICLE** (the boat carries the tier; shared monitors get it).
+- **Billing:** scaffold gating now, **Stripe later** (provider-agnostic). Pricing-page rebuild is a
+  TODO but **explicitly deferred** ("do not act this round"). Admin site = **separate web app** on
+  `admin.boatrvguardian.com`. SMS/voice = **scaffold only** (Twilio later).
+- **Hosted backend:** move paid-tier data to **Cloudflare D1** (Workers + D1), keep Firebase Auth +
+  FCM. One $5/mo plan ≈ 100+ vehicles vs Firestore out-of-pocket past ~3–7. See
+  [docs/COST_ANALYSIS.md](docs/COST_ANALYSIS.md). **Mandatory rule: downsample telemetry.**
+- **Subdomains:** `api.` (worker) / `app.` (web) / `admin.` (admin), domain on Cloudflare.
+
+**Shipped this session (all gates green; worker changes auto-deploy on push):**
+- **SAFETY:** `flood.alarm_off` no longer fires a redundant shutoff. New pure
+  [worker/src/events.ts](worker/src/events.ts) (`isFloodShutoff`/telemetry/alarm-off) + 12 worker
+  unit tests; added Vitest to the worker package + a worker test job in CI. (open-tasks Tasks 2 + the
+  flood follow-up.) **Confirm the new worker version deployed.**
+- **Local server defaults OFF** for new installs (`lt_local_server`); migration in `main.tsx`
+  preserves it for existing installs. (Task 5.)
+- **Entitlement scaffold** (additive, no behavior change yet):
+  [utils/entitlements.ts](dashboard/src/utils/entitlements.ts) + [useEntitlements](dashboard/src/hooks/useEntitlements.ts)
+  + tier stashed in SyncModal; 14 tests. Legacy vehicles **grandfather to `premium`** so nothing
+  breaks until the admin "set tier" switch + Stripe land. (Task 6.)
+- **Docs:** [docs/TESTING.md](docs/TESTING.md), [AGENTS.md](AGENTS.md) (working contract),
+  `.github/pull_request_template.md`, [docs/SELF_HOST.md](docs/SELF_HOST.md) (worker→shared-core+Docker
+  design), [docs/DOMAIN_MIGRATION.md](docs/DOMAIN_MIGRATION.md). Dashboard tests now 65.
+
+**Deliberately NOT done (need user / hardware / auth — see open-tasks.md):**
+- **FCM push 403** (open-tasks ACTIVE Break #2): still needs the gcloud IAM grant — **gcloud auth
+  doesn't travel to this machine.** Top priority when you have console/auth access.
+- **Worker self-host refactor** (Task 7) & **LinkTapWidget increments 5+** (Task 3): touch the LIVE
+  auto-deploying shutoff / poll-command state machine — designed but deferred to a hardware
+  smoke-testable session.
+- **Domain cutover** (Task 11): code not flipped (would break webhooks before the custom domain is
+  attached); DNS is owner-only.
+- **Remote telemetry verify** (Task 1): needs the home Wi-Fi.
