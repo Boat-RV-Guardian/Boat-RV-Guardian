@@ -330,10 +330,11 @@ was safe to do without the user / hardware / DNS+gcloud auth. Tree clean, all on
 - New repo provided for the self-host server: **Boat-RV-Guardian/brvg-cloud-server** (Task 7 dest).
 - **UI-verify policy:** use the native app (`npm run tauri dev`), NOT the web preview pane.
 
-## Session handoff — 2026-06-25 (late), v1.0.44 RELEASED + self-host server + mock billing (LAPTOP SWITCH)
+## Session handoff — 2026-06-25 (late), v1.0.45 RELEASED + self-host server + mock billing (LAPTOP SWITCH)
 
 Switching laptops. **All three repos are clean, pushed, and in sync with origin; all gates green.**
-**v1.0.44 was tagged + released** (Mac/Win/APK + web all built green — installers published).
+**v1.0.45 was tagged + released** (the post-1.0.44 batch below; Mac/Win/APK + web build via `release.yml`).
+Version lives in 7 files (see the version-bump list earlier in this doc); current = **1.0.45**.
 
 ### Repos (clone all three on the new machine)
 - **Boat-RV-Guardian/Boat-RV-Guardian** (this repo: app + worker) — `git@github.com:...` (SSH; workflows need SSH).
