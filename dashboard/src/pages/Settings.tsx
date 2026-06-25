@@ -16,6 +16,8 @@ import LocalServerPanel from './settings/LocalServerPanel';
 import VehiclesPanel from './settings/VehiclesPanel';
 import AccountPanel from './settings/AccountPanel';
 import DeviceConfigPanel from './settings/DeviceConfigPanel';
+import DevicePreferencesPanel from './settings/DevicePreferencesPanel';
+import AddDevicePanel from './settings/AddDevicePanel';
 import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
 import AdvancedDeviceSettingsPanel from './settings/AdvancedDeviceSettingsPanel';
@@ -852,29 +854,10 @@ export default function Settings({ user }: { user: any }) {
           />
 
           {/* Device Preferences — local to this device, not synced to cloud */}
-          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div>
-              <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: '0 0 4px 0' }}>Device Preferences</h3>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Saved on this device only — not synced to the cloud.</p>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <div>
-                <label className="form-label">Units</label>
-                <select className="form-input" value={unitSystem} onChange={(e) => setUnitSystem(e.target.value as 'metric' | 'imperial')}>
-                  <option value="metric">Metric (Liters)</option>
-                  <option value="imperial">Imperial (Gallons)</option>
-                </select>
-              </div>
-              <div>
-                <label className="form-label">Time Zone</label>
-                <select className="form-input" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
-                  {(Intl as any).supportedValuesOf ? (Intl as any).supportedValuesOf('timeZone').map((tz: string) => (
-                    <option key={tz} value={tz}>{tz}</option>
-                  )) : <option value={timeZone}>{timeZone}</option>}
-                </select>
-              </div>
-            </div>
-
+          <DevicePreferencesPanel
+            unitSystem={unitSystem} setUnitSystem={setUnitSystem}
+            timeZone={timeZone} setTimeZone={setTimeZone}
+          >
             <NotificationsPanel
               notificationsEnabled={notificationsEnabled} onNotificationsEnabledChange={setNotificationsEnabled}
               notifyAutoGuard={notifyAutoGuard} onNotifyAutoGuardChange={setNotifyAutoGuard}
@@ -889,7 +872,7 @@ export default function Settings({ user }: { user: any }) {
               alarmRepeatInterval={alarmRepeatInterval} onAlarmRepeatIntervalChange={setAlarmRepeatInterval}
               alarmVolume={alarmVolume} onAlarmVolumeChange={setAlarmVolume}
             />
-          </div>
+          </DevicePreferencesPanel>
 
         </>
       )}
@@ -926,26 +909,10 @@ export default function Settings({ user }: { user: any }) {
           </div>
 
           {devicesTab === 'add' && (
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center', padding: '40px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '8px' }}>➕</div>
-              <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Add a New Device</h3>
-              <p style={{ color: 'var(--text-secondary)', maxWidth: '400px', marginBottom: '24px' }}>
-                Select the type of device you want to add to this vehicle.
-              </p>
-              
-              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                <button className="btn-secondary" onClick={() => setIsProvisionLinkTapModalOpen(true)} style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '200px' }}>
-                  <span style={{ fontSize: '2rem' }}>🚰</span>
-                  <strong>LinkTap Valve</strong>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Water Shutoff Valve</span>
-                </button>
-                <button className="btn-secondary" onClick={() => setIsProvisionModalOpen(true)} style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px', width: '200px', borderColor: '#f59e0b' }}>
-                  <span style={{ fontSize: '2rem' }}>⚡</span>
-                  <strong style={{ color: '#f59e0b' }}>Shelly Sensor</strong>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Power, Voltage, or Flood</span>
-                </button>
-              </div>
-            </div>
+            <AddDevicePanel
+              onAddLinkTap={() => setIsProvisionLinkTapModalOpen(true)}
+              onAddShelly={() => setIsProvisionModalOpen(true)}
+            />
           )}
 
           {devicesTab === 'auth' && (
