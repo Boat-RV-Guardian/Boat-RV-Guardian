@@ -17,53 +17,9 @@ import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import PlanBadge from './settings/PlanBadge';
 import LocalServerPanel from './settings/LocalServerPanel';
 import { useEntitlements } from '../hooks/useEntitlements';
+import { BATTERY_PRESETS, getBatteryThresholds } from '../utils/batteryPresets';
 
 const APP_VERSION = '1.0.45';
-
-// Battery voltage presets by chemistry, for 12 V and 24 V systems (24 V ≈ 2× the 12 V figures).
-// Values are marine/RV norms: crit = near-empty alarm, low = recharge warning, normal = resting-full
-// nominal, charge = "charging detected" threshold, over = over-voltage alarm. 'custom' applies no
-// preset — the fields stay manually editable.
-type BattThresholds = { crit: number; low: number; normal: number; charge: number; over: number };
-const BATTERY_PRESETS: Record<string, { label: string; v: Record<'12' | '24', BattThresholds> }> = {
-  flooded: {
-    label: 'Flooded Lead-Acid',
-    v: {
-      '12': { crit: 11.8, low: 12.2, normal: 12.6, charge: 13.6, over: 15.0 },
-      '24': { crit: 23.6, low: 24.4, normal: 25.2, charge: 27.2, over: 30.0 },
-    },
-  },
-  agm: {
-    label: 'AGM (Sealed)',
-    v: {
-      '12': { crit: 11.8, low: 12.0, normal: 12.8, charge: 13.6, over: 14.7 },
-      '24': { crit: 23.6, low: 24.0, normal: 25.6, charge: 27.2, over: 29.4 },
-    },
-  },
-  gel: {
-    label: 'Gel',
-    v: {
-      '12': { crit: 11.8, low: 12.0, normal: 12.8, charge: 13.5, over: 14.2 },
-      '24': { crit: 23.6, low: 24.0, normal: 25.6, charge: 27.0, over: 28.4 },
-    },
-  },
-  lifepo4: {
-    label: 'Lithium (LiFePO₄)',
-    v: {
-      '12': { crit: 12.0, low: 12.8, normal: 13.2, charge: 13.8, over: 14.6 },
-      '24': { crit: 24.0, low: 25.6, normal: 26.4, charge: 27.6, over: 29.2 },
-    },
-  },
-  custom: {
-    label: 'Custom (manual)',
-    v: {
-      '12': { crit: 11.8, low: 12.2, normal: 12.6, charge: 13.6, over: 15.0 },
-      '24': { crit: 23.6, low: 24.4, normal: 25.2, charge: 27.2, over: 30.0 },
-    },
-  },
-};
-
-
 
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
@@ -298,8 +254,8 @@ export default function Settings({ user }: { user: any }) {
   const applyBatteryPreset = (type: string, sysV: string) => {
     setBattType(type);
     setBattSystemV(sysV);
-    const preset = BATTERY_PRESETS[type]?.v[sysV as '12' | '24'];
-    if (type !== 'custom' && preset) {
+    const preset = getBatteryThresholds(type, sysV);
+    if (preset) {
       setBattCritVoltage(preset.crit);
       setBattLowVoltage(preset.low);
       setBattNormalVoltage(preset.normal);
