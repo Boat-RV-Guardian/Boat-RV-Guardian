@@ -136,25 +136,34 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
 **Priority:** Medium — refactor for maintainability; no behavior change. Do this *after*
 Task 2 has at least smoke coverage so the refactor is verifiable.
 
-- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 1024 lines (−56%).** All render
-      sections now live in `pages/settings/` child components (pure presentational, value/onChange
-      props — the `LocalServerPanel` pattern) behind a thin `Settings.tsx` shell. Watch the
-      `APP_VERSION` constant — one of the 7 version locations (CLAUDE.md).
-  - [x] **2026-06-25:** extracted the battery-preset table + lookup rule into a tested pure util
-        [utils/batteryPresets.ts](dashboard/src/utils/batteryPresets.ts) (`getBatteryThresholds`,
-        6 tests), then **twelve** presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`,
-        `NotificationsPanel`, `AdvancedDeviceSettingsPanel` (battery + shore thresholds, DRY
-        `VoltageField`), `FriendsPanel`, `LinkTapAuthPanel`, `SettingsModals` (the 5 confirm dialogs,
-        DRY `ModalOverlay`), `VehiclesPanel`, `AccountPanel`, `DeviceConfigPanel` (per-device config),
-        `DevicePreferencesPanel` (Units/Time-Zone shell, takes NotificationsPanel as children), and
-        `AddDevicePanel`. Each increment behavior-preserving; tsc + 89 tests + build green. 2321 → 1024.
-  - [ ] **(Optional follow-up)** the remaining ~1024 lines are the component's *logic* core — state
-        declarations + the two big effects (the `settings_updated` rehydrate + the localStorage-sync
-        effect with its ~50-dep array) + the handlers. Moving these into a `useSettingsState` hook
-        would slim the shell further but is a different (riskier) refactor than the panel extraction —
-        the mega-sync effect is easy to break. **DeviceConfigPanel** also embeds live device RPC
-        (voltmeter-enable *reboots* the device, SetAuth, firmware update); unchanged by the extraction
-        but those flows still want a hardware smoke test before further edits.
+- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 900 lines (−61%).** All render
+      sections live in `pages/settings/` child components (pure presentational, value/onChange props —
+      the `LocalServerPanel` pattern) behind a thin shell; persistence + sharing logic moved to
+      tested utils/hooks. Watch the `APP_VERSION` constant — one of the 7 version locations (CLAUDE.md).
+  - [x] **2026-06-25:** extracted the battery-preset table into a tested pure util
+        [utils/batteryPresets.ts](dashboard/src/utils/batteryPresets.ts) (6 tests), then **twelve**
+        presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`, `NotificationsPanel`,
+        `AdvancedDeviceSettingsPanel` (DRY `VoltageField`), `FriendsPanel`, `LinkTapAuthPanel`,
+        `SettingsModals` (DRY `ModalOverlay`), `VehiclesPanel`, `AccountPanel`, `DeviceConfigPanel`,
+        `DevicePreferencesPanel` (takes NotificationsPanel as children), `AddDevicePanel`.
+  - [x] **Persistence centralized + tested:** the ~55 `lt_*`/`sh_*` keys + defaults lived in THREE
+        drifting copies (initial state, rehydrate effect, writer effect) → unified into pure
+        [utils/settingsStorage.ts](dashboard/src/utils/settingsStorage.ts) (`readSettings`/
+        `writeSettings`, 4 round-trip/defaults/trim tests). Surfaced a latent bug (rehydrate omits 4
+        notification toggles the writer persists) — **preserved** here, flagged as its own task.
+  - [x] **Sharing logic → hook:** the Friends-tab state + derived roles/members + the
+        create/accept/decline/remove/cancel/leave handlers moved to
+        [hooks/useVehicleSharing.ts](dashboard/src/hooks/useVehicleSharing.ts). All gates green
+        throughout (tsc + 93 tests + build).
+  - [ ] **(Optional, last big piece)** the remaining ~900 lines are state declarations + the two
+        coupled effects (the `settings_updated` rehydrate + the localStorage writer, which share the
+        `syncDispatchRef` re-entry guard) + the device/vehicle/discovery handlers + the thin render. A
+        `useSettingsState` hook could own the ~50 synced-settings useState + the writer effect (and
+        init from `readSettings()`, killing the last duplicated list), but it entangles the
+        dispatch-guard/effect machinery — refactor-risky for mostly line-shuffling gain. Best done
+        with a click-through verification pass. **DeviceConfigPanel** + the device handlers still
+        embed live device RPC (voltmeter-enable *reboots* the device, SetAuth, firmware) — want a
+        hardware smoke test before further edits.
 - [ ] **[LinkTapWidget.tsx](dashboard/src/components/LinkTapWidget.tsx) — 1818 lines.** Pull the
       non-UI logic into hooks: polling/state, the Flooding Sentry automation, Tank-Fill / Wash-Down
       / Delayed-Start flows, and the usage-history + event-log persistence. Keep the `displayTz`
