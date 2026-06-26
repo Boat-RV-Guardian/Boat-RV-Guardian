@@ -26,6 +26,7 @@ import LinkTapAuthPanel from './settings/LinkTapAuthPanel';
 import SettingsModals from './settings/SettingsModals';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
+import { readSettings, writeSettings } from '../utils/settingsStorage';
 
 const APP_VERSION = '1.0.45';
 
@@ -308,69 +309,68 @@ export default function Settings({ user }: { user: any }) {
       // Skip events we dispatched ourselves — prevents the sync effect from looping
       if (syncDispatchRef.current) return;
 
-      // Re-hydrate local state from localStorage if a background update happened
-      setSyncSettingsCloud(localStorage.getItem('lt_sync_cloud') !== 'false');
-      setStoreHistoryCloud(localStorage.getItem('lt_store_history_cloud') === 'true');
-      setUnitSystem(localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
-      setTimeZone(localStorage.getItem('lt_tz') || ((Intl as any).supportedValuesOf ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC'));
-      setShellyLocalPassword(localStorage.getItem('sh_local_password') || '');
-      setWebhookUrl(localStorage.getItem('sh_webhook_url') || '');
-      setWebhookUser(localStorage.getItem('sh_webhook_user') || '');
-      setWebhookKey(localStorage.getItem('sh_webhook_key') || '');
-      // Default OFF (=== 'true') to match the off-by-default change (Task 5); the main.tsx migration
-      // sets it 'true' for existing installs.
-      setLocalServerEnabled(localStorage.getItem('lt_local_server') === 'true');
-      setLocalServerBackground(localStorage.getItem('lt_local_server_bg') === 'true');
-      setVesselNickname(localStorage.getItem('lt_vessel_name') || '');
-      setNormalRunHours(Number(localStorage.getItem('lt_nr_hrs') || '0'));
-      setNormalRunMinutes(Number(localStorage.getItem('lt_nr_mins') || '0'));
-      setNormalRunDaily(localStorage.getItem('lt_nr_daily') === 'true');
-      setNormalRunVolume(Number(localStorage.getItem('lt_nr_vol') || '10'));
-      setAutoRestartNormal(localStorage.getItem('lt_nr_auto') === 'true');
+      // Re-hydrate local state from localStorage if a background update happened. Defaults +
+      // key list live in utils/settingsStorage (readSettings). NOTE: historically this rehydrate
+      // does NOT refresh the flood/house/engine/shore notification toggles — preserved below.
+      const s = readSettings();
+      setSyncSettingsCloud(s.syncSettingsCloud);
+      setStoreHistoryCloud(s.storeHistoryCloud);
+      setUnitSystem(s.unitSystem);
+      setTimeZone(s.timeZone);
+      setShellyLocalPassword(s.shellyLocalPassword);
+      setWebhookUrl(s.webhookUrl);
+      setWebhookUser(s.webhookUser);
+      setWebhookKey(s.webhookKey);
+      setLocalServerEnabled(s.localServerEnabled);
+      setLocalServerBackground(s.localServerBackground);
+      setVesselNickname(s.vesselNickname);
+      setNormalRunHours(s.normalRunHours);
+      setNormalRunMinutes(s.normalRunMinutes);
+      setNormalRunDaily(s.normalRunDaily);
+      setNormalRunVolume(s.normalRunVolume);
+      setAutoRestartNormal(s.autoRestartNormal);
 
-      setIsCloudPollingActive(localStorage.getItem('lt_is_cloud_polling') === 'true');
-      setIsLocalPollingActive(localStorage.getItem('lt_is_local_polling') === 'true');
-      setCloudUsername(localStorage.getItem('lt_cloud_user') || '');
-      setCloudApiKey(localStorage.getItem('lt_cloud_key') || '');
-      setGatewayIp(localStorage.getItem('lt_gateway_ip') || '');
-      setGatewayId(localStorage.getItem('lt_gateway_id') || '');
-      setPrimaryDeviceId(localStorage.getItem('lt_device_id') || '');
-      setSecondaryDeviceId(localStorage.getItem('lt_device_id_2') || '');
+      setIsCloudPollingActive(s.isCloudPollingActive);
+      setIsLocalPollingActive(s.isLocalPollingActive);
+      setCloudUsername(s.cloudUsername);
+      setCloudApiKey(s.cloudApiKey);
+      setGatewayIp(s.gatewayIp);
+      setGatewayId(s.gatewayId);
+      setPrimaryDeviceId(s.primaryDeviceId);
+      setSecondaryDeviceId(s.secondaryDeviceId);
 
-      setShellyServer(localStorage.getItem('sh_server') || 'shelly-1-eu.shelly.cloud');
-      setShellyAuthKey(localStorage.getItem('sh_auth_key') || '');
+      setShellyServer(s.shellyServer);
+      setShellyAuthKey(s.shellyAuthKey);
       setDevices(getDevices());
-      try {
-        setHighPowerIds(JSON.parse(localStorage.getItem('sh_high_power') || '["", "", "", ""]'));
-        setLowPowerIds(JSON.parse(localStorage.getItem('sh_low_power') || '["", "", "", ""]'));
-        setFloodSensorIds(JSON.parse(localStorage.getItem('sh_flood') || '["", "", "", ""]'));
-      } catch (e) { console.error('Failed to parse shelly device IDs', e); }
+      setHighPowerIds(s.highPowerIds);
+      setLowPowerIds(s.lowPowerIds);
+      setFloodSensorIds(s.floodSensorIds);
 
-      setNotificationsEnabled(localStorage.getItem('lt_notif_enabled') !== 'false');
-      setNotifyAutoGuard(localStorage.getItem('lt_notif_ag') !== 'false');
-      setAlertOffline(localStorage.getItem('lt_alert_offline') !== 'false');
-      setNotifyLowBattery(localStorage.getItem('lt_notif_batt') !== 'false');
-      setNotifyWatering(localStorage.getItem('lt_notif_water') === 'true');
-      setAlarmSound((localStorage.getItem('lt_alarm_sound') as any) || 'siren');
-      setAlarmVolume(Number(localStorage.getItem('lt_alarm_vol') || '1.0'));
-      setAlarmRepeatInterval((localStorage.getItem('lt_alarm_repeat') as any) || '30');
+      setNotificationsEnabled(s.notificationsEnabled);
+      setNotifyAutoGuard(s.notifyAutoGuard);
+      setAlertOffline(s.alertOffline);
+      setNotifyLowBattery(s.notifyLowBattery);
+      setNotifyWatering(s.notifyWatering);
+      setAlarmSound(s.alarmSound);
+      setAlarmVolume(s.alarmVolume);
+      setAlarmRepeatInterval(s.alarmRepeatInterval);
 
-      setMaxFlowRate(Number(localStorage.getItem('lt_max_flow') || '15'));
-      setMaxDuration(Number(localStorage.getItem('lt_max_dur') || '30'));
-      setAutoGuardEnabled(localStorage.getItem('lt_auto_guard') !== 'false');
+      setMaxFlowRate(s.maxFlowRate);
+      setMaxDuration(s.maxDuration);
+      setAutoGuardEnabled(s.autoGuardEnabled);
 
-      setBattType(localStorage.getItem('lt_batt_type') || 'flooded');
-      setBattSystemV(localStorage.getItem('lt_batt_system_v') || '12');
-      setBattLowVoltage(Number(localStorage.getItem('lt_batt_low_v') || '12.2'));
-      setBattCritVoltage(Number(localStorage.getItem('lt_batt_crit_v') || '11.8'));
-      setBattNormalVoltage(Number(localStorage.getItem('lt_batt_normal_v') || '12.6'));
-      setBattOverVoltage(Number(localStorage.getItem('lt_batt_over_v') || '15.0'));
-      setBattChargeVoltage(Number(localStorage.getItem('lt_batt_charge_v') || '13.6'));
-      setShoreCritLowV(Number(localStorage.getItem('lt_shore_crit_low_v') || '104'));
-      setShoreLowV(Number(localStorage.getItem('lt_shore_low_v') || '114'));
-      setShoreNormalV(Number(localStorage.getItem('lt_shore_normal_v') || '120'));
-      setShoreHighV(Number(localStorage.getItem('lt_shore_high_v') || '126'));
-      setShoreCritHighV(Number(localStorage.getItem('lt_shore_crit_high_v') || '132'));
+      setBattType(s.battType);
+      setBattSystemV(s.battSystemV);
+      setBattLowVoltage(s.battLowVoltage);
+      setBattCritVoltage(s.battCritVoltage);
+      setBattNormalVoltage(s.battNormalVoltage);
+      setBattOverVoltage(s.battOverVoltage);
+      setBattChargeVoltage(s.battChargeVoltage);
+      setShoreCritLowV(s.shoreCritLowV);
+      setShoreLowV(s.shoreLowV);
+      setShoreNormalV(s.shoreNormalV);
+      setShoreHighV(s.shoreHighV);
+      setShoreCritHighV(s.shoreCritHighV);
 
       const currentVid = getActiveVehicleId();
       setActiveVid(currentVid);
@@ -394,69 +394,25 @@ export default function Settings({ user }: { user: any }) {
     };
   }, []);
 
-  // Sync to LocalStorage (throttled/batched by React's effect)
+  // Sync to LocalStorage (throttled/batched by React's effect). The key list + serialization live
+  // in utils/settingsStorage (writeSettings); this effect owns only the re-entry guard + the
+  // settings_updated dispatch.
   useEffect(() => {
-    localStorage.setItem('lt_sync_cloud', syncSettingsCloud.toString());
-    localStorage.setItem('lt_store_history_cloud', storeHistoryCloud.toString());
-    localStorage.setItem('lt_vessel_name', vesselNickname);
-    localStorage.setItem('sh_local_password', shellyLocalPassword);
-    localStorage.setItem('sh_webhook_url', webhookUrl.trim());
-    localStorage.setItem('sh_webhook_user', webhookUser.trim());
-    localStorage.setItem('sh_webhook_key', webhookKey.trim());
-    localStorage.setItem('lt_local_server', localServerEnabled.toString());
-    localStorage.setItem('lt_local_server_bg', localServerBackground.toString());
-    localStorage.setItem('lt_unit', unitSystem);
-    localStorage.setItem('lt_tz', timeZone);
-    localStorage.setItem('lt_nr_hrs', normalRunHours.toString());
-    localStorage.setItem('lt_nr_mins', normalRunMinutes.toString());
-    localStorage.setItem('lt_nr_daily', normalRunDaily.toString());
-    localStorage.setItem('lt_nr_vol', normalRunVolume.toString());
-    localStorage.setItem('lt_nr_auto', autoRestartNormal.toString());
-
-    localStorage.setItem('lt_is_cloud_polling', isCloudPollingActive.toString());
-    localStorage.setItem('lt_is_local_polling', isLocalPollingActive.toString());
-    localStorage.setItem('lt_cloud_user', cloudUsername);
-    localStorage.setItem('lt_cloud_key', cloudApiKey);
-    localStorage.setItem('lt_gateway_ip', gatewayIp);
-    localStorage.setItem('lt_gateway_id', gatewayId);
-    localStorage.setItem('lt_device_id', primaryDeviceId);
-    localStorage.setItem('lt_device_id_2', secondaryDeviceId);
-
-    localStorage.setItem('sh_server', shellyServer);
-    localStorage.setItem('sh_auth_key', shellyAuthKey);
-    localStorage.setItem('sh_high_power', JSON.stringify(highPowerIds));
-    localStorage.setItem('sh_low_power', JSON.stringify(lowPowerIds));
-    localStorage.setItem('sh_flood', JSON.stringify(floodSensorIds));
-
-    localStorage.setItem('lt_notif_enabled', notificationsEnabled.toString());
-    localStorage.setItem('lt_notif_ag', notifyAutoGuard.toString());
-    localStorage.setItem('lt_alert_offline', alertOffline.toString());
-    localStorage.setItem('lt_notif_batt', notifyLowBattery.toString());
-    localStorage.setItem('lt_notif_water', notifyWatering.toString());
-    localStorage.setItem('lt_notif_flood', notifyFlood.toString());
-    localStorage.setItem('lt_notif_house_batt', notifyHouseBatt.toString());
-    localStorage.setItem('lt_notif_engine_batt', notifyEngineBatt.toString());
-    localStorage.setItem('lt_notif_shore', notifyShorePower.toString());
-    localStorage.setItem('lt_alarm_sound', alarmSound);
-    localStorage.setItem('lt_alarm_vol', alarmVolume.toString());
-    localStorage.setItem('lt_alarm_repeat', alarmRepeatInterval);
-
-    localStorage.setItem('lt_max_flow', maxFlowRate.toString());
-    localStorage.setItem('lt_max_dur', maxDuration.toString());
-    localStorage.setItem('lt_auto_guard', autoGuardEnabled.toString());
-
-    localStorage.setItem('lt_batt_type', battType);
-    localStorage.setItem('lt_batt_system_v', battSystemV);
-    localStorage.setItem('lt_batt_low_v', battLowVoltage.toString());
-    localStorage.setItem('lt_batt_crit_v', battCritVoltage.toString());
-    localStorage.setItem('lt_batt_normal_v', battNormalVoltage.toString());
-    localStorage.setItem('lt_batt_over_v', battOverVoltage.toString());
-    localStorage.setItem('lt_batt_charge_v', battChargeVoltage.toString());
-    localStorage.setItem('lt_shore_crit_low_v', shoreCritLowV.toString());
-    localStorage.setItem('lt_shore_low_v', shoreLowV.toString());
-    localStorage.setItem('lt_shore_normal_v', shoreNormalV.toString());
-    localStorage.setItem('lt_shore_high_v', shoreHighV.toString());
-    localStorage.setItem('lt_shore_crit_high_v', shoreCritHighV.toString());
+    writeSettings({
+      syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword,
+      webhookUrl, webhookUser, webhookKey, localServerEnabled, localServerBackground,
+      unitSystem, timeZone, normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
+      isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
+      gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
+      shellyServer, shellyAuthKey, highPowerIds, lowPowerIds, floodSensorIds,
+      notificationsEnabled, notifyAutoGuard, alertOffline, notifyLowBattery, notifyWatering,
+      notifyFlood, notifyHouseBatt, notifyEngineBatt, notifyShorePower,
+      alarmSound, alarmVolume, alarmRepeatInterval,
+      maxFlowRate, maxDuration, autoGuardEnabled,
+      battType, battSystemV,
+      battLowVoltage, battCritVoltage, battNormalVoltage, battOverVoltage, battChargeVoltage,
+      shoreCritLowV, shoreLowV, shoreNormalV, shoreHighV, shoreCritHighV,
+    });
 
     syncDispatchRef.current = true;
     window.dispatchEvent(new Event('settings_updated'));
