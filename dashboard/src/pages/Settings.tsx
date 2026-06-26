@@ -6,6 +6,7 @@ import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { useVehicleSharing } from '../hooks/useVehicleSharing';
 import { useLinkTapDiscovery } from '../hooks/useLinkTapDiscovery';
+import { deviceLocalHost, findVoltmeterId } from '../utils/shellyDevice';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import LocalServerPanel from './settings/LocalServerPanel';
@@ -388,9 +389,6 @@ export default function Settings({ user }: { user: any }) {
   };
 
   // --- Firmware (Shelly devices) ---
-  const deviceLocalHost = (d: DeviceConfig) =>
-    d.localIp || (d.shellyDeviceId && /shelly/i.test(d.shellyDeviceId) ? `${d.shellyDeviceId.toLowerCase()}.local` : '');
-
   const handleCheckFirmware = async (device: DeviceConfig) => {
     const host = deviceLocalHost(device);
     if (!host) { setFwMsg('No local address for this device.'); return; }
@@ -476,15 +474,6 @@ export default function Settings({ user }: { user: any }) {
   // the corrected value — single source of truth, no separate sync needed.
   const [offsetDraft, setOffsetDraft] = useState<Record<string, string>>({});
   const [voltReadMsg, setVoltReadMsg] = useState<Record<string, string>>({});
-
-  // Find the device's voltmeter component id (peripheral-linked → usually 100).
-  const findVoltmeterId = (status: any): number | null => {
-    for (const k of Object.keys(status || {})) {
-      const m = /^voltmeter:(\d+)$/.exec(k);
-      if (m) return Number(m[1]);
-    }
-    return null;
-  };
 
   // Read the device's current raw + calibrated voltage (helper for picking an offset).
   const readVoltNow = async (device: DeviceConfig) => {
