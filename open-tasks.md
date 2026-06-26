@@ -126,8 +126,13 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
       extra-param extraction into [worker/src/events.ts](worker/src/events.ts), added Vitest to the
       worker package (12 tests), and wired `npm test` into the worker CI job. Also the foundation for
       the shared self-host core (Task 7).
-- [ ] (Follow-up) Add component/integration tests for the role-gating UI behavior once Task 3
-      extracts the logic into hooks (easier to test in isolation than the current big components).
+- [~] (Follow-up) Component/integration tests for the gating UI — **started 2026-06-26** now that
+      Task 3 extracted the panels: RTL tests for `AccountPanel` (entitlement gate: cloud-history
+      toggle disabled with an "upgrade" note when the tier has no retention),
+      `AdvancedDeviceSettingsPanel` (battery-threshold round-to-0.1 + flip-to-custom; shore fields
+      don't flip), `SoftwareUpdatesPanel`, and `NotificationsPanel`. **Remaining:** the monitor-role
+      command gating lives in `LinkTapWidget`, not Settings — cover it when that widget's logic is
+      pulled into hooks (Task 3 increment 5+).
 
 ---
 
@@ -152,11 +157,14 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         [utils/settingsStorage.ts](dashboard/src/utils/settingsStorage.ts) (`readSettings`/
         `writeSettings`, 4 round-trip/defaults/trim tests). Surfaced a latent bug (rehydrate omits 4
         notification toggles the writer persists) — **preserved** here, flagged as its own task.
-  - [x] **Logic → hooks:** the Friends-tab brain moved to
+  - [x] **Logic → hooks/utils:** the Friends-tab brain moved to
         [hooks/useVehicleSharing.ts](dashboard/src/hooks/useVehicleSharing.ts) (state + derived
-        roles/members + the invite/member handlers), and the LinkTap-discovery brain to
+        roles/members + the invite/member handlers), the LinkTap-discovery brain to
         [hooks/useLinkTapDiscovery.ts](dashboard/src/hooks/useLinkTapDiscovery.ts) (cloud-retrieve +
-        LAN-scan actions + the dropdown/scan UI state). All gates green (tsc + 93 tests + build).
+        LAN-scan actions + the dropdown/scan UI state), and the pure Shelly addressing helpers
+        (`deviceLocalHost` mDNS-fallback + `findVoltmeterId`) to a tested
+        [utils/shellyDevice.ts](dashboard/src/utils/shellyDevice.ts) (7 tests). Plus RTL component
+        tests for 4 panels (see Task 2 follow-up). All gates green (tsc + 113 tests + build).
   - [ ] **(Intentionally left — not clean-extractable without risk)** the remaining ~833 lines are:
         (a) the **~56 synced-settings `useState` + the two coupled effects** (the `settings_updated`
         rehydrate + the localStorage writer, sharing the `syncDispatchRef` re-entry guard). A
