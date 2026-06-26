@@ -136,10 +136,11 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
 **Priority:** Medium — refactor for maintainability; no behavior change. Do this *after*
 Task 2 has at least smoke coverage so the refactor is verifiable.
 
-- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 900 lines (−61%).** All render
+- [ ] **[Settings.tsx](dashboard/src/pages/Settings.tsx) — 2321 → 833 lines (−64%).** All render
       sections live in `pages/settings/` child components (pure presentational, value/onChange props —
-      the `LocalServerPanel` pattern) behind a thin shell; persistence + sharing logic moved to
-      tested utils/hooks. Watch the `APP_VERSION` constant — one of the 7 version locations (CLAUDE.md).
+      the `LocalServerPanel` pattern) behind a thin shell; persistence + sharing + LinkTap-discovery
+      logic moved to tested utils/hooks. Watch the `APP_VERSION` constant — one of the 7 version
+      locations (CLAUDE.md).
   - [x] **2026-06-25:** extracted the battery-preset table into a tested pure util
         [utils/batteryPresets.ts](dashboard/src/utils/batteryPresets.ts) (6 tests), then **twelve**
         presentational panels under `pages/settings/`: `SoftwareUpdatesPanel`, `NotificationsPanel`,
@@ -151,19 +152,22 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
         [utils/settingsStorage.ts](dashboard/src/utils/settingsStorage.ts) (`readSettings`/
         `writeSettings`, 4 round-trip/defaults/trim tests). Surfaced a latent bug (rehydrate omits 4
         notification toggles the writer persists) — **preserved** here, flagged as its own task.
-  - [x] **Sharing logic → hook:** the Friends-tab state + derived roles/members + the
-        create/accept/decline/remove/cancel/leave handlers moved to
-        [hooks/useVehicleSharing.ts](dashboard/src/hooks/useVehicleSharing.ts). All gates green
-        throughout (tsc + 93 tests + build).
-  - [ ] **(Optional, last big piece)** the remaining ~900 lines are state declarations + the two
-        coupled effects (the `settings_updated` rehydrate + the localStorage writer, which share the
-        `syncDispatchRef` re-entry guard) + the device/vehicle/discovery handlers + the thin render. A
-        `useSettingsState` hook could own the ~50 synced-settings useState + the writer effect (and
-        init from `readSettings()`, killing the last duplicated list), but it entangles the
-        dispatch-guard/effect machinery — refactor-risky for mostly line-shuffling gain. Best done
-        with a click-through verification pass. **DeviceConfigPanel** + the device handlers still
-        embed live device RPC (voltmeter-enable *reboots* the device, SetAuth, firmware) — want a
-        hardware smoke test before further edits.
+  - [x] **Logic → hooks:** the Friends-tab brain moved to
+        [hooks/useVehicleSharing.ts](dashboard/src/hooks/useVehicleSharing.ts) (state + derived
+        roles/members + the invite/member handlers), and the LinkTap-discovery brain to
+        [hooks/useLinkTapDiscovery.ts](dashboard/src/hooks/useLinkTapDiscovery.ts) (cloud-retrieve +
+        LAN-scan actions + the dropdown/scan UI state). All gates green (tsc + 93 tests + build).
+  - [ ] **(Intentionally left — not clean-extractable without risk)** the remaining ~833 lines are:
+        (a) the **~56 synced-settings `useState` + the two coupled effects** (the `settings_updated`
+        rehydrate + the localStorage writer, sharing the `syncDispatchRef` re-entry guard). A
+        `useSettingsState` hook could own these + init from `readSettings()` (killing the last
+        duplicated list), but the state is interleaved with non-synced UI state and the two effects
+        straddle settings + vehicle/device/connection state — refactor-risky for a ~112-name return
+        and modest line gain; do it with a click-through pass. (b) the **device/password handlers**
+        (firmware check/update, voltmeter enable+calibration, Shelly SetAuth, per-device removal) —
+        live device RPC (voltmeter-enable *reboots* the device); per AGENTS.md, **defer until a
+        hardware smoke test**. (c) vehicle switch/add/delete + manual-sync handlers, entangled with the
+        synced-settings setters and cloud-config writers.
 - [ ] **[LinkTapWidget.tsx](dashboard/src/components/LinkTapWidget.tsx) — 1818 lines.** Pull the
       non-UI logic into hooks: polling/state, the Flooding Sentry automation, Tank-Fill / Wash-Down
       / Delayed-Start flows, and the usage-history + event-log persistence. Keep the `displayTz`
