@@ -99,3 +99,12 @@ export function shouldPersistTelemetry(nowMs: number, lastAtMs: number | null | 
   if (lastAtMs == null || !Number.isFinite(lastAtMs) || !Number.isFinite(nowMs)) return true;
   return nowMs - lastAtMs >= resolutionSec * 1000;
 }
+
+// Liveness payload for GET /api/health (open-tasks Task 12 Operations tab). Pure + cheap: no
+// secrets, no Firestore — just confirms the worker is up so the (cross-origin) admin console can
+// ping it. Served with CORS in index.ts.
+export const WORKER_SERVICE = 'boat-rv-guardian-webhooks';
+
+export function healthBody(nowMs: number): { ok: true; service: string; time: number } {
+  return { ok: true, service: WORKER_SERVICE, time: nowMs };
+}
