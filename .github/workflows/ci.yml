@@ -31,9 +31,9 @@ jobs:
         working-directory: ./dashboard
         run: npx tsc -b
 
-      - name: Unit Tests
+      - name: Unit Tests (with coverage floor)
         working-directory: ./dashboard
-        run: npm test
+        run: npm run test:coverage
 
   worker:
     runs-on: ubuntu-latest

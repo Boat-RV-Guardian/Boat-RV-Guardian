@@ -448,8 +448,11 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
 - [x] **Done (partial):** safety-chain regression — `isFloodShutoff` unit tests assert the
       `*.alarm_off`/telemetry exclusions. Expand toward the worker handler as it's made injectable.
 - [x] **Coverage reporting added (2026-06-25):** `npm run test:coverage` (v8) in dashboard + worker;
-      `coverage/` gitignored; baseline ~63% lines (dashboard). **Floor still TODO** — add a CI
-      threshold once the baseline stabilizes.
+      `coverage/` gitignored.
+- [x] **CI coverage floor added (2026-06-26):** conservative global regression-guard thresholds in
+      [vitest.config.ts](dashboard/vitest.config.ts) (lines/stmts 55, branches/funcs 50 — a few points
+      below the current ~59% baseline) enforced by switching the CI dashboard step to
+      `npm run test:coverage`. Raise / add per-module thresholds as the untested IO modules gain tests.
 - [ ] Make the CI checks **required** via branch protection (repo setting — owner action).
 - [ ] Add the Docker image build to CI once Task 7 lands.
 
