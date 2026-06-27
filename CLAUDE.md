@@ -103,11 +103,21 @@ service cloud.firestore {
         && request.resource.data.members[request.auth.uid].role == inv.role;
     }
 
+    // Operator admin console (Task 12): `admin: true` is a Firebase custom claim, granted out-of-band
+    // by website-boatrvguardian/scripts/grant-admin.mjs. Operators may list/read every vehicle and
+    // change ONLY the tier fields. Client gating in the console is UX; THIS is the enforcement.
+    function isAdmin() {
+      return request.auth != null && request.auth.token.admin == true;
+    }
+
     match /vehicles/{vid} {
-      allow read:   if request.auth != null && request.auth.uid in resource.data.allowedUsers;
+      allow read:   if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
+                    || isAdmin();
       allow create: if request.auth != null && request.auth.uid in request.resource.data.allowedUsers;
       allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
-                    || isValidClaim(vid);
+                    || isValidClaim(vid)
+                    || (isAdmin()
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt']));
       allow delete: if false;
 
       match /history/{histId} {
@@ -137,6 +147,12 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Operator admin audit trail (Task 12): append-only, operators only.
+    match /adminAudit/{id} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
     }
   }
 }

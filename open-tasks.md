@@ -347,12 +347,21 @@ Tasks:
 `boatrvguardian.com` subdomain (Task 11), auth-gated to admins only.
 
 - [x] **Decided (2026-06-25): separate web app** on `admin.boatrvguardian.com`, admin-only auth.
-      Keeps the consumer app lean and the attack surface separate. *(Scaffold deferred until the
-      entitlement layer + cost-analysis backend choice land; spec stands now.)*
-- [ ] Admin-only auth (custom claim / allowlist), audit logging of admin actions.
-- [ ] User list + per-user/per-vehicle entitlement override (the manual "set tier" switch that
-      backs Task 6's scaffold-first billing), device/vehicle counts, history usage.
-- [ ] Operational views: worker health, recent webhook traffic, FCM/SMS send status.
+      Keeps the consumer app lean and the attack surface separate.
+- [x] **Built 2026-06-26 — folded into the website repo (owner's call), PR
+      [website-boatrvguardian#3](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/3).**
+      Static, client-side console at `/admin`: Firebase Google sign-in + an `admin` **custom claim**
+      gate, vehicle list, per-vehicle **tier setter** (free/basic/premium) writing `vehicles/{vid}.tier`
+      directly, and an append-only `adminAudit` entry per change. **Enforcement is server-side via
+      Firestore rules** (admin read + tier-only update + adminAudit) — added to the consolidated rules
+      in [CLAUDE.md](CLAUDE.md). Auth model **decided with owner**: custom claim + direct Firestore
+      writes (no new backend). Bootstrap script `scripts/grant-admin.mjs` + owner runbook
+      `docs/ADMIN.md` in the website repo. **Owner steps before live:** add Firebase authorized
+      domains, publish the rules, grant the first admin claim.
+- [ ] **Follow-ups:** user list + per-user view (needs an admin read clause on `users/{uid}`); trial
+      management; operational views (worker health, recent webhook traffic, FCM/SMS send status). The
+      per-vehicle tier override (the "set tier" switch backing Task 6) is **done**.
+- [x] Audit logging of admin actions (`adminAudit` collection, append-only).
 
 ---
 
