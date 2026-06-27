@@ -101,50 +101,7 @@ export default function VehiclesPanel(p: Props) {
           </button>
         </div>
 
-        <div>
-          <label className="form-label">Shelly Local Password</label>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div style={{ position: 'relative', flex: 1 }}>
-              <input
-                className="form-input"
-                type={p.showShellyPw ? 'text' : 'password'}
-                value={p.isEditingShellyPw ? p.shellyPwDraft : p.shellyLocalPassword}
-                onChange={(e) => p.setShellyPwDraft(e.target.value)}
-                readOnly={!p.isEditingShellyPw}
-                placeholder="Auto-generated per vehicle"
-                style={{ paddingRight: '44px', width: '100%', fontFamily: 'monospace', opacity: p.isEditingShellyPw ? 1 : 0.75 }}
-              />
-              <button type="button" onClick={() => p.setShowShellyPw(!p.showShellyPw)} aria-label={p.showShellyPw ? 'Hide' : 'Show'}
-                style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '4px' }}>
-                {p.showShellyPw ? '🙈' : '👁️'}
-              </button>
-            </div>
-            {p.isEditingShellyPw && (
-              <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                onClick={async () => { const { generateShellyPassword } = await import('../../utils/VehicleManager'); p.setShellyPwDraft(generateShellyPassword()); }}>
-                🎲 Regenerate
-              </button>
-            )}
-            <button className={p.isEditingShellyPw ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', height: '42px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
-              onClick={() => p.isEditingShellyPw ? p.onRequestSaveShellyPw() : p.onStartEditShellyPw()}>
-              {p.isEditingShellyPw ? 'Save' : 'Edit'}
-            </button>
-            {p.isEditingShellyPw && (
-              <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem' }}
-                onClick={() => { p.setIsEditingShellyPw(false); p.setPwChangeMsg(null); }}>
-                Cancel
-              </button>
-            )}
-          </div>
-          {p.pwChangeMsg && (
-            <p style={{ fontSize: '0.78rem', color: p.pwChangeMsg.ok ? 'var(--success-color, #10b981)' : '#ffb3b3', margin: '6px 0 0 0' }}>{p.pwChangeMsg.text}</p>
-          )}
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '6px 0 0 0' }}>
-            Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices. Changing it here pushes the new password to every Shelly device on this vehicle.
-          </p>
-        </div>
-
-        {/* Advanced Vehicle Settings (Custom Cloud Server URL, etc.) — collapsed by default. */}
+        {/* Advanced Vehicle Settings (Shelly Local Password, Custom Cloud Server URL, etc.) — collapsed by default. */}
         <div>
           <button type="button" className="btn-secondary"
             onClick={() => p.setShowAdvanced(!p.showAdvanced)}
@@ -153,6 +110,46 @@ export default function VehiclesPanel(p: Props) {
           </button>
           {p.showAdvanced && (
             <div style={{ marginTop: '12px' }}>
+              <label className="form-label">Shelly Local Password</label>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    className="form-input"
+                    type={p.showShellyPw ? 'text' : 'password'}
+                    value={p.isEditingShellyPw ? p.shellyPwDraft : p.shellyLocalPassword}
+                    onChange={(e) => p.setShellyPwDraft(e.target.value)}
+                    readOnly={!p.isEditingShellyPw}
+                    placeholder="Auto-generated per vehicle"
+                    style={{ paddingRight: '44px', width: '100%', fontFamily: 'monospace', opacity: p.isEditingShellyPw ? 1 : 0.75 }}
+                  />
+                  <button type="button" onClick={() => p.setShowShellyPw(!p.showShellyPw)} aria-label={p.showShellyPw ? 'Hide' : 'Show'}
+                    style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', padding: '4px' }}>
+                    {p.showShellyPw ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                {p.isEditingShellyPw && (
+                  <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                    onClick={async () => { const { generateShellyPassword } = await import('../../utils/VehicleManager'); p.setShellyPwDraft(generateShellyPassword()); }}>
+                    🎲 Regenerate
+                  </button>
+                )}
+                <button className={p.isEditingShellyPw ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', height: '42px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                  onClick={() => p.isEditingShellyPw ? p.onRequestSaveShellyPw() : p.onStartEditShellyPw()}>
+                  {p.isEditingShellyPw ? 'Save' : 'Edit'}
+                </button>
+                {p.isEditingShellyPw && (
+                  <button className="btn-secondary" style={{ padding: '8px 12px', height: '42px', fontSize: '0.8rem' }}
+                    onClick={() => { p.setIsEditingShellyPw(false); p.setPwChangeMsg(null); }}>
+                    Cancel
+                  </button>
+                )}
+              </div>
+              {p.pwChangeMsg && (
+                <p style={{ fontSize: '0.78rem', color: p.pwChangeMsg.ok ? 'var(--success-color, #10b981)' : '#ffb3b3', margin: '6px 0 0 0' }}>{p.pwChangeMsg.text}</p>
+              )}
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '6px 0 12px 0' }}>
+                Set on your Shelly devices during setup and used for secure local access. Shared across this vehicle's devices. Changing it here pushes the new password to every Shelly device on this vehicle.
+              </p>
               <label className="form-label" style={{ fontWeight: 600 }}>Custom Cloud Server URL</label>
               <label className="form-label">Cloud Alert Worker URL</label>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
