@@ -128,9 +128,11 @@ service cloud.firestore {
       }
 
       // Worker-cached last sensor event (battery sensors). Worker writes via admin (bypasses rules).
+      // Operators (Task 12) may read sensorState for the admin console's Operations view.
       match /sensorState/{sid} {
-        allow read:  if request.auth != null
-                     && request.auth.uid in get(/databases/$(database)/documents/vehicles/$(vid)).data.allowedUsers;
+        allow read:  if (request.auth != null
+                        && request.auth.uid in get(/databases/$(database)/documents/vehicles/$(vid)).data.allowedUsers)
+                     || isAdmin();
         allow write: if false;
       }
     }
@@ -146,7 +148,10 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      // Operators (Task 12) may READ user docs for the admin console's Users view (trial history +
+      // FCM-token presence). Writes stay self-only.
+      allow read:  if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow write: if request.auth != null && request.auth.uid == uid;
     }
 
     // Operator admin audit trail (Task 12): append-only, operators only.

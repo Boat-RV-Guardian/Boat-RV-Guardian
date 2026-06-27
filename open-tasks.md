@@ -358,10 +358,20 @@ Tasks:
       writes (no new backend). Bootstrap script `scripts/grant-admin.mjs` + owner runbook
       `docs/ADMIN.md` in the website repo. **Owner steps before live:** add Firebase authorized
       domains, publish the rules, grant the first admin claim.
-- [ ] **Follow-ups:** user list + per-user view (needs an admin read clause on `users/{uid}`); trial
-      management; operational views (worker health, recent webhook traffic, FCM/SMS send status). The
-      per-vehicle tier override (the "set tier" switch backing Task 6) is **done**.
+- [x] **Follow-ups built 2026-06-26 (same PR website#3) — now a 3-tab console:**
+      - **Vehicles:** tier override (the "set tier" switch backing Task 6) + **trial management**
+        (Start a 30-day Basic trial → `tier=basic` + `trialEndsAt`; Clear → removes `trialEndsAt`;
+        both inside the rules' tier-only allowlist).
+      - **Users:** one row per unique member aggregated across every vehicle's `members` map (email +
+        roles), enriched from `users/{uid}` for trials-used + FCM-token presence (needs the `/users`
+        admin read clause — added to CLAUDE.md rules).
+      - **Operations:** telemetry-freshness from the worker-written `sensorState` across all vehicles
+        (last webhook per device; >6h flagged) — the data-driven worker-health signal (needs the
+        `sensorState` admin read clause — added to CLAUDE.md rules).
 - [x] Audit logging of admin actions (`adminAudit` collection, append-only).
+- [ ] **Server-backed ops only:** live worker ping + FCM/SMS send-success need a small admin endpoint
+      (a static site can't ping cross-origin or read send logs). Deferred — the rest of the console
+      needs no server. Ties to Task 11 (attach `admin.` subdomain) + an eventual worker `/admin/*` route.
 
 ---
 
