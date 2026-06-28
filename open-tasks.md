@@ -320,13 +320,21 @@ Tasks:
       active vehicle's entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by
       SyncModal + `tier_updated` event). **Legacy/unset vehicles grandfather to `premium` so this
       changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
-- [ ] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
+- [~] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
       AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
       server-side (worker/admin) and write `tier='basic'` for the trial window with an expiry; the
       client matrix needs no change (it reads `tier`). **Decided (2026-06-25): record eligibility at
       `users/{uid}.trialsUsed[]` (vehicle ids the user has already trialed) + `vehicles/{vid}.trialEndsAt`
       (expiry).** A trial is allowed only when the vid isn't in the user's `trialsUsed` AND the
       vehicle has no prior `trialEndsAt`.
+  - [x] **Eligibility predicate landed (2026-06-28):** the decided anti-abuse rule is now the pure,
+        tested `isTrialEligible(vid, userTrialsUsed, vehicleTrialEndsAt)` in
+        [worker/src/retention.ts](worker/src/retention.ts) (allows only when the vid is absent from the
+        user's `trialsUsed` AND the vehicle has never carried a `trialEndsAt` — an expired one still
+        blocks), plus `trialEndsAtFrom(now)` + `BASIC_TRIAL_DAYS`. Worker tests cover the allow/block
+        matrix. **Remaining:** wire a grant path — auto-grant on vehicle creation and/or an
+        eligibility-gated endpoint the admin "Start trial" action calls (today the admin console grants
+        with no eligibility check); both write `tier='basic'` + `trialEndsAt` + append to `trialsUsed`.
 - [x] **Plan panel (2026-06-25):** [pages/settings/SubscriptionPanel.tsx](dashboard/src/pages/settings/SubscriptionPanel.tsx)
       — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
       tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
