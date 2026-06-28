@@ -2,8 +2,8 @@
 // telemetry cadence, and the "usage vs plan" rows. No I/O so they're trivially testable; Account.tsx
 // feeds them the active vehicle's trial expiry + entitlements + local device/vehicle counts.
 
-import type { Entitlements, EntitlementLine } from './entitlements';
-import { formatRetention } from './entitlements';
+import type { Entitlements, EntitlementLine, Tier } from './entitlements';
+import { formatRetention, getVehicleTier } from './entitlements';
 
 export type TrialState = 'none' | 'active' | 'expired';
 
@@ -50,4 +50,32 @@ export function usageRows(
     { label: 'Devices on this vehicle', value: String(counts.deviceCount), on: counts.deviceCount > 0 },
     { label: 'Vehicles', value: String(counts.vehicleCount), on: counts.vehicleCount > 0 },
   ];
+}
+
+export interface VehiclePlanRow {
+  id: string;
+  name: string;
+  /** Resolved (grandfathered) per-vehicle tier. */
+  tier: Tier;
+  active: boolean;
+}
+
+/**
+ * Per-vehicle plan rows for the Account portal (Task 14 "per-vehicle assignment" — billing is
+ * per-vehicle / "Plex"). Resolves each local vehicle's synced `tier` through getVehicleTier (so an
+ * unset/legacy vehicle grandfathers consistently with the rest of the app), marks the active one,
+ * and sorts it first. Pure — Account.tsx feeds it the local `lt_vehicles` map + `lt_active_vehicle_id`.
+ */
+export function vehiclePlanRows(
+  vehiclesMap: Record<string, { config?: Record<string, string> } | undefined>,
+  activeVid: string | null,
+): VehiclePlanRow[] {
+  return Object.entries(vehiclesMap)
+    .map(([id, v]) => ({
+      id,
+      name: (v?.config?.lt_vessel_name || '').trim() || 'Unnamed vehicle',
+      tier: getVehicleTier({ tier: v?.config?.tier }),
+      active: id === activeVid,
+    }))
+    .sort((a, b) => (a.active === b.active ? a.name.localeCompare(b.name) : a.active ? -1 : 1));
 }

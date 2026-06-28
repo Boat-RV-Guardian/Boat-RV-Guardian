@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { entitlementSummary, TIER_LABELS, TIER_PRICING } from '../utils/entitlements';
 import { redeemCoupon, MOCK_COUPONS } from '../utils/billing';
-import { trialStatus, usageRows } from '../utils/accountSummary';
+import { trialStatus, usageRows, vehiclePlanRows } from '../utils/accountSummary';
 import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
 import {
   parseSmsPrefs, serializeSmsPrefs, normalizePhone, addPhone, removePhone, setEventEnabled,
@@ -21,7 +21,7 @@ function readLocalJson<T>(key: string, fallback: T): T {
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
 // in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
 // CSV export of on-device usage history.
-export default function Account() {
+export default function Account({ user }: { user?: { email?: string | null; displayName?: string | null } | null }) {
   const ent = useEntitlements();
   const price = TIER_PRICING[ent.tier];
   const rows = entitlementSummary(ent);
@@ -47,6 +47,12 @@ export default function Account() {
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
   const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
+  // Per-vehicle plans ("Plex" billing) — read straight from the local vehicle map (each carries its
+  // synced `tier`); no heavy VehicleManager import for what is a read-only list.
+  const planRows = vehiclePlanRows(
+    readLocalJson<Record<string, { config?: Record<string, string> }>>('lt_vehicles', {}),
+    localStorage.getItem('lt_active_vehicle_id'),
+  );
   const usage = usageRows(ent, {
     vehicleCount: Object.keys(readLocalJson<Record<string, unknown>>('lt_vehicles', {})).length || 1,
     deviceCount: devices.length,
@@ -79,6 +85,31 @@ export default function Account() {
   return (
     <div style={{ padding: '20px', maxWidth: '720px', margin: '0 auto', color: '#fff', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <h2 style={{ fontSize: '2rem', color: 'var(--accent-cyan)', margin: 0 }}>Account &amp; Plan</h2>
+
+      {/* Account basics (Task 14) */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Account</h3>
+        {user ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Signed in as</span>
+              <span>{user.displayName || '—'}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>Email</span>
+              <span>{user.email || '—'}</span>
+            </div>
+            {ent.canSmsAlert && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0' }}>
+                <span style={{ color: 'var(--text-secondary)' }}>Support</span>
+                <span style={{ color: '#22c55e' }}>Priority support (Premium)</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sign in to manage your account details.</p>
+        )}
+      </div>
 
       {/* Current plan */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -129,6 +160,27 @@ export default function Account() {
           ))}
         </div>
       </div>
+
+      {/* Per-vehicle plans (Task 14 "Plex" billing) — read-only overview of every vehicle's tier */}
+      {planRows.length > 1 && (
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Your vehicles &amp; plans</h3>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            Plans are per vehicle. Switch the active vehicle (Settings → Vehicles) to manage another one's plan here.
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+            {planRows.map((r) => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <span>
+                  {r.name}
+                  {r.active && <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: 'var(--accent-cyan)', border: '1px solid var(--accent-cyan)', borderRadius: '999px', padding: '1px 7px' }}>active</span>}
+                </span>
+                <span style={{ color: 'var(--text-secondary)' }}>{TIER_LABELS[r.tier]}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Data & privacy (Task 14) — CSV export is a Premium feature (canExport) */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { trialStatus, formatTelemetryResolution, usageRows } from './accountSummary';
+import { trialStatus, formatTelemetryResolution, usageRows, vehiclePlanRows } from './accountSummary';
 import { TIER_FEATURES } from './entitlements';
 
 const NOW = Date.UTC(2026, 5, 28);
@@ -49,5 +49,24 @@ describe('usageRows', () => {
     const byLabel = Object.fromEntries(rows.map((r) => [r.label, r]));
     expect(byLabel['Hosted history'].on).toBe(false);
     expect(byLabel['Devices on this vehicle'].on).toBe(false);
+  });
+});
+
+describe('vehiclePlanRows', () => {
+  it('returns [] for an empty map', () => {
+    expect(vehiclePlanRows({}, null)).toEqual([]);
+  });
+  it('resolves names + grandfathers unset tiers, marking + sorting the active vehicle first', () => {
+    const map = {
+      v1: { config: { lt_vessel_name: 'Zephyr', tier: 'basic' } },
+      v2: { config: { lt_vessel_name: 'Anchor', tier: '' } },       // unset → grandfathered premium
+      v3: { config: { lt_vessel_name: '', tier: 'free' } },          // blank name
+    };
+    const rows = vehiclePlanRows(map, 'v3');
+    expect(rows[0]).toEqual({ id: 'v3', name: 'Unnamed vehicle', tier: 'free', active: true });
+    // the rest sorted by name: Anchor before Zephyr
+    expect(rows.map((r) => r.id)).toEqual(['v3', 'v2', 'v1']);
+    expect(rows.find((r) => r.id === 'v2')!.tier).toBe('premium');
+    expect(rows.every((r) => r.id === 'v3' ? r.active : !r.active)).toBe(true);
   });
 });
