@@ -48,6 +48,35 @@ export function isTrialExpired(trialEndsAtMs: number | null | undefined, nowMs: 
   return nowMs > trialEndsAtMs;
 }
 
+/** Length of the one-month free Basic trial, in days. Mirrors BASIC_TRIAL_DAYS in entitlements.ts. */
+export const BASIC_TRIAL_DAYS = 30;
+
+/**
+ * Anti-abuse eligibility for the one-month free Basic trial (open-tasks Task 6). The decided rule:
+ * a trial may be granted for `vid` ONLY when
+ *   (a) the user has not already trialed this vehicle — `vid` is absent from their
+ *       `users/{uid}.trialsUsed` (blocks re-adding a removed vehicle / farming across users), AND
+ *   (b) the vehicle has never carried a `trialEndsAt` at all — even a long-expired one blocks a
+ *       re-trial (blocks farming a fresh trial onto an old vehicle).
+ * Pure so it can gate any grant path (auto-grant on vehicle creation, the admin "Start trial" action).
+ */
+export function isTrialEligible(
+  vid: string,
+  userTrialsUsed: readonly string[] | null | undefined,
+  vehicleTrialEndsAt: number | null | undefined,
+): boolean {
+  if (!vid) return false;
+  const alreadyTrialedByUser = Array.isArray(userTrialsUsed) && userTrialsUsed.includes(vid);
+  const vehicleEverTrialed =
+    vehicleTrialEndsAt != null && Number.isFinite(vehicleTrialEndsAt) && vehicleTrialEndsAt > 0;
+  return !alreadyTrialedByUser && !vehicleEverTrialed;
+}
+
+/** The `trialEndsAt` (epoch ms) a Basic trial granted at `nowMs` should carry. */
+export function trialEndsAtFrom(nowMs: number): number {
+  return nowMs + BASIC_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+}
+
 /** "YYYY-MM" (UTC) for an epoch-ms instant. */
 export function monthOfUTC(ms: number): string {
   return new Date(ms).toISOString().slice(0, 7);
