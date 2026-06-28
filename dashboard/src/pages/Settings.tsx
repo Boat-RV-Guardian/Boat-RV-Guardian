@@ -23,7 +23,7 @@ import LinkTapAuthPanel from './settings/LinkTapAuthPanel';
 import SettingsModals from './settings/SettingsModals';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
-import { readSettings, writeSettings } from '../utils/settingsStorage';
+import { readSettings, writeSettings, applyPersistedSettings } from '../utils/settingsStorage';
 
 const APP_VERSION = '1.0.45';
 
@@ -228,68 +228,70 @@ export default function Settings({ user }: { user: any }) {
       // Skip events we dispatched ourselves — prevents the sync effect from looping
       if (syncDispatchRef.current) return;
 
-      // Re-hydrate local state from localStorage if a background update happened. Defaults +
-      // key list live in utils/settingsStorage (readSettings). NOTE: historically this rehydrate
-      // does NOT refresh the flood/house/engine/shore notification toggles — preserved below.
+      // Re-hydrate local state from localStorage if a background update happened. Defaults + key
+      // list live in utils/settingsStorage (readSettings); applyPersistedSettings fans every field
+      // out to its setter so nothing can be persisted-but-not-rehydrated (this previously dropped
+      // the flood/house/engine/shore notification toggles — see settingsStorage.ts).
       const s = readSettings();
-      setSyncSettingsCloud(s.syncSettingsCloud);
-      setStoreHistoryCloud(s.storeHistoryCloud);
-      setUnitSystem(s.unitSystem);
-      setTimeZone(s.timeZone);
-      setShellyLocalPassword(s.shellyLocalPassword);
-      setWebhookUrl(s.webhookUrl);
-      setWebhookUser(s.webhookUser);
-      setWebhookKey(s.webhookKey);
-      setLocalServerEnabled(s.localServerEnabled);
-      setLocalServerBackground(s.localServerBackground);
-      setVesselNickname(s.vesselNickname);
-      setNormalRunHours(s.normalRunHours);
-      setNormalRunMinutes(s.normalRunMinutes);
-      setNormalRunDaily(s.normalRunDaily);
-      setNormalRunVolume(s.normalRunVolume);
-      setAutoRestartNormal(s.autoRestartNormal);
-
-      setIsCloudPollingActive(s.isCloudPollingActive);
-      setIsLocalPollingActive(s.isLocalPollingActive);
-      setCloudUsername(s.cloudUsername);
-      setCloudApiKey(s.cloudApiKey);
-      setGatewayIp(s.gatewayIp);
-      setGatewayId(s.gatewayId);
-      setPrimaryDeviceId(s.primaryDeviceId);
-      setSecondaryDeviceId(s.secondaryDeviceId);
-
-      setShellyServer(s.shellyServer);
-      setShellyAuthKey(s.shellyAuthKey);
+      applyPersistedSettings(s, {
+        syncSettingsCloud: setSyncSettingsCloud,
+        storeHistoryCloud: setStoreHistoryCloud,
+        vesselNickname: setVesselNickname,
+        shellyLocalPassword: setShellyLocalPassword,
+        webhookUrl: setWebhookUrl,
+        webhookUser: setWebhookUser,
+        webhookKey: setWebhookKey,
+        localServerEnabled: setLocalServerEnabled,
+        localServerBackground: setLocalServerBackground,
+        unitSystem: setUnitSystem,
+        timeZone: setTimeZone,
+        normalRunHours: setNormalRunHours,
+        normalRunMinutes: setNormalRunMinutes,
+        normalRunDaily: setNormalRunDaily,
+        normalRunVolume: setNormalRunVolume,
+        autoRestartNormal: setAutoRestartNormal,
+        isCloudPollingActive: setIsCloudPollingActive,
+        isLocalPollingActive: setIsLocalPollingActive,
+        cloudUsername: setCloudUsername,
+        cloudApiKey: setCloudApiKey,
+        gatewayIp: setGatewayIp,
+        gatewayId: setGatewayId,
+        primaryDeviceId: setPrimaryDeviceId,
+        secondaryDeviceId: setSecondaryDeviceId,
+        shellyServer: setShellyServer,
+        shellyAuthKey: setShellyAuthKey,
+        highPowerIds: setHighPowerIds,
+        lowPowerIds: setLowPowerIds,
+        floodSensorIds: setFloodSensorIds,
+        notificationsEnabled: setNotificationsEnabled,
+        notifyAutoGuard: setNotifyAutoGuard,
+        alertOffline: setAlertOffline,
+        notifyLowBattery: setNotifyLowBattery,
+        notifyWatering: setNotifyWatering,
+        notifyFlood: setNotifyFlood,
+        notifyHouseBatt: setNotifyHouseBatt,
+        notifyEngineBatt: setNotifyEngineBatt,
+        notifyShorePower: setNotifyShorePower,
+        alarmSound: setAlarmSound,
+        alarmVolume: setAlarmVolume,
+        alarmRepeatInterval: setAlarmRepeatInterval,
+        maxFlowRate: setMaxFlowRate,
+        maxDuration: setMaxDuration,
+        autoGuardEnabled: setAutoGuardEnabled,
+        battType: setBattType,
+        battSystemV: setBattSystemV,
+        battLowVoltage: setBattLowVoltage,
+        battCritVoltage: setBattCritVoltage,
+        battNormalVoltage: setBattNormalVoltage,
+        battOverVoltage: setBattOverVoltage,
+        battChargeVoltage: setBattChargeVoltage,
+        shoreCritLowV: setShoreCritLowV,
+        shoreLowV: setShoreLowV,
+        shoreNormalV: setShoreNormalV,
+        shoreHighV: setShoreHighV,
+        shoreCritHighV: setShoreCritHighV,
+      });
       setDevices(getDevices());
-      setHighPowerIds(s.highPowerIds);
-      setLowPowerIds(s.lowPowerIds);
-      setFloodSensorIds(s.floodSensorIds);
-
-      setNotificationsEnabled(s.notificationsEnabled);
-      setNotifyAutoGuard(s.notifyAutoGuard);
-      setAlertOffline(s.alertOffline);
-      setNotifyLowBattery(s.notifyLowBattery);
-      setNotifyWatering(s.notifyWatering);
-      setAlarmSound(s.alarmSound);
-      setAlarmVolume(s.alarmVolume);
-      setAlarmRepeatInterval(s.alarmRepeatInterval);
-
-      setMaxFlowRate(s.maxFlowRate);
-      setMaxDuration(s.maxDuration);
-      setAutoGuardEnabled(s.autoGuardEnabled);
-
-      setBattType(s.battType);
-      setBattSystemV(s.battSystemV);
-      setBattLowVoltage(s.battLowVoltage);
-      setBattCritVoltage(s.battCritVoltage);
-      setBattNormalVoltage(s.battNormalVoltage);
-      setBattOverVoltage(s.battOverVoltage);
-      setBattChargeVoltage(s.battChargeVoltage);
-      setShoreCritLowV(s.shoreCritLowV);
-      setShoreLowV(s.shoreLowV);
-      setShoreNormalV(s.shoreNormalV);
-      setShoreHighV(s.shoreHighV);
-      setShoreCritHighV(s.shoreCritHighV);
 
       const currentVid = getActiveVehicleId();
       setActiveVid(currentVid);

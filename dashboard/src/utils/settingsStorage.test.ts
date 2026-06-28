@@ -1,5 +1,17 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readSettings, writeSettings, type PersistedSettings } from './settingsStorage';
+import { readSettings, writeSettings, applyPersistedSettings, type PersistedSettings, type SettingsSetters } from './settingsStorage';
+
+// Build a SettingsSetters whose every setter records the value it was called with into `received`,
+// so a test can assert what applyPersistedSettings fanned out. Keys are derived from a settings
+// object so the map can't silently miss a field.
+function recordingSetters(template: PersistedSettings) {
+  const received: Partial<PersistedSettings> = {};
+  const setters = {} as SettingsSetters;
+  for (const key of Object.keys(template) as (keyof PersistedSettings)[]) {
+    (setters as any)[key] = (value: unknown) => { (received as any)[key] = value; };
+  }
+  return { received, setters };
+}
 
 // A fully-specified value set distinct from the defaults, with already-trimmed webhook fields so the
 // round-trip is exact (writeSettings trims those).
@@ -100,5 +112,33 @@ describe('settingsStorage', () => {
   it('falls back to four empty slots when a device-id array is corrupt', () => {
     localStorage.setItem('sh_high_power', 'not json');
     expect(readSettings().highPowerIds).toEqual(['', '', '', '']);
+  });
+
+  describe('applyPersistedSettings', () => {
+    it('applies every persisted field to its setter (no field dropped)', () => {
+      const { received, setters } = recordingSetters(SAMPLE);
+      applyPersistedSettings(SAMPLE, setters);
+      // Every field round-trips through its setter exactly — the structural guard against the
+      // rehydrate-drift bug that silently skipped fields.
+      expect(received).toEqual(SAMPLE);
+    });
+
+    it('rehydrates the flood/house/engine/shore notification toggles (regression)', () => {
+      // These four were persisted by writeSettings but omitted from the old hand-maintained
+      // rehydrate list, so a background settings_updated left them stale. Assert they now flow.
+      const { received, setters } = recordingSetters(SAMPLE);
+      const toggled: PersistedSettings = {
+        ...SAMPLE,
+        notifyFlood: false,
+        notifyHouseBatt: false,
+        notifyEngineBatt: false,
+        notifyShorePower: false,
+      };
+      applyPersistedSettings(toggled, setters);
+      expect(received.notifyFlood).toBe(false);
+      expect(received.notifyHouseBatt).toBe(false);
+      expect(received.notifyEngineBatt).toBe(false);
+      expect(received.notifyShorePower).toBe(false);
+    });
   });
 });
