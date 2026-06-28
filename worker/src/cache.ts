@@ -48,3 +48,38 @@ export function tokenExpiryMs(nowMs: number, expiresInSec: unknown): number {
   if (!Number.isFinite(secs) || secs <= 0) return 0;
   return nowMs + secs * 1000;
 }
+
+/**
+ * Stable content signature for a sensorState write — the event plus its extra telemetry fields, in a
+ * key-order-independent form. Two writes with the same signature would store identical data.
+ */
+export function sensorStateSignature(event: string, extra: Record<string, { stringValue: string }>): string {
+  const parts = Object.keys(extra).sort().map((k) => `${k}=${extra[k]?.stringValue ?? ''}`);
+  return [event, ...parts].join('|');
+}
+
+/** What the isolate remembers about the last sensorState it WROTE for a device. */
+export interface LastWrite {
+  sig: string;
+  at: number;
+}
+
+/**
+ * Write-coalescing decision for periodic telemetry (open-tasks Task 8 cost lever, COST_ANALYSIS §5):
+ * skip a sensorState write when its content is identical to what this isolate last wrote for the
+ * device AND that write was within `heartbeatMs` — so a burst of unchanged telemetry doesn't cost a
+ * write each time, while a heartbeat still refreshes the cached `at` at least every `heartbeatMs` so
+ * the app's freshness view never goes stale. ALWAYS writes when the content changed, when there is no
+ * prior write (cold isolate → fail open), or when the heartbeat elapsed. Applied to telemetry ONLY —
+ * alert/flood events bypass coalescing entirely (their display state must always be fresh).
+ */
+export function shouldWriteTelemetry(
+  prev: LastWrite | null | undefined,
+  nextSig: string,
+  nowMs: number,
+  heartbeatMs: number,
+): boolean {
+  if (!prev || !Number.isFinite(prev.at)) return true;
+  if (prev.sig !== nextSig) return true;
+  return nowMs - prev.at >= heartbeatMs;
+}

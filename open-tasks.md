@@ -504,7 +504,11 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
       already shipped), **OAuth-token + vehicle-doc caching DONE + DEPLOYED (2026-06-27, PR #2,
       [worker/src/cache.ts](worker/src/cache.ts))** — every webhook had been minting a fresh OAuth token
       + re-reading the vehicle doc; both now reuse the isolate cache (flood path bypasses for fresh
-      creds). Write coalescing still TODO if needed at scale.
+      creds). **Write coalescing DONE (2026-06-28):** for periodic telemetry, the worker now skips a
+      `sensorState` write whose content is unchanged since this isolate last wrote it
+      (`shouldWriteTelemetry`/`sensorStateSignature` in [worker/src/cache.ts](worker/src/cache.ts)),
+      bounded by a 15-min heartbeat so `at` stays fresh. Telemetry-only — alerts/flood always write.
+      Layered on top of the existing throttle; zero extra Firestore reads (uses an isolate cache).
 
 ---
 
