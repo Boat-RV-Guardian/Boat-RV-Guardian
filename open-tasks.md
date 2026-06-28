@@ -393,8 +393,19 @@ Tasks:
       Operations tab pings it; live `/api/health` returns 200. The "Worker: down" state is cleared.
 - [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
       queryable). Needs the worker to persist send results. Low priority.
-- [ ] **Owner:** attach `admin.boatrvguardian.com` to the Pages project (dashboard; already an
-      authorized Firebase domain) for the cleaner separate home. Delete/rotate the downloaded SA key.
+- [x] **RELOCATED to its own repo + domain — LIVE 2026-06-28.** The console moved OFF the consumer
+      brand domain into a dedicated repo **[Boat-RV-Guardian/brvg-admin-site](https://github.com/Boat-RV-Guardian/brvg-admin-site)**,
+      deployed as its own Cloudflare Pages project at **https://brvg-tools.sc4tech.com** (obfuscation/
+      security). The marketing site dropped `/admin` + `/api/operators`
+      ([website#4](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/4), merged). Agent
+      did the Pages deploy + `FIREBASE_PROJECT_ID` secret + custom-domain attach; owner created the
+      CNAME and `brvg-tools.sc4tech.com` was added to Firebase Auth authorized domains (via
+      `gcloud auth print-access-token` + Identity Toolkit `admin/v2/config`, header
+      `x-goog-user-project: boat-rv-guardian-9f8a4`). **Google sign-in works → console usable.**
+- [ ] **Owner (Operators tab only):** set the 2 Pages Function secrets `FIREBASE_CLIENT_EMAIL` +
+      `FIREBASE_PRIVATE_KEY` on the `brvg-admin-site` project (need the Firebase SA key — Cloudflare
+      secrets are write-only so they can't be copied from the old project). Other 3 tabs work without
+      them. Admins can also be granted via `scripts/grant-admin.mjs`. Delete/rotate the SA key after.
 
 ---
 

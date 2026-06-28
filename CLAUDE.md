@@ -470,3 +470,54 @@ noted below (they do NOT travel).
 - The agent could not run the Firebase/Cloudflare PRODUCTION writes itself (sandbox classifier blocks
   prod deploys/grants + a self-named admin); the owner ran the prepared one-line scripts. Same pattern
   applies on the next machine.
+
+## Session handoff — 2026-06-28, backend enforcement shipped + admin relocated + Task 14 (all merged)
+
+Big session, everything merged to `main` across all repos; all gates green. Version still **1.0.45**
+(unreleased app changes on `main`; no tag cut). Highlights:
+
+### Shipped + DEPLOYED (worker auto-deploys on push to `worker/**`)
+- **Task 8 — worker cost caching** (PR #2): OAuth token + vehicle-doc cached in the isolate
+  ([worker/src/cache.ts](worker/src/cache.ts)); flood path bypasses the vehicle cache for fresh creds.
+- **Task 6 — server-side tier enforcement** (PR #3): a **daily cron** (`12 4 * * *`, wrangler.toml)
+  expires lapsed Basic trials (`trialEndsAt` past → `tier=free`) and prunes hosted history past the
+  tier window. Pure selectors in [worker/src/retention.ts](worker/src/retention.ts). Inert under
+  grandfathering until real tiers are assigned.
+- **Task 4 — role-enforced control** (PR #4): `POST /api/control` verifies the caller's Firebase ID
+  token, checks their `members` role (pure [worker/src/authz.ts](worker/src/authz.ts)), rejects
+  `monitor`, enforces open-requires-limit, then relays to LinkTap. **Additive + unused** until the
+  app routes off-LAN control through it (hardware-gated — the LinkTapWidget command path).
+- **Task 12 health** (PR #1): worker `/api/health` (live, 200).
+
+### Admin console RELOCATED → its own repo + domain (LIVE)
+- New repo **[Boat-RV-Guardian/brvg-admin-site](https://github.com/Boat-RV-Guardian/brvg-admin-site)**
+  (standalone Astro app), deployed to **https://brvg-tools.sc4tech.com** (off the brand domain for
+  obfuscation/security). Marketing site dropped `/admin` + `/api/operators` (website#4, merged).
+  Agent did the Cloudflare Pages deploy + custom-domain attach + `FIREBASE_PROJECT_ID` secret; owner
+  made the CNAME. **`brvg-tools.sc4tech.com` added to Firebase Auth authorized domains** → sign-in
+  works, console usable. ⚠️ STILL TODO (owner): set `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY`
+  Pages secrets (need the SA key) for the **Operators tab** only; other 3 tabs work.
+- **gcloud→Firebase admin API gotcha:** user creds need header `x-goog-user-project: boat-rv-guardian-9f8a4`
+  on identitytoolkit calls, else "requires a quota project" PERMISSION_DENIED. `gcloud auth print-access-token`
+  is the sanctioned token source (the classifier blocks extracting firebase-tools' stored refresh token).
+
+### Task 7 — cloud-server unify groundwork (merged, brvg-cloud-server#3)
+- `SqlStorage` over a tiny `SqlDriver` seam + `NodeSqliteDriver` (node:sqlite, self-host) +
+  `D1Driver` (Cloudflare) + a **Cloudflare Worker adapter** (`src/worker.ts`) reusing the same core.
+  Path to retiring the main repo's standalone `worker/` (owner-driven cutover later).
+
+### Task 14 — Account portal (merged, PR #6)
+- Account.tsx gains trial status, usage-vs-plan, and a Premium-gated CSV export of on-device usage
+  history. Pure logic in [utils/accountSummary.ts](dashboard/src/utils/accountSummary.ts) +
+  [utils/historyCsv.ts](dashboard/src/utils/historyCsv.ts). SyncModal now stashes
+  `lt_vehicle_trial_ends`. **Coverage lesson:** importing `VehicleManager` into a view drags its heavy
+  transitive graph into that view's test and tanks global coverage — read `lt_devices`/`lt_vehicles`
+  from localStorage directly for simple counts.
+
+### Next (owner's order was Task 14 → Task 6 client; both server sides done)
+- **Task 6 client remainder:** wire the entitlement gates (`canRemoteControl` off-LAN, hide SMS
+  config) — NOTE the entitlement booleans are still consumed only by tests + the new Account view;
+  trial AUTO-grant on vehicle creation; SMS/voice scaffold (no provider).
+- **Task 4 client wiring:** route LinkTapWidget remote control through `/api/control` (hardware-gated).
+- **Stripe** when ready (drop-in at `setActiveVehicleTier`).
+- Owner: the `brvg-admin-site` Operators-tab secrets; Tauri signing cert (Task 13); branch protection.
