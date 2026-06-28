@@ -4,7 +4,10 @@ import {
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
   healthBody,
 } from './events';
-import { Cached, isCacheFresh, tokenValid, tokenExpiryMs } from './cache';
+import {
+  Cached, isCacheFresh, tokenValid, tokenExpiryMs,
+  LastWrite, sensorStateSignature, shouldWriteTelemetry,
+} from './cache';
 import {
   isTrialExpired, historyRetentionDaysForTier, historyDocsToPrune,
   isTrialEligible, trialEndsAtFrom,
@@ -26,6 +29,15 @@ let cachedToken: { token: string; expiresAtMs: number } | null = null;
 /** TTL for a cached vehicle doc — short, since config changes should propagate within ~a minute. */
 const VEHICLE_CACHE_TTL_MS = 60_000;
 const vehicleDocCache = new Map<string, Cached<any>>();
+
+/**
+ * Write-coalescing cache (Task 8 cost lever): the last sensorState content this isolate WROTE per
+ * `vid/device`. Lets us skip a telemetry write whose content is unchanged, bounded by a heartbeat so
+ * the app's freshness `at` still refreshes. Telemetry only — alerts/flood always write.
+ */
+const sensorWriteCache = new Map<string, LastWrite>();
+/** Re-write unchanged telemetry at least this often so `sensorState.at` never looks stale. */
+const SENSOR_WRITE_HEARTBEAT_MS = 15 * 60_000;
 
 /** Google's public x509 certs for verifying Firebase ID-token signatures. */
 const FIREBASE_CERTS_URL =
@@ -529,11 +541,21 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     persisted = shouldPersistTelemetry(now, Number.isFinite(lastAt) ? lastAt : null, resolutionSec);
   }
   if (persisted) {
-    await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
-      event: { stringValue: event },
-      at: { integerValue: String(now) },
-      ...extra,
-    });
+    // Write-coalescing (Task 8): for periodic telemetry, skip a write whose content is unchanged
+    // since this isolate last wrote it (bounded by SENSOR_WRITE_HEARTBEAT_MS so `at` stays fresh).
+    // Alerts/flood are never telemetry, so they always write.
+    const key = `${vid}/${device}`;
+    const sig = telemetry ? sensorStateSignature(event, extra) : '';
+    if (telemetry && !shouldWriteTelemetry(sensorWriteCache.get(key), sig, now, SENSOR_WRITE_HEARTBEAT_MS)) {
+      persisted = false; // unchanged within the heartbeat — coalesced away
+    } else {
+      await setFirestoreDoc(env, token, `vehicles/${vid}/sensorState/${device}`, {
+        event: { stringValue: event },
+        at: { integerValue: String(now) },
+        ...extra,
+      });
+      if (telemetry) sensorWriteCache.set(key, { sig, at: now });
+    }
   }
 
   // SAFETY: on a flood/leak event, close every configured LinkTap valve via the cloud API. The app
