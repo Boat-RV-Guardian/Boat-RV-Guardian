@@ -4,6 +4,7 @@ import {
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
   healthBody,
 } from './events';
+import { Cached, isCacheFresh, tokenValid, tokenExpiryMs } from './cache';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -11,10 +12,25 @@ export interface Env {
   FIREBASE_PRIVATE_KEY: string;
 }
 
+// — In-isolate caches (open-tasks Task 8 cost levers) —
+// Cloudflare reuses a Worker isolate across many requests, so module-scope state survives between
+// webhooks. Caching the OAuth token (valid ~1h) and the vehicle doc collapses the redundant per-
+// telemetry OAuth round-trip + Firestore read. Both fail safe (a miss just re-fetches); the flood
+// path bypasses the vehicle cache for fresh credentials. Expiry math lives in ./cache (unit-tested).
+let cachedToken: { token: string; expiresAtMs: number } | null = null;
+/** TTL for a cached vehicle doc — short, since config changes should propagate within ~a minute. */
+const VEHICLE_CACHE_TTL_MS = 60_000;
+const vehicleDocCache = new Map<string, Cached<any>>();
+
 /**
- * Generates a Google OAuth2 Access Token using the Firebase Service Account Private Key.
+ * Generates (and caches) a Google OAuth2 Access Token using the Firebase Service Account Private Key.
+ * The token endpoint returns the token's lifetime (`expires_in`, ~3600s); we reuse the token across
+ * requests until it nears expiry (60s skew) instead of minting a fresh JWT every webhook.
  */
 async function getFirebaseAccessToken(env: Env): Promise<string> {
+  const now = Date.now();
+  if (cachedToken && tokenValid(cachedToken.expiresAtMs, now)) return cachedToken.token;
+
   const privateKeyStr = env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n');
   const privateKey = await importPKCS8(privateKeyStr, 'RS256');
 
@@ -43,6 +59,7 @@ async function getFirebaseAccessToken(env: Env): Promise<string> {
   }
 
   const data: any = await res.json();
+  cachedToken = { token: data.access_token, expiresAtMs: tokenExpiryMs(Date.now(), data.expires_in) };
   return data.access_token;
 }
 
@@ -123,6 +140,22 @@ async function getFirestoreDoc(env: Env, token: string, path: string): Promise<a
   return data.fields || null;
 }
 
+/**
+ * Vehicle doc read with a short in-isolate cache (Task 8). Pass `bypassCache` on the safety path so a
+ * flood always acts on fresh LinkTap credentials. A successful fresh read refreshes the cache for the
+ * common telemetry path; a null (not-found / error) is NOT cached so a transient miss can't stick.
+ */
+async function getVehicleDocCached(env: Env, token: string, vid: string, bypassCache = false): Promise<any | null> {
+  const now = Date.now();
+  if (!bypassCache) {
+    const hit = vehicleDocCache.get(vid);
+    if (hit && isCacheFresh(hit.at, now, VEHICLE_CACHE_TTL_MS)) return hit.value;
+  }
+  const fresh = await getFirestoreDoc(env, token, `vehicles/${vid}`);
+  if (fresh) vehicleDocCache.set(vid, { value: fresh, at: now });
+  return fresh;
+}
+
 const strField = (fields: any, key: string): string => fields?.[key]?.stringValue || '';
 const arrField = (fields: any, key: string): string[] =>
   (fields?.[key]?.arrayValue?.values || []).map((v: any) => v.stringValue).filter(Boolean);
@@ -185,15 +218,17 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
   const device = sanitizeDevice(url.searchParams.get('device'));
   if (!vid) return new Response('Missing vid', { status: 400 });
 
+  // A flood SHUTOFF fires only on a real flood/leak alarm — never on the "cleared" (*.alarm_off)
+  // variant (which also matches the flood family) and never on periodic telemetry. See ./events.
+  // Decided up front (from the event alone) so the vehicle read can bypass the cache on the safety path.
+  const isFlood = isFloodShutoff(event);
+
   const token = await getFirebaseAccessToken(env);
-  const vehicle = await getFirestoreDoc(env, token, `vehicles/${vid}`);
+  const vehicle = await getVehicleDocCached(env, token, vid, isFlood);
   if (!vehicle) return new Response('Vehicle not found', { status: 404 });
 
   const name = strField(vehicle, 'lt_vessel_name') || 'your vehicle';
   const uids = arrField(vehicle, 'allowedUsers');
-  // A flood SHUTOFF fires only on a real flood/leak alarm — never on the "cleared" (*.alarm_off)
-  // variant (which also matches the flood family) and never on periodic telemetry. See ./events.
-  const isFlood = isFloodShutoff(event);
   // Periodic telemetry (e.g. voltmeter.measurement every 60s) is cached for remote display but must
   // NOT generate a push — otherwise it'd notify every minute. Only real alerts push.
   const telemetry = isTelemetry(event);
