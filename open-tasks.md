@@ -217,8 +217,17 @@ Task 2 has at least smoke coverage so the refactor is verifiable.
 **Context:** Role enforcement is currently client-side only. A `monitor`-role user who has the
 vehicle's cloud credentials could still call the device API directly.
 
-- [ ] Route control commands through the [worker](worker/src/index.ts) so the server enforces
-      role, rather than gating only in [LinkTapWidget.tsx](dashboard/src/components/LinkTapWidget.tsx).
+- [x] **Server-side enforcement DONE + DEPLOYED (2026-06-27, PR #4).** New `POST /api/control` in
+      [worker/src/index.ts](worker/src/index.ts) verifies the caller's Firebase ID token (sig/iss/aud/exp),
+      resolves their role from the vehicle's `members` map (pure `resolveRole`/`canControl` in
+      [worker/src/authz.ts](worker/src/authz.ts), 12 tests), and rejects `monitor` with 403. Enforces the
+      open-requires-limit safety invariant server-side too; relays to LinkTap with the vehicle's stored
+      creds (never exposed to clients). The flood-shutoff close path is untouched. Live: `/api/control` =
+      401 on no token.
+  - [ ] **Client wiring (remaining, hardware-gated):** route LinkTapWidget's OFF-LAN control through
+        `/api/control` (sending the user's ID token) instead of calling LinkTap directly. Touches the
+        safety-critical poll/command state machine — do with a live gateway (cf. Task 3 inc 5+). The
+        endpoint is inert until this lands.
 
 ---
 
@@ -327,10 +336,14 @@ Tasks:
 - [ ] **Remaining gates:** LinkTapWidget honors `canRemoteControl` off-LAN (needs the local-vs-remote
       seam — best with hardware), hide SMS-alert config unless `canSmsAlert` (no SMS UI yet). Drop
       GRANDFATHERED_TIER to a real default once the admin override + Stripe exist.
-- [ ] Enforce server-side in the worker too (history retention pruning, action/trigger handling,
-      SMS send) — client gating is advisory only (cf. Task 4 monitor-role lesson).
-- [ ] History retention enforcement: prune monthly rollups beyond the tier window (worker cron or
-      on-write TTL). Ties to Task 8 cost analysis.
+- [~] Enforce server-side in the worker too — **history-retention pruning + trial expiry DONE**
+      (2026-06-27, PR #3, daily cron); action/trigger handling + SMS send still TODO. Client gating
+      stays advisory only (cf. Task 4 monitor-role lesson).
+- [x] **History retention enforcement DONE + DEPLOYED (2026-06-27, PR #3).** Daily worker cron
+      (`12 4 * * *` in [wrangler.toml](worker/wrangler.toml)) prunes monthly rollups beyond each
+      vehicle's tier window AND lapses expired Basic trials (`trialEndsAt` past → `tier='free'`). Pure
+      selectors in [worker/src/retention.ts](worker/src/retention.ts) (14 tests). Inert under
+      grandfathering (legacy→premium keeps all) until real tiers are assigned; per-run delete cap.
 - [ ] SMS/voice alerts (Premium): provider (Twilio?) + per-event opt-in UI + worker send path.
 - [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
       who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
@@ -376,9 +389,8 @@ Tasks:
 - [x] **DEPLOYED + LIVE (2026-06-27):** rules deployed, `admin` claim → jgearinger@gmail.com,
       authorized domains updated, website on Pages prod → **https://boatrvguardian.com/admin**. See the
       2026-06-27 session handoff in [CLAUDE.md](CLAUDE.md) for the exact production state + credentials.
-- [x] **Worker `/api/health` for the live ops signal — built**, Operations tab pings it. **PR OPEN:**
-      [Boat-RV-Guardian#1](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/1) (branch
-      `worker-health-endpoint`) — **merge to deploy** (classifier blocked the agent merge).
+- [x] **Worker `/api/health` for the live ops signal — MERGED + DEPLOYED (2026-06-27, PR #1).** The
+      Operations tab pings it; live `/api/health` returns 200. The "Worker: down" state is cleared.
 - [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
       queryable). Needs the worker to persist send results. Low priority.
 - [ ] **Owner:** attach `admin.boatrvguardian.com` to the Pages project (dashboard; already an
@@ -444,8 +456,11 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
       Docker self-host story).
 - [x] Free-tier ceilings confirmed: Firestore Spark ~3–7 vehicles; Cloudflare free ~17–34/day;
       Cloudflare $5/mo ~100 vehicles.
-- [ ] **Follow-up to act on:** implement telemetry downsampling + vehicle-doc caching + write
-      coalescing in the worker (cost levers §5) when building the history feature (Task 6).
+- [~] **Follow-up to act on:** cost levers §5 — telemetry downsampling (tier-aware persist throttle,
+      already shipped), **OAuth-token + vehicle-doc caching DONE + DEPLOYED (2026-06-27, PR #2,
+      [worker/src/cache.ts](worker/src/cache.ts))** — every webhook had been minting a fresh OAuth token
+      + re-reading the vehicle doc; both now reuse the isolate cache (flood path bypasses for fresh
+      creds). Write coalescing still TODO if needed at scale.
 
 ---
 
