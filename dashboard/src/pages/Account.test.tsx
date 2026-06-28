@@ -91,4 +91,14 @@ describe('Account', () => {
     expect(screen.getByText('Boat B')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
   });
+
+  it('generates and revokes an integration API token (Premium grandfathered default)', () => {
+    render(<Account />);
+    fireEvent.change(screen.getByPlaceholderText(/label/i), { target: { value: 'Home Assistant' } });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+    expect(screen.getByText('Home Assistant')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('sh_api_tokens')!).length).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: /revoke/i }));
+    expect(JSON.parse(localStorage.getItem('sh_api_tokens')!).length).toBe(0);
+  });
 });
