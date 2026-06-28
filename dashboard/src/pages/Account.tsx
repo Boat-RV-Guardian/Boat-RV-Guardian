@@ -4,6 +4,10 @@ import { entitlementSummary, TIER_LABELS, TIER_PRICING } from '../utils/entitlem
 import { redeemCoupon, MOCK_COUPONS } from '../utils/billing';
 import { trialStatus, usageRows } from '../utils/accountSummary';
 import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
+import {
+  parseSmsPrefs, serializeSmsPrefs, normalizePhone, addPhone, removePhone, setEventEnabled,
+  SMS_EVENT_CATALOG, type SmsPrefs,
+} from '../utils/smsPrefs';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -23,6 +27,23 @@ export default function Account() {
   const rows = entitlementSummary(ent);
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // SMS / voice alert channels (Premium, per-vehicle). Persisted to the synced `sh_sms_prefs` field;
+  // dispatching settings_updated lets SyncModal push it to the cloud like any other config.
+  const [smsPrefs, setSmsPrefs] = useState<SmsPrefs>(() => parseSmsPrefs(localStorage.getItem('sh_sms_prefs')));
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneErr, setPhoneErr] = useState('');
+  const persistSms = (next: SmsPrefs) => {
+    setSmsPrefs(next);
+    localStorage.setItem('sh_sms_prefs', serializeSmsPrefs(next));
+    window.dispatchEvent(new Event('settings_updated'));
+  };
+  const onAddPhone = () => {
+    if (!normalizePhone(phoneInput)) { setPhoneErr('Enter a valid phone (7–15 digits, optional +).'); return; }
+    setPhoneErr('');
+    persistSms(addPhone(smsPrefs, phoneInput));
+    setPhoneInput('');
+  };
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
   const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
@@ -120,6 +141,64 @@ export default function Account() {
             Export CSV
           </button>
         </div>
+      </div>
+
+      {/* Alert channels — SMS/voice escalation (Task 6/14). Premium-gated (canSmsAlert). No live
+          provider yet: prefs are stored + synced; the worker send path (worker/src/sms.ts) is a stub. */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+          SMS &amp; voice alerts{!ent.canSmsAlert && ' (Premium)'}
+        </h3>
+        {!ent.canSmsAlert ? (
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+            Escalate critical alerts (flood, low battery, shore power, offline) to a text message.
+            Upgrade to Premium to add phone numbers and choose which alerts text you.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Add the numbers that should receive a text for the alerts you pick below. (Delivery goes
+              live once an SMS provider is connected.)
+            </p>
+            {/* Phone numbers */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {smsPrefs.phones.map((p) => (
+                <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '14px', padding: '4px 10px', fontSize: '0.82rem' }}>
+                  {p}
+                  <button onClick={() => persistSms(removePhone(smsPrefs, p))} aria-label={`Remove ${p}`} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}>×</button>
+                </span>
+              ))}
+              {smsPrefs.phones.length === 0 && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No numbers yet.</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                type="tel"
+                value={phoneInput}
+                onChange={(e) => { setPhoneInput(e.target.value); setPhoneErr(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') onAddPhone(); }}
+                placeholder="+1 555 123 4567"
+                style={{ flex: '1 1 180px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
+              />
+              <button className="btn-primary" onClick={onAddPhone} style={{ padding: '8px 18px' }}>Add</button>
+            </div>
+            {phoneErr && <span style={{ fontSize: '0.78rem', color: 'var(--accent-red, #ff6b6b)' }}>{phoneErr}</span>}
+            {/* Per-event opt-in */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
+              {SMS_EVENT_CATALOG.map((ev) => (
+                <label key={ev.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  <input
+                    type="checkbox"
+                    checked={smsPrefs.events.includes(ev.key)}
+                    onChange={(e) => persistSms(setEventEnabled(smsPrefs, ev.key, e.target.checked))}
+                  />
+                  {ev.label}
+                </label>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Coupon redemption (mock payment) */}

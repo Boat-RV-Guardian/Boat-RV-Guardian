@@ -68,6 +68,7 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
   sh_webhook_user: '',   // username for a self-hosted cloud server (issued by its admin page; Task 7)
   sh_webhook_key: '',    // API key for a self-hosted cloud server (paired with sh_webhook_user)
   tier: '',              // per-vehicle subscription tier ('' ⇒ grandfathered; see utils/entitlements)
+  sh_sms_prefs: '',      // per-vehicle SMS/voice alert prefs (JSON {phones,events}; '' ⇒ none) — Premium
   lt_devices: '[]'
 };
 
