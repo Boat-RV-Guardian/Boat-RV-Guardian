@@ -5,6 +5,9 @@ import {
   healthBody,
 } from './events';
 import { Cached, isCacheFresh, tokenValid, tokenExpiryMs } from './cache';
+import {
+  isTrialExpired, historyRetentionDaysForTier, historyDocsToPrune,
+} from './retention';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -159,16 +162,81 @@ async function getVehicleDocCached(env: Env, token: string, vid: string, bypassC
 const strField = (fields: any, key: string): string => fields?.[key]?.stringValue || '';
 const arrField = (fields: any, key: string): string[] =>
   (fields?.[key]?.arrayValue?.values || []).map((v: any) => v.stringValue).filter(Boolean);
+/** Read a numeric Firestore field (REST wraps numbers as integerValue/doubleValue strings). */
+const numField = (fields: any, key: string): number | null => {
+  const raw = fields?.[key]?.integerValue ?? fields?.[key]?.doubleValue;
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+};
+
+const docsBase = (env: Env) =>
+  `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 /** Overwrite a Firestore document's fields (REST PATCH, value-wrapped). */
 async function setFirestoreDoc(env: Env, token: string, path: string, fields: Record<string, any>): Promise<void> {
-  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${docsBase(env)}/${path}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) console.warn(`Firestore write failed: ${res.status} ${await res.text()}`);
+}
+
+/**
+ * Precise field-level PATCH using an updateMask: ONLY the masked paths are touched, and a masked path
+ * absent from `fields` is DELETED. Used by the maintenance cron to flip `tier`→free and remove
+ * `trialEndsAt` on a lapsed trial WITHOUT clobbering the rest of the (large) vehicle doc.
+ */
+async function patchFirestoreFields(
+  env: Env, token: string, path: string, fields: Record<string, any>, maskPaths: string[],
+): Promise<boolean> {
+  const mask = maskPaths.map((p) => `updateMask.fieldPaths=${encodeURIComponent(p)}`).join('&');
+  const res = await fetch(`${docsBase(env)}/${path}?${mask}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) { console.warn(`Firestore patch failed (${path}): ${res.status} ${await res.text()}`); return false; }
+  return true;
+}
+
+/** Delete a Firestore document. Returns whether it succeeded. */
+async function deleteFirestoreDoc(env: Env, token: string, path: string): Promise<boolean> {
+  const res = await fetch(`${docsBase(env)}/${path}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) { console.warn(`Firestore delete failed (${path}): ${res.status} ${await res.text()}`); return false; }
+  return true;
+}
+
+/**
+ * List a Firestore collection, returning each doc's id + fields. Paginates to completion (capped) and
+ * supports a field `mask` so we only pull the fields we need (e.g. just `month` when scanning history
+ * — avoids dragging back large usage/event maps). `pageCap` bounds a runaway loop.
+ */
+async function listFirestoreCollection(
+  env: Env, token: string, collectionPath: string, maskFields?: string[], pageCap = 50,
+): Promise<Array<{ id: string; fields: any }>> {
+  const out: Array<{ id: string; fields: any }> = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < pageCap; page++) {
+    const params = new URLSearchParams({ pageSize: '300' });
+    if (pageToken) params.set('pageToken', pageToken);
+    for (const f of maskFields || []) params.append('mask.fieldPaths', f);
+    const res = await fetch(`${docsBase(env)}/${collectionPath}?${params}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) { console.warn(`Firestore list failed (${collectionPath}): ${res.status}`); break; }
+    const data: any = await res.json();
+    for (const d of data.documents || []) {
+      out.push({ id: String(d.name).split('/').pop() || '', fields: d.fields || {} });
+    }
+    if (!data.nextPageToken) break;
+    pageToken = data.nextPageToken;
+  }
+  return out;
 }
 
 /**
@@ -305,7 +373,62 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
   });
 }
 
+/**
+ * Daily tier-maintenance sweep (open-tasks Task 6 server-side enforcement). Runs from the cron
+ * trigger in wrangler.toml. Two passes over every vehicle:
+ *   1. TRIAL EXPIRY — a vehicle carrying a lapsed `trialEndsAt` is flipped `tier`→`free` and the
+ *      marker removed (precise field PATCH; the rest of the doc is untouched). The client reads
+ *      `tier`, so no app change is needed.
+ *   2. HISTORY RETENTION — hosted monthly history rollups older than the vehicle's (post-expiry) tier
+ *      window are deleted. Legacy/unset tiers grandfather to premium (~3y) so existing data is NOT
+ *      touched until a real tier is assigned. A per-run delete cap guards against a runaway.
+ *
+ * Selection logic is pure + unit-tested in ./retention; this only does the Firestore I/O. The live
+ * webhook path is NOT touched by this routine.
+ */
+async function runDailyMaintenance(env: Env, now = Date.now(), deleteCap = 2000): Promise<void> {
+  const token = await getFirebaseAccessToken(env);
+  const vehicles = await listFirestoreCollection(env, token, 'vehicles', ['tier', 'trialEndsAt']);
+
+  let trialsExpired = 0;
+  let pruned = 0;
+  let capped = false;
+
+  for (const v of vehicles) {
+    let tier = strField(v.fields, 'tier');
+
+    // Pass 1 — lapse an expired Basic trial back to free.
+    if (isTrialExpired(numField(v.fields, 'trialEndsAt'), now)) {
+      const ok = await patchFirestoreFields(
+        env, token, `vehicles/${v.id}`, { tier: { stringValue: 'free' } }, ['tier', 'trialEndsAt'],
+      );
+      if (ok) { tier = 'free'; trialsExpired++; }
+    }
+
+    // Pass 2 — prune hosted history beyond this vehicle's (now-current) tier window.
+    if (capped) continue;
+    const retentionDays = historyRetentionDaysForTier(tier);
+    const hist = await listFirestoreCollection(env, token, `vehicles/${v.id}/history`, ['month']);
+    const toDelete = historyDocsToPrune(hist.map((h) => h.id), retentionDays, now);
+    for (const id of toDelete) {
+      if (pruned >= deleteCap) { capped = true; break; }
+      if (await deleteFirestoreDoc(env, token, `vehicles/${v.id}/history/${id}`)) pruned++;
+    }
+  }
+
+  console.log(
+    `maintenance: ${vehicles.length} vehicles, ${trialsExpired} trials expired, ${pruned} history docs pruned` +
+    (capped ? ` (HIT delete cap ${deleteCap})` : ''),
+  );
+}
+
 export default {
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Run to completion in the background; failures are logged, never thrown (a cron error would just
+    // retry and can't affect the live webhook path).
+    ctx.waitUntil(runDailyMaintenance(env).catch((e) => console.error('maintenance failed:', e)));
+  },
+
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
