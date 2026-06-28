@@ -366,8 +366,16 @@ Tasks:
 - [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
       who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
       Premium" mental model and the sharing goal (a shared mechanic sees the owner's history).
-- [ ] **SMS/voice = scaffold only (decided 2026-06-25):** per-event opt-in UI + a Premium-gated
+- [~] **SMS/voice = scaffold only (decided 2026-06-25):** per-event opt-in UI + a Premium-gated
       worker send-path interface, **no live provider** (Twilio dropped in later).
+  - [x] **Worker send-path interface landed (2026-06-28):** [worker/src/sms.ts](worker/src/sms.ts) —
+        `SmsSender` interface + `noopSmsSender` (sends nothing, reports not-configured), pure
+        `canSmsAlertForTier` (Premium-only, mirrors `canSmsAlert`) + `smsRecipientsForEvent`
+        (Premium AND per-event opt-in, dedup/trim) + `dispatchSmsForEvent` (attempted/sent counts).
+        11 tests; unwired (changes no behavior) until a provider + the opt-in UI land.
+  - [ ] **Remaining:** the account-portal **per-event opt-in UI** (phone numbers + which events
+        escalate), gated by `canSmsAlert`; then wire `dispatchSmsForEvent` into the worker alert path
+        and drop in a real provider (Twilio).
 
 ---
 
