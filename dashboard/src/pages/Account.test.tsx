@@ -124,4 +124,20 @@ describe('Account', () => {
     expect(screen.getByPlaceholderText(/555 123 4567/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /generate/i })).toBeTruthy();
   });
+
+  // Delete-account UI gating (Task 14 GDPR). We exercise the confirm flow up to — but not including —
+  // the irreversible action (clicking it would hit Firebase via the lazy import).
+  it('hides the delete-account control when signed out', () => {
+    render(<Account />);
+    expect(screen.queryByRole('button', { name: /^delete account$/i })).toBeNull();
+  });
+
+  it('requires typing DELETE before the permanent-delete button enables', () => {
+    render(<Account user={{ uid: 'u1', email: 'a@b.c' }} />);
+    fireEvent.click(screen.getByRole('button', { name: /^delete account$/i }));
+    const danger = screen.getByRole('button', { name: /permanently delete/i }) as HTMLButtonElement;
+    expect(danger.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText(/type delete to confirm/i), { target: { value: 'DELETE' } });
+    expect((screen.getByRole('button', { name: /permanently delete/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });
