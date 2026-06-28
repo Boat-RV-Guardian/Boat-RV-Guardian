@@ -3,6 +3,7 @@ import { useCloudConfig } from '../hooks/useCloudConfig';
 import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig } from '../utils/configSync';
 import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle } from '../utils/VehicleManager';
 import { getMyRole } from '../utils/sharing';
+import { requestTrial } from '../utils/trial';
 import { auth, signOut } from '../services/firebase';
 
 export default function SyncModal() {
@@ -53,6 +54,23 @@ export default function SyncModal() {
     if (tierChanged) localStorage.setItem('lt_vehicle_tier', tier);
     if (trialChanged) localStorage.setItem('lt_vehicle_trial_ends', trialEnds);
     if (tierChanged || trialChanged) window.dispatchEvent(new Event('tier_updated'));
+
+    // Auto-grant the one-month free Basic trial for a brand-new vehicle I OWN (open-tasks Task 6).
+    // Conditions: signed in, the vehicle has a cloud doc, I'm its admin (owner), and it has neither a
+    // tier nor any prior trial yet. The server (`POST /api/trial`) enforces the real per-user /
+    // per-vehicle anti-abuse rule and writes tier='basic' + trialEndsAt; the resulting cloud snapshot
+    // flows back through the stash above, so we don't touch tier state here. A per-vehicle "attempted"
+    // flag makes this fire at most once per device (and a grant flips `tier`, so it won't recur).
+    const hasCloudDoc = !!activeVehicleConfig && Object.keys(activeVehicleConfig).length > 0;
+    if (auth.currentUser && hasCloudDoc && role === 'admin' && !tier && !trialEnds) {
+      const attemptedKey = `lt_trial_attempted_${activeVid}`;
+      if (!localStorage.getItem(attemptedKey)) {
+        localStorage.setItem(attemptedKey, '1'); // set first so a re-render can't double-fire
+        requestTrial(activeVid).then((r) => {
+          if (!r.granted) console.debug('[trial] not granted:', r.reason || r.error);
+        });
+      }
+    }
   }, [activeVehicleConfig, configVid, activeVid]);
 
   // Cloud-vehicle reconciliation — runs app-wide (SyncModal is always mounted), so a login
