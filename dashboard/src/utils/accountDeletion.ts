@@ -1,0 +1,87 @@
+// Account deletion (open-tasks Task 14 — GDPR / Play / App-Store "delete account" requirement).
+// The decision logic + orchestration are pure and dependency-injected so they're fully unit-testable
+// without Firebase; Account.tsx supplies the real Firestore/Auth operations (lazy-imported in the
+// handler so this module — and the page's tests — stay Firebase-free).
+
+export interface VehicleAccess {
+  id: string;
+  /** uids with access to the vehicle (the vehicle doc's `allowedUsers`). */
+  allowedUsers: string[];
+}
+
+export interface DeletionPlan {
+  /** Vehicles the user solely owns → delete the doc entirely. */
+  toDelete: string[];
+  /** Vehicles shared with others → just remove the user (leave), preserving them for co-owners. */
+  toLeave: string[];
+}
+
+/**
+ * Decide, for each vehicle the user can access, whether deleting their account should DELETE the
+ * vehicle (they're its only member) or just remove THEM from it (others still use it). A vehicle the
+ * user isn't actually in is ignored. Pure.
+ */
+export function accountDeletionPlan(vehicles: VehicleAccess[], uid: string): DeletionPlan {
+  const toDelete: string[] = [];
+  const toLeave: string[] = [];
+  for (const v of vehicles) {
+    const users = Array.isArray(v.allowedUsers) ? v.allowedUsers : [];
+    if (!users.includes(uid)) continue;            // not ours — leave it alone
+    if (users.filter((u) => u !== uid).length === 0) toDelete.push(v.id); // sole member → delete
+    else toLeave.push(v.id);                        // shared → just leave
+  }
+  return { toDelete: toDelete.sort(), toLeave: toLeave.sort() };
+}
+
+export interface DeletionDeps {
+  deleteVehicle: (vid: string) => Promise<void>;
+  leaveVehicle: (vid: string, uid: string) => Promise<void>;
+  deleteUserDoc: (uid: string) => Promise<void>;
+  deleteAuthUser: () => Promise<void>;
+  signOut: () => Promise<void>;
+  /** Clear this device's local data so the app resets to a fresh state. */
+  clearLocal: () => void;
+}
+
+export interface DeletionResult {
+  deletedVehicles: number;
+  leftVehicles: number;
+  /** Per-step errors that didn't abort the run (best-effort cleanup), keyed by step. */
+  errors: string[];
+}
+
+/**
+ * Execute the deletion plan, then delete the user's own doc, delete the Auth user, clear local data,
+ * and sign out. Vehicle ops are best-effort (an error on one is recorded but doesn't abort the rest);
+ * if deleting the Auth user fails (e.g. Firebase 'requires-recent-login'), the error is surfaced so
+ * the UI can prompt a re-auth — the data cleanup has still run. Orchestration only; deps do the I/O.
+ */
+export async function executeAccountDeletion(
+  plan: DeletionPlan, uid: string, deps: DeletionDeps,
+): Promise<DeletionResult> {
+  const errors: string[] = [];
+  let deletedVehicles = 0;
+  let leftVehicles = 0;
+
+  for (const vid of plan.toDelete) {
+    try { await deps.deleteVehicle(vid); deletedVehicles++; }
+    catch (e: any) { errors.push(`delete ${vid}: ${e?.message || e}`); }
+  }
+  for (const vid of plan.toLeave) {
+    try { await deps.leaveVehicle(vid, uid); leftVehicles++; }
+    catch (e: any) { errors.push(`leave ${vid}: ${e?.message || e}`); }
+  }
+  try { await deps.deleteUserDoc(uid); } catch (e: any) { errors.push(`user doc: ${e?.message || e}`); }
+
+  let authDeleted = false;
+  try { await deps.deleteAuthUser(); authDeleted = true; }
+  catch (e: any) { errors.push(`auth: ${e?.message || e}`); }
+
+  deps.clearLocal();
+  // If the Auth user couldn't be deleted (needs recent login), still sign out so the session ends.
+  if (!authDeleted) {
+    try { await deps.signOut(); } catch (e: any) { errors.push(`signout: ${e?.message || e}`); }
+  }
+
+  return { deletedVehicles, leftVehicles, errors };
+}

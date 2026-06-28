@@ -12,6 +12,7 @@ import {
   parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
   type ApiToken,
 } from '../utils/apiTokens';
+import { accountDeletionPlan, executeAccountDeletion, type VehicleAccess } from '../utils/accountDeletion';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -25,7 +26,7 @@ function readLocalJson<T>(key: string, fallback: T): T {
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
 // in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
 // CSV export of on-device usage history.
-export default function Account({ user }: { user?: { email?: string | null; displayName?: string | null } | null }) {
+export default function Account({ user }: { user?: { uid?: string; email?: string | null; displayName?: string | null } | null }) {
   const ent = useEntitlements();
   const price = TIER_PRICING[ent.tier];
   const rows = entitlementSummary(ent);
@@ -60,6 +61,47 @@ export default function Account({ user }: { user?: { email?: string | null; disp
   const onGenerateToken = () => {
     persistTokens(addApiToken(apiTokens, randomToken(), tokenLabel, Date.now()));
     setTokenLabel('');
+  };
+
+  // Account deletion (Task 14 — GDPR). Plan + orchestration are pure/tested (utils/accountDeletion);
+  // the Firebase ops are lazy-imported here so this page (and its tests) stay Firebase-free until the
+  // user actually confirms. Requires typing DELETE.
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
+  const onDeleteAccount = async () => {
+    if (deleteConfirm !== 'DELETE' || !user?.uid) return;
+    setDeleteBusy(true);
+    setDeleteMsg(null);
+    try {
+      const uid = user.uid;
+      const { db, auth } = await import('../services/firebase');
+      const fs = await import('firebase/firestore');
+      const { deleteUser, signOut } = await import('firebase/auth');
+      // Fetch every vehicle the user can access to decide delete-vs-leave.
+      const snap = await fs.getDocs(fs.query(fs.collection(db, 'vehicles'), fs.where('allowedUsers', 'array-contains', uid)));
+      const vehicles: VehicleAccess[] = snap.docs.map((d) => ({ id: d.id, allowedUsers: (d.data() as any).allowedUsers || [] }));
+      const plan = accountDeletionPlan(vehicles, uid);
+      const res = await executeAccountDeletion(plan, uid, {
+        deleteVehicle: (vid) => fs.deleteDoc(fs.doc(db, 'vehicles', vid)),
+        leaveVehicle: (vid, u) => fs.updateDoc(fs.doc(db, 'vehicles', vid), { allowedUsers: fs.arrayRemove(u) }),
+        deleteUserDoc: (u) => fs.deleteDoc(fs.doc(db, 'users', u)),
+        deleteAuthUser: () => (auth.currentUser ? deleteUser(auth.currentUser) : Promise.resolve()),
+        signOut: () => signOut(auth),
+        clearLocal: () => { try { localStorage.clear(); } catch { /* ignore */ } },
+      });
+      if (res.errors.length) {
+        setDeleteMsg(`Deleted ${res.deletedVehicles} vehicle(s); ${res.errors.length} step(s) need attention: ${res.errors[0]}. You may need to sign in again and retry.`);
+        setDeleteBusy(false);
+      } else {
+        // Fully done — reload to the signed-out, fresh-local state.
+        window.location.reload();
+      }
+    } catch (e: any) {
+      setDeleteMsg(`Deletion failed: ${e?.message || e}`);
+      setDeleteBusy(false);
+    }
   };
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
@@ -210,6 +252,39 @@ export default function Account({ user }: { user?: { email?: string | null; disp
             Export CSV
           </button>
         </div>
+
+        {/* Delete account (GDPR) — only when signed in. Solo-owned vehicles are deleted; shared ones
+            you're simply removed from. Irreversible, so it requires typing DELETE. */}
+        {user?.uid && (
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '4px' }}>
+            {!showDelete ? (
+              <button onClick={() => { setShowDelete(true); setDeleteMsg(null); }} style={{ background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '0.85rem' }}>
+                Delete account
+              </button>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', color: '#fca5a5' }}>
+                  This permanently deletes your account and the vehicles you solely own, and removes you
+                  from shared ones. This <strong>cannot be undone.</strong> Type <strong>DELETE</strong> to confirm.
+                </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    value={deleteConfirm}
+                    onChange={(e) => setDeleteConfirm(e.target.value)}
+                    placeholder="DELETE"
+                    aria-label="Type DELETE to confirm"
+                    style={{ flex: '1 1 120px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
+                  />
+                  <button onClick={onDeleteAccount} disabled={deleteConfirm !== 'DELETE' || deleteBusy} style={{ background: deleteConfirm === 'DELETE' && !deleteBusy ? '#ef4444' : '#7f1d1d', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 16px', cursor: deleteConfirm === 'DELETE' && !deleteBusy ? 'pointer' : 'not-allowed', fontSize: '0.85rem' }}>
+                    {deleteBusy ? 'Deleting…' : 'Permanently delete'}
+                  </button>
+                  <button onClick={() => { setShowDelete(false); setDeleteConfirm(''); }} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>Cancel</button>
+                </div>
+                {deleteMsg && <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>{deleteMsg}</span>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Alert channels — SMS/voice escalation (Task 6/14). Premium-gated (canSmsAlert). No live
