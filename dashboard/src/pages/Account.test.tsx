@@ -6,8 +6,10 @@ import Account from './Account';
 // reactive UI), end to end, without the native app.
 
 beforeEach(() => {
-  localStorage.removeItem('tier');
-  localStorage.removeItem('lt_vehicle_tier');
+  localStorage.clear();
+  // jsdom doesn't implement object URLs — stub them for the CSV export path.
+  (URL as any).createObjectURL = () => 'blob:mock';
+  (URL as any).revokeObjectURL = () => {};
 });
 
 describe('Account', () => {
@@ -30,5 +32,38 @@ describe('Account', () => {
     fireEvent.change(screen.getByPlaceholderText('Coupon code'), { target: { value: 'BOGUS' } });
     fireEvent.click(screen.getByRole('button', { name: /apply/i }));
     expect(screen.getByText(/invalid or expired/i)).toBeTruthy();
+  });
+
+  it('renders the usage & limits section', () => {
+    render(<Account />);
+    expect(screen.getByText('Usage & limits')).toBeTruthy();
+    expect(screen.getByText('Telemetry resolution')).toBeTruthy();
+  });
+
+  it('shows trial status when a future trial end is stashed', () => {
+    localStorage.setItem('lt_vehicle_trial_ends', String(Date.now() + 5 * 86_400_000));
+    render(<Account />);
+    expect(screen.getByText(/days left/i)).toBeTruthy();
+  });
+
+  it('exports CSV on Premium (enabled, builds from device history, triggers a download)', () => {
+    // Seed a device + its on-device usage history so the export actually flattens real buckets.
+    localStorage.setItem('lt_devices', JSON.stringify([
+      { id: 'd1', type: 'linktap_valve', role: 'Fresh Water', name: 'Tank', linktapDeviceId: 'lt1' },
+    ]));
+    localStorage.setItem('lt_usage_history_lt1', JSON.stringify({ '2026-06-01T00:00:00.000Z': 5 }));
+    let madeWith = '';
+    (URL as any).createObjectURL = (b: Blob) => { madeWith = String((b as any).type || 'blob'); return 'blob:x'; };
+    render(<Account />); // no tier set → grandfathered Premium → canExport
+    const btn = screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    fireEvent.click(btn);
+    expect(madeWith).toContain('text/csv');
+  });
+
+  it('disables CSV export on the Free plan', () => {
+    localStorage.setItem('lt_vehicle_tier', 'free');
+    render(<Account />);
+    expect((screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

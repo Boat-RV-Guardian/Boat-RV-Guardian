@@ -2,10 +2,21 @@ import { useState } from 'react';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { entitlementSummary, TIER_LABELS, TIER_PRICING } from '../utils/entitlements';
 import { redeemCoupon, MOCK_COUPONS } from '../utils/billing';
+import { trialStatus, usageRows } from '../utils/accountSummary';
+import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
+
+// Read the local device list / vehicle map straight from localStorage instead of importing
+// VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
+// what is just two count reads. Shapes: lt_devices = DeviceConfig[], lt_vehicles = Record<id, …>.
+interface LocalDevice { id: string; name?: string; linktapDeviceId?: string }
+function readLocalJson<T>(key: string, fallback: T): T {
+  try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; }
+}
 
 // In-app subscription portal (open-tasks Task 14). MOCK billing for now: a coupon code "purchases" a
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
-// in Settings → Vehicles routes here.
+// in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
+// CSV export of on-device usage history.
 export default function Account() {
   const ent = useEntitlements();
   const price = TIER_PRICING[ent.tier];
@@ -13,10 +24,35 @@ export default function Account() {
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
+  const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
+  const usage = usageRows(ent, {
+    vehicleCount: Object.keys(readLocalJson<Record<string, unknown>>('lt_vehicles', {})).length || 1,
+    deviceCount: devices.length,
+  });
+
   const apply = () => {
     const r = redeemCoupon(code);
     setMsg(r.ok ? { ok: true, text: `✓ Applied — this vehicle is now ${TIER_LABELS[r.tier!]}.` } : { ok: false, text: r.error || 'Failed' });
     if (r.ok) setCode('');
+  };
+
+  // Premium "data export": flatten each device's on-device usage history (lt_usage_history_<id>) to
+  // a CSV and download it. The history key mirrors LinkTapWidget (`linktapDeviceId || id`).
+  const exportCsv = () => {
+    const data: DeviceUsage[] = devices.map((d) => {
+      const key = d.linktapDeviceId || d.id;
+      let usageMap: Record<string, number> = {};
+      try { usageMap = JSON.parse(localStorage.getItem(`lt_usage_history_${key}`) || '{}'); } catch { /* skip */ }
+      return { device: d.name || key, usage: usageMap };
+    });
+    const blob = new Blob([usageHistoryToCsv(data)], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'brvg-usage-history.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -45,6 +81,44 @@ export default function Account() {
               <span style={{ color: r.on ? '#fff' : 'var(--text-secondary)' }}>{r.value}</span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Trial status (Task 14) — only when a trial marker is present */}
+      {trial.state !== 'none' && (
+        <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', borderColor: trial.state === 'active' ? '#22c55e55' : '#f59e0b55' }}>
+          <span style={{ fontSize: '1.3rem' }}>{trial.state === 'active' ? '⏳' : '⌛'}</span>
+          <span style={{ fontSize: '0.9rem' }}>
+            {trial.state === 'active'
+              ? <>Basic trial active — <strong>{trial.daysLeft} day{trial.daysLeft === 1 ? '' : 's'} left</strong>. Redeem a plan to keep these features.</>
+              : <>Your Basic trial has ended. This vehicle reverts to Free unless a plan is active.</>}
+          </span>
+        </div>
+      )}
+
+      {/* Usage vs plan (Task 14) */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Usage &amp; limits</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {usage.map((r) => (
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{r.label}</span>
+              <span style={{ color: r.on ? '#fff' : 'var(--text-secondary)' }}>{r.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Data & privacy (Task 14) — CSV export is a Premium feature (canExport) */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Data &amp; privacy</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            Export this device's water-usage history as CSV.{!ent.canExport && ' (Premium)'}
+          </span>
+          <button className="btn-primary" onClick={exportCsv} disabled={!ent.canExport} style={{ padding: '8px 18px', opacity: ent.canExport ? 1 : 0.5 }} title={ent.canExport ? 'Download CSV' : 'Upgrade to Premium to export'}>
+            Export CSV
+          </button>
         </div>
       </div>
 
