@@ -1,4 +1,4 @@
-import { SignJWT, importPKCS8 } from 'jose';
+import { SignJWT, importPKCS8, jwtVerify, importX509, decodeProtectedHeader } from 'jose';
 import {
   isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
@@ -8,6 +8,7 @@ import { Cached, isCacheFresh, tokenValid, tokenExpiryMs } from './cache';
 import {
   isTrialExpired, historyRetentionDaysForTier, historyDocsToPrune,
 } from './retention';
+import { resolveRole, canControl, validateControlCommand, ControlAction } from './authz';
 
 export interface Env {
   FIREBASE_PROJECT_ID: string;
@@ -24,6 +25,29 @@ let cachedToken: { token: string; expiresAtMs: number } | null = null;
 /** TTL for a cached vehicle doc — short, since config changes should propagate within ~a minute. */
 const VEHICLE_CACHE_TTL_MS = 60_000;
 const vehicleDocCache = new Map<string, Cached<any>>();
+
+/** Google's public x509 certs for verifying Firebase ID-token signatures. */
+const FIREBASE_CERTS_URL =
+  'https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com';
+
+/**
+ * Verify a Firebase ID token (signature against Google's public certs + issuer/audience/expiry) and
+ * return its claims. Throws on any failure. Same approach as the admin site's operators function — a
+ * caller can't forge a token, so the `uid` in the returned claims is trustworthy for the role check.
+ */
+async function verifyFirebaseIdToken(idToken: string, projectId: string): Promise<any> {
+  const { kid } = decodeProtectedHeader(idToken);
+  if (!kid) throw new Error('no kid');
+  const certs: Record<string, string> = await fetch(FIREBASE_CERTS_URL).then((r) => r.json());
+  const pem = certs[kid];
+  if (!pem) throw new Error('unknown signing key');
+  const key = await importX509(pem, 'RS256');
+  const { payload } = await jwtVerify(idToken, key, {
+    issuer: `https://securetoken.google.com/${projectId}`,
+    audience: projectId,
+  });
+  return payload;
+}
 
 /**
  * Generates (and caches) a Google OAuth2 Access Token using the Firebase Service Account Private Key.
@@ -169,6 +193,18 @@ const numField = (fields: any, key: string): number | null => {
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 };
+/**
+ * Unwrap the REST-encoded `members` map ({ <uid>: { role, email } }) into a plain
+ * { uid: { role } } for resolveRole. Firestore nests it as mapValue.fields[uid].mapValue.fields.role.
+ */
+const membersField = (fields: any): Record<string, { role?: string }> => {
+  const map = fields?.members?.mapValue?.fields || {};
+  const out: Record<string, { role?: string }> = {};
+  for (const [uid, v] of Object.entries<any>(map)) {
+    out[uid] = { role: v?.mapValue?.fields?.role?.stringValue };
+  }
+  return out;
+};
 
 const docsBase = (env: Env) =>
   `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
@@ -272,6 +308,108 @@ async function triggerLinkTapShutoffWithRetry(config: any, attempts = 3): Promis
     }
   }
   return { ok: false, error: 'exhausted' };
+}
+
+/**
+ * Issue a LinkTap instant-mode command for the role-enforced control endpoint (Task 4). Mirrors the
+ * dashboard's own cloud call: open = action:true with a bounded `duration` (minutes, ≤1439) and an
+ * optional `vol` (liters) limit; close = action:false, duration:0. `autoBack:true` returns the valve
+ * to its schedule afterward. NOTE: this is a SEPARATE function from the flood-shutoff path on purpose
+ * — the safety close (triggerLinkTapShutoff) stays untouched.
+ */
+async function triggerLinkTapInstant(
+  config: any, action: ControlAction, durationMins: number, vol?: number,
+): Promise<void> {
+  const payload: any = {
+    username: config.username,
+    apiKey: config.apiKey,
+    gatewayId: config.gatewayId,
+    taplinkerId: config.taplinkerId,
+    action: action === 'open',
+    duration: action === 'open' ? durationMins : 0,
+    autoBack: true,
+  };
+  if (action === 'open' && typeof vol === 'number' && vol > 0) payload.vol = vol;
+
+  const res = await fetch('https://www.link-tap.com/api/activateInstantMode', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`LinkTap API failure: ${await res.text()}`);
+  const data: any = await res.json();
+  if (data.result === 'error') throw new Error(`LinkTap API error: ${data.message}`);
+}
+
+/**
+ * POST /api/control — role-enforced valve control (open-tasks Task 4). The server, not just the
+ * client, now enforces who may act on the valve:
+ *   1. Require + VERIFY the caller's Firebase ID token (signature/iss/aud/exp) → trustworthy uid.
+ *   2. Resolve that uid's role from the vehicle's members map; only admin/control may proceed (a
+ *      monitor — even one holding the cloud credentials — gets 403 here, which they could bypass by
+ *      calling LinkTap directly today).
+ *   3. Validate the command, enforcing the safety self-limit (an OPEN must carry a bounded duration).
+ *   4. Relay to LinkTap using the vehicle's stored credentials (never exposed to the client).
+ * Body: { vid, action: 'open'|'close', durationSec?, volumeLimitLiters? }.
+ */
+async function handleControl(env: Env, request: Request): Promise<Response> {
+  const reply = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+
+  const m = /^Bearer (.+)$/.exec(request.headers.get('Authorization') || '');
+  if (!m) return reply({ error: 'missing token' }, 401);
+
+  let uid = '';
+  try {
+    const claims = await verifyFirebaseIdToken(m[1], env.FIREBASE_PROJECT_ID);
+    uid = String(claims.user_id || claims.sub || '');
+  } catch (e: any) {
+    return reply({ error: 'invalid token: ' + (e?.message || e) }, 401);
+  }
+  if (!uid) return reply({ error: 'token has no uid' }, 401);
+
+  let body: any;
+  try { body = await request.json(); } catch { return reply({ error: 'invalid JSON body' }, 400); }
+  const vid = String(body?.vid || '');
+  const action = body?.action as ControlAction;
+  if (!vid) return reply({ error: 'missing vid' }, 400);
+
+  const token = await getFirebaseAccessToken(env);
+  const vehicle = await getFirestoreDoc(env, token, `vehicles/${vid}`);
+  if (!vehicle) return reply({ error: 'vehicle not found' }, 404);
+
+  // AUTHORIZE — server-side role check (the whole point of this endpoint).
+  const role = resolveRole(membersField(vehicle), arrField(vehicle, 'allowedUsers'), uid);
+  if (!canControl(role)) return reply({ error: 'forbidden: role cannot control', role }, 403);
+
+  // VALIDATE — enforce the open-requires-limit safety invariant server-side too.
+  const v = validateControlCommand({ action, durationSec: body?.durationSec, volumeLimitLiters: body?.volumeLimitLiters });
+  if (!v.ok) return reply({ error: v.error }, 400);
+
+  const username = strField(vehicle, 'lt_cloud_user');
+  const apiKey = strField(vehicle, 'lt_cloud_key');
+  const gatewayId = strField(vehicle, 'lt_gateway_id');
+  const taplinkers = [strField(vehicle, 'lt_device_id'), strField(vehicle, 'lt_device_id_2')].filter(Boolean);
+  if (!username || !apiKey || !gatewayId || !taplinkers.length) {
+    return reply({ error: 'no LinkTap config' }, 400);
+  }
+
+  let ok = 0; let lastErr = '';
+  for (const tap of taplinkers) {
+    try {
+      await triggerLinkTapInstant({ username, apiKey, gatewayId, taplinkerId: tap }, action, v.durationMins || 0, v.vol);
+      ok++;
+    } catch (e: any) { lastErr = String(e?.message || e); }
+  }
+  return reply(
+    ok === taplinkers.length
+      ? { status: 'ok', action, valves: ok }
+      : { status: 'partial', action, valves: ok, error: lastErr },
+    ok > 0 ? 200 : 502,
+  );
 }
 
 /**
@@ -443,6 +581,22 @@ export default {
             'Cache-Control': 'no-store',
           },
         });
+      }
+
+      // Role-enforced valve control (open-tasks Task 4). CORS-open (auth is the verified ID token,
+      // not the origin) so the web app build can call it; answer the preflight first.
+      if (url.pathname === '/api/control') {
+        if (request.method === 'OPTIONS') {
+          return new Response(null, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+            },
+          });
+        }
+        if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+        return await handleControl(env, request);
       }
 
       // Shelly sensor alerts → push notifications + flood valve shutoff.
