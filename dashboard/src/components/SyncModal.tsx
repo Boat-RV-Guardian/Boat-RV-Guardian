@@ -46,10 +46,13 @@ export default function SyncModal() {
     // tier, so this changes no behavior until real tiers are assigned. We store the raw value (may
     // be empty) and let getVehicleTier validate/fallback on read.
     const tier = (activeVehicleConfig && (activeVehicleConfig as any).tier) || '';
-    if ((localStorage.getItem('lt_vehicle_tier') || '') !== tier) {
-      localStorage.setItem('lt_vehicle_tier', tier);
-      window.dispatchEvent(new Event('tier_updated'));
-    }
+    // Also stash the trial expiry (epoch ms) so the Account portal can show trial status (Task 14).
+    const trialEnds = (activeVehicleConfig && String((activeVehicleConfig as any).trialEndsAt ?? '')) || '';
+    const tierChanged = (localStorage.getItem('lt_vehicle_tier') || '') !== tier;
+    const trialChanged = (localStorage.getItem('lt_vehicle_trial_ends') || '') !== trialEnds;
+    if (tierChanged) localStorage.setItem('lt_vehicle_tier', tier);
+    if (trialChanged) localStorage.setItem('lt_vehicle_trial_ends', trialEnds);
+    if (tierChanged || trialChanged) window.dispatchEvent(new Event('tier_updated'));
   }, [activeVehicleConfig, configVid, activeVid]);
 
   // Cloud-vehicle reconciliation — runs app-wide (SyncModal is always mounted), so a login

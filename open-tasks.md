@@ -558,6 +558,13 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 
 **Core (subscription management):**
 - [x] **View the vehicle's plan + feature list (done, Account.tsx).** Change plan via coupon (mock).
+- [x] **Trial status + usage-vs-plan + data export (2026-06-28).** Account.tsx now shows trial
+      days-left (from the SyncModal-stashed `lt_vehicle_trial_ends`), a "Usage & limits" section
+      (telemetry resolution / hosted history / device + vehicle counts), and a **Premium-gated CSV
+      export** of on-device usage history. Pure logic in
+      [utils/accountSummary.ts](dashboard/src/utils/accountSummary.ts) +
+      [utils/historyCsv.ts](dashboard/src/utils/historyCsv.ts) (tested); Account RTL tests cover the
+      new sections. Gates green (tsc + 128 tests + build).
 - [ ] Real upgrade/downgrade/cancel, monthly⇄yearly (Stripe).
 - [ ] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
       subscription applies to; manage multiple vehicles; (future) fleet/multi-vehicle discount.
