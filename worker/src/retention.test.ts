@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   historyRetentionDaysForTier,
   isTrialExpired,
+  isTrialEligible,
+  trialEndsAtFrom,
+  BASIC_TRIAL_DAYS,
   retentionCutoffMonth,
   monthFromHistoryId,
   historyDocsToPrune,
@@ -38,6 +41,37 @@ describe('isTrialExpired', () => {
     expect(isTrialExpired(0, NOW)).toBe(false);
     expect(isTrialExpired(-5, NOW)).toBe(false);
     expect(isTrialExpired(NaN, NOW)).toBe(false);
+  });
+});
+
+describe('isTrialEligible', () => {
+  it('allows a fresh vehicle the user has never trialed', () => {
+    expect(isTrialEligible('v_new', [], null)).toBe(true);
+    expect(isTrialEligible('v_new', undefined, undefined)).toBe(true);
+    expect(isTrialEligible('v_new', ['v_other'], null)).toBe(true);
+  });
+  it('blocks when the user has already trialed this vehicle', () => {
+    expect(isTrialEligible('v1', ['v1'], null)).toBe(false);
+    expect(isTrialEligible('v1', ['v0', 'v1', 'v2'], null)).toBe(false);
+  });
+  it('blocks when the vehicle ever carried a trialEndsAt — even an expired one', () => {
+    expect(isTrialEligible('v1', [], NOW + 86_400_000)).toBe(false); // active trial
+    expect(isTrialEligible('v1', [], NOW - 86_400_000)).toBe(false); // long-expired still blocks
+  });
+  it('ignores non-positive / non-finite trialEndsAt markers (treated as never-trialed)', () => {
+    expect(isTrialEligible('v1', [], 0)).toBe(true);
+    expect(isTrialEligible('v1', [], -5)).toBe(true);
+    expect(isTrialEligible('v1', [], NaN)).toBe(true);
+  });
+  it('requires a vehicle id', () => {
+    expect(isTrialEligible('', [], null)).toBe(false);
+  });
+});
+
+describe('trialEndsAtFrom', () => {
+  it('adds the 30-day Basic trial window to now', () => {
+    expect(trialEndsAtFrom(NOW)).toBe(NOW + BASIC_TRIAL_DAYS * 86_400_000);
+    expect(BASIC_TRIAL_DAYS).toBe(30);
   });
 });
 

@@ -320,13 +320,31 @@ Tasks:
       active vehicle's entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by
       SyncModal + `tier_updated` event). **Legacy/unset vehicles grandfather to `premium` so this
       changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
-- [ ] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
+- [~] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
       AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
       server-side (worker/admin) and write `tier='basic'` for the trial window with an expiry; the
       client matrix needs no change (it reads `tier`). **Decided (2026-06-25): record eligibility at
       `users/{uid}.trialsUsed[]` (vehicle ids the user has already trialed) + `vehicles/{vid}.trialEndsAt`
       (expiry).** A trial is allowed only when the vid isn't in the user's `trialsUsed` AND the
       vehicle has no prior `trialEndsAt`.
+  - [x] **Eligibility predicate landed (2026-06-28):** the decided anti-abuse rule is now the pure,
+        tested `isTrialEligible(vid, userTrialsUsed, vehicleTrialEndsAt)` in
+        [worker/src/retention.ts](worker/src/retention.ts) (allows only when the vid is absent from the
+        user's `trialsUsed` AND the vehicle has never carried a `trialEndsAt` — an expired one still
+        blocks), plus `trialEndsAtFrom(now)` + `BASIC_TRIAL_DAYS`. Worker tests cover the allow/block matrix.
+  - [x] **Server-authoritative grant endpoint landed (2026-06-28):** `POST /api/trial` in
+        [worker/src/index.ts](worker/src/index.ts) (`handleTrial`) verifies the caller's Firebase ID
+        token, requires they be the vehicle **owner (admin role)**, then applies `isTrialEligible`
+        against authoritative Firestore state and — only if eligible — writes `tier='basic'` +
+        `trialEndsAt` to the vehicle AND appends the vid to `users/{uid}.trialsUsed` (both via masked
+        PATCH). Ineligible callers get `{granted:false}` (idempotent). The daily cron already lapses it
+        back to `free` at expiry. Enforcement is server-side so the client can't bypass the anti-abuse
+        rule by skipping the `trialsUsed` write. Smoke-check after deploy: `/api/trial` = 401 on no token.
+  - [ ] **Remaining — client wiring (behavior change; verify in the native app):** call `/api/trial`
+        (with the user's ID token) once a NEW vehicle's cloud doc exists, to auto-grant the 30-day
+        Basic trial; reflect `{granted:true}` locally (stash `tier`/`trialEndsAt` like
+        `setActiveVehicleTier`). Also point the admin console's "Start trial" at this endpoint so it,
+        too, is eligibility-gated (today it writes `tier=basic` directly with no check).
 - [x] **Plan panel (2026-06-25):** [pages/settings/SubscriptionPanel.tsx](dashboard/src/pages/settings/SubscriptionPanel.tsx)
       — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
       tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
