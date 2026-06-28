@@ -7,6 +7,8 @@ import {
   sanitizeDevice,
   telemetryResolutionSecForTier,
   shouldPersistTelemetry,
+  healthBody,
+  WORKER_SERVICE,
 } from './events';
 
 describe('isFloodShutoff', () => {
@@ -120,5 +122,11 @@ describe('sanitizeDevice', () => {
   it('replaces path-significant characters', () => {
     expect(sanitizeDevice('a/b#c?d')).toBe('a_b_c_d');
     expect(sanitizeDevice('shellyfloodg4-d885acea3914')).toBe('shellyfloodg4-d885acea3914');
+  });
+});
+
+describe('healthBody', () => {
+  it('returns an ok liveness payload echoing the given time', () => {
+    expect(healthBody(1719360000000)).toEqual({ ok: true, service: WORKER_SERVICE, time: 1719360000000 });
   });
 });

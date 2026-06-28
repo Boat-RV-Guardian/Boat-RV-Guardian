@@ -2,6 +2,7 @@ import { SignJWT, importPKCS8 } from 'jose';
 import {
   isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
+  healthBody,
 } from './events';
 
 export interface Env {
@@ -273,6 +274,18 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     try {
       const url = new URL(request.url);
+
+      // Public liveness ping (open-tasks Task 12). First thing checked, no secrets/Firestore touched,
+      // CORS-open so the admin console can reach it cross-origin. Cannot interfere with any other path.
+      if (url.pathname === '/api/health' || url.pathname === '/healthz') {
+        return new Response(JSON.stringify(healthBody(Date.now())), {
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          },
+        });
+      }
 
       // Shelly sensor alerts → push notifications + flood valve shutoff.
       // IMPORTANT: Shelly devices fire their outbound webhooks as GET requests, so this path must
