@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 
+# Daily tier-maintenance sweep (open-tasks Task 6): expire lapsed Basic trials → free and prune hosted
+# history past each vehicle's tier window. 04:12 UTC — off the hour to dodge cron contention.
+[triggers]
+crons = ["12 4 * * *"]
+
 [vars]
 FIREBASE_PROJECT_ID = "boat-rv-guardian-9f8a4"
 # The following must be set via `wrangler secret put <NAME>`:
