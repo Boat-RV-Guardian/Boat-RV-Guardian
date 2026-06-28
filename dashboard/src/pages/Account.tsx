@@ -8,6 +8,10 @@ import {
   parseSmsPrefs, serializeSmsPrefs, normalizePhone, addPhone, removePhone, setEventEnabled,
   SMS_EVENT_CATALOG, type SmsPrefs,
 } from '../utils/smsPrefs';
+import {
+  parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
+  type ApiToken,
+} from '../utils/apiTokens';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -43,6 +47,19 @@ export default function Account({ user }: { user?: { email?: string | null; disp
     setPhoneErr('');
     persistSms(addPhone(smsPrefs, phoneInput));
     setPhoneInput('');
+  };
+
+  // Integration API tokens (Premium, per-vehicle). Persisted to the synced `sh_api_tokens` field.
+  const [apiTokens, setApiTokens] = useState<ApiToken[]>(() => parseApiTokens(localStorage.getItem('sh_api_tokens')));
+  const [tokenLabel, setTokenLabel] = useState('');
+  const persistTokens = (next: ApiToken[]) => {
+    setApiTokens(next);
+    localStorage.setItem('sh_api_tokens', serializeApiTokens(next));
+    window.dispatchEvent(new Event('settings_updated'));
+  };
+  const onGenerateToken = () => {
+    persistTokens(addApiToken(apiTokens, randomToken(), tokenLabel, Date.now()));
+    setTokenLabel('');
   };
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
@@ -248,6 +265,47 @@ export default function Account({ user }: { user?: { email?: string | null; disp
                   {ev.label}
                 </label>
               ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Integrations / API tokens (Task 14) — Premium (canIntegrations). Scaffold: tokens are issued
+          + stored + synced; no server validates them yet (lands with the integration endpoints). */}
+      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+          Integrations &amp; API tokens{!ent.canIntegrations && ' (Premium)'}
+        </h3>
+        {!ent.canIntegrations ? (
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
+            Issue API tokens for Home Assistant, MQTT, or webhooks. Upgrade to Premium to create tokens.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
+              Create a token for an external integration. Copy it now — store it in your integration's
+              config. (Validation goes live with the integration endpoints.)
+            </p>
+            {apiTokens.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {apiTokens.map((t) => (
+                  <div key={t.token} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ flex: '1 1 auto' }}>{t.label}</span>
+                    <code style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{maskToken(t.token)}</code>
+                    <button onClick={() => persistTokens(revokeApiToken(apiTokens, t.token))} className="btn-secondary" style={{ padding: '4px 12px', fontSize: '0.78rem' }}>Revoke</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                value={tokenLabel}
+                onChange={(e) => setTokenLabel(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') onGenerateToken(); }}
+                placeholder="Label (e.g. Home Assistant)"
+                style={{ flex: '1 1 180px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
+              />
+              <button className="btn-primary" onClick={onGenerateToken} style={{ padding: '8px 18px' }}>Generate</button>
             </div>
           </>
         )}
