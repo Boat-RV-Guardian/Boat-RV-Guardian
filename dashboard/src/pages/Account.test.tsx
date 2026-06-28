@@ -101,4 +101,27 @@ describe('Account', () => {
     fireEvent.click(screen.getByRole('button', { name: /revoke/i }));
     expect(JSON.parse(localStorage.getItem('sh_api_tokens')!).length).toBe(0);
   });
+
+  // --- Entitlement gating (Task 2/3): the SMS + integrations sections lock on non-Premium tiers ---
+  it('gates the SMS section behind Premium on the Free plan', () => {
+    localStorage.setItem('lt_vehicle_tier', 'free'); // canSmsAlert = false
+    render(<Account />);
+    expect(screen.getByText(/SMS & voice alerts \(Premium\)/i)).toBeTruthy();
+    expect(screen.getByText(/upgrade to premium to add phone numbers/i)).toBeTruthy();
+    expect(screen.queryByPlaceholderText(/555 123 4567/)).toBeNull(); // no phone input when gated
+  });
+
+  it('gates the integrations section behind Premium on the Free plan', () => {
+    localStorage.setItem('lt_vehicle_tier', 'free'); // canIntegrations = false
+    render(<Account />);
+    expect(screen.getByText(/Integrations & API tokens \(Premium\)/i)).toBeTruthy();
+    expect(screen.getByText(/upgrade to premium to create tokens/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /generate/i })).toBeNull(); // no generate when gated
+  });
+
+  it('opens the SMS + integrations inputs on a Premium plan', () => {
+    render(<Account />); // grandfathered Premium
+    expect(screen.getByPlaceholderText(/555 123 4567/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /generate/i })).toBeTruthy();
+  });
 });
