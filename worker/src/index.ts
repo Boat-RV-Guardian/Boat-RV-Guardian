@@ -7,6 +7,7 @@ import {
 import { Cached, isCacheFresh, tokenValid, tokenExpiryMs } from './cache';
 import {
   isTrialExpired, historyRetentionDaysForTier, historyDocsToPrune,
+  isTrialEligible, trialEndsAtFrom,
 } from './retention';
 import { resolveRole, canControl, validateControlCommand, ControlAction } from './authz';
 
@@ -413,6 +414,74 @@ async function handleControl(env: Env, request: Request): Promise<Response> {
 }
 
 /**
+ * Server-authoritative one-month free Basic trial grant (open-tasks Task 6). The client cannot be
+ * trusted to enforce the per-user / per-vehicle anti-abuse rule (it could just skip writing
+ * `trialsUsed`), so the grant runs here: verify the caller's ID token, confirm they own the vehicle
+ * (admin role), then apply the decided `isTrialEligible` rule against authoritative Firestore state
+ * and, only if eligible, write `tier='basic'` + `trialEndsAt` to the vehicle AND append the vid to
+ * the user's `users/{uid}.trialsUsed`. Idempotent for an ineligible caller (returns granted:false).
+ * The daily maintenance cron later lapses the trial back to `free` when `trialEndsAt` passes.
+ */
+async function handleTrial(env: Env, request: Request, now = Date.now()): Promise<Response> {
+  const reply = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+
+  const m = /^Bearer (.+)$/.exec(request.headers.get('Authorization') || '');
+  if (!m) return reply({ error: 'missing token' }, 401);
+
+  let uid = '';
+  try {
+    const claims = await verifyFirebaseIdToken(m[1], env.FIREBASE_PROJECT_ID);
+    uid = String(claims.user_id || claims.sub || '');
+  } catch (e: any) {
+    return reply({ error: 'invalid token: ' + (e?.message || e) }, 401);
+  }
+  if (!uid) return reply({ error: 'token has no uid' }, 401);
+
+  let body: any;
+  try { body = await request.json(); } catch { return reply({ error: 'invalid JSON body' }, 400); }
+  const vid = String(body?.vid || '');
+  if (!vid) return reply({ error: 'missing vid' }, 400);
+
+  const token = await getFirebaseAccessToken(env);
+  const vehicle = await getFirestoreDoc(env, token, `vehicles/${vid}`);
+  if (!vehicle) return reply({ error: 'vehicle not found' }, 404);
+
+  // AUTHORIZE — only the vehicle owner (admin) may claim its trial; the tier is billed per-vehicle.
+  const role = resolveRole(membersField(vehicle), arrField(vehicle, 'allowedUsers'), uid);
+  if (role !== 'admin') return reply({ error: 'forbidden: only the vehicle owner can start a trial', role }, 403);
+
+  // ELIGIBILITY — authoritative anti-abuse check against Firestore (NOT the client's claim).
+  const userDoc = await getFirestoreDoc(env, token, `users/${uid}`);
+  const trialsUsed = arrField(userDoc, 'trialsUsed');
+  const vehicleTrialEndsAt = numField(vehicle, 'trialEndsAt');
+  if (!isTrialEligible(vid, trialsUsed, vehicleTrialEndsAt)) {
+    return reply({ granted: false, reason: 'not eligible (already trialed this vehicle, or it has trialed before)' });
+  }
+
+  // GRANT — vehicle gets tier=basic + a 30-day expiry; the user records the vid so it can't re-trial.
+  const trialEndsAt = trialEndsAtFrom(now);
+  const vehicleOk = await patchFirestoreFields(
+    env, token, `vehicles/${vid}`,
+    { tier: { stringValue: 'basic' }, trialEndsAt: { integerValue: String(trialEndsAt) } },
+    ['tier', 'trialEndsAt'],
+  );
+  if (!vehicleOk) return reply({ error: 'failed to write vehicle trial' }, 502);
+
+  const nextTrialsUsed = [...trialsUsed, vid];
+  await patchFirestoreFields(
+    env, token, `users/${uid}`,
+    { trialsUsed: { arrayValue: { values: nextTrialsUsed.map((v) => ({ stringValue: v })) } } },
+    ['trialsUsed'],
+  );
+
+  return reply({ granted: true, tier: 'basic', trialEndsAt });
+}
+
+/**
  * Shelly sensor webhook → push the alert to everyone who has access to the vehicle, and on a flood
  * event ALSO close the LinkTap valve (cloud fallback for when no local app is running to do it).
  * The device is provisioned to call /api/shelly?vid=<id>&event=<event>.
@@ -597,6 +666,22 @@ export default {
         }
         if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
         return await handleControl(env, request);
+      }
+
+      // Server-authoritative Basic-trial grant (open-tasks Task 6). Same CORS/auth shape as
+      // /api/control (verified ID token, not origin) so the web + native builds can call it.
+      if (url.pathname === '/api/trial') {
+        if (request.method === 'OPTIONS') {
+          return new Response(null, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'POST, OPTIONS',
+              'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+            },
+          });
+        }
+        if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+        return await handleTrial(env, request);
       }
 
       // Shelly sensor alerts → push notifications + flood valve shutoff.
