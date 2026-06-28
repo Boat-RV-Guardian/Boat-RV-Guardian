@@ -66,4 +66,29 @@ describe('Account', () => {
     render(<Account />);
     expect((screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it('shows a sign-in prompt in the Account section when no user is passed', () => {
+    render(<Account />);
+    expect(screen.getByText('Account')).toBeTruthy();
+    expect(screen.getByText(/sign in to manage/i)).toBeTruthy();
+  });
+
+  it('shows the signed-in user email + display name when passed a user', () => {
+    render(<Account user={{ email: 'skipper@example.com', displayName: 'Skipper' }} />);
+    expect(screen.getByText('skipper@example.com')).toBeTruthy();
+    expect(screen.getByText('Skipper')).toBeTruthy();
+  });
+
+  it('lists per-vehicle plans when more than one vehicle exists', () => {
+    localStorage.setItem('lt_vehicles', JSON.stringify({
+      v1: { id: 'v1', config: { lt_vessel_name: 'Boat A', tier: 'basic' } },
+      v2: { id: 'v2', config: { lt_vessel_name: 'Boat B', tier: 'free' } },
+    }));
+    localStorage.setItem('lt_active_vehicle_id', 'v1');
+    render(<Account />);
+    expect(screen.getByText('Your vehicles & plans')).toBeTruthy();
+    expect(screen.getByText('Boat A')).toBeTruthy();
+    expect(screen.getByText('Boat B')).toBeTruthy();
+    expect(screen.getByText('active')).toBeTruthy();
+  });
 });

@@ -171,7 +171,7 @@ export default function App() {
         {currentView === 'batteries' && <Sensors category="batteries" />}
         {currentView === 'shore_power' && <Sensors category="shore_power" />}
         {currentView === 'settings' && <Settings user={user} />}
-        {currentView === 'account' && <Account />}
+        {currentView === 'account' && <Account user={user} />}
       </div>
     </div>
   );
