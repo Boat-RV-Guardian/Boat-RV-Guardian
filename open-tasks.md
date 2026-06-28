@@ -369,9 +369,20 @@ Tasks:
         (last webhook per device; >6h flagged) — the data-driven worker-health signal (needs the
         `sensorState` admin read clause — added to CLAUDE.md rules).
 - [x] Audit logging of admin actions (`adminAudit` collection, append-only).
-- [ ] **Server-backed ops only:** live worker ping + FCM/SMS send-success need a small admin endpoint
-      (a static site can't ping cross-origin or read send logs). Deferred — the rest of the console
-      needs no server. Ties to Task 11 (attach `admin.` subdomain) + an eventual worker `/admin/*` route.
+- [x] **Operators tab + add/revoke admins (2026-06-27):** the one privileged backend — a Cloudflare
+      **Pages Function** `functions/api/operators.ts` (verifies the caller's Firebase ID token w/ jose,
+      requires `admin===true`, then list/grant/revoke via Identity Toolkit). Console **Operators** tab.
+      Secrets set on the Pages project. Smoke-verified in prod (`/api/operators` = 401 on no/bad token).
+- [x] **DEPLOYED + LIVE (2026-06-27):** rules deployed, `admin` claim → jgearinger@gmail.com,
+      authorized domains updated, website on Pages prod → **https://boatrvguardian.com/admin**. See the
+      2026-06-27 session handoff in [CLAUDE.md](CLAUDE.md) for the exact production state + credentials.
+- [x] **Worker `/api/health` for the live ops signal — built**, Operations tab pings it. **PR OPEN:**
+      [Boat-RV-Guardian#1](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/1) (branch
+      `worker-health-endpoint`) — **merge to deploy** (classifier blocked the agent merge).
+- [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
+      queryable). Needs the worker to persist send results. Low priority.
+- [ ] **Owner:** attach `admin.boatrvguardian.com` to the Pages project (dashboard; already an
+      authorized Firebase domain) for the cleaner separate home. Delete/rotate the downloaded SA key.
 
 ---
 

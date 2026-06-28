@@ -406,3 +406,67 @@ Version lives in 7 files (see the version-bump list earlier in this doc); curren
 - **Branch protection** to make CI required.
 - **Hardware** (on the boat / home Wi-Fi): verify `shellyChangePassword`, AP/BLE provisioning
   password-set, remote-telemetry, LinkTapWidget poll/command hooks.
+
+## Session handoff — 2026-06-27, Settings.tsx split DONE + operator admin site LIVE (LAPTOP SWITCH)
+
+Big session. All three repos clean + pushed; all gates green (dashboard tsc + **113 tests** + build,
+worker 18 tests + wrangler dry-run, website astro build). Version still **1.0.45** (unreleased app
+changes sit on `main` — no release was cut this session). To continue on another machine: clone all
+three repos (see the new-machine checklist above), `npm i` in each, and re-establish the credentials
+noted below (they do NOT travel).
+
+### ✅ DONE this session
+- **Task 3 — Settings.tsx split (render fully panelized): 2321 → ~820 lines (−65%).** Twelve presentational
+  panels under `dashboard/src/pages/settings/*` (Vehicles/Account/Notifications/AdvancedDeviceSettings/
+  Friends/LinkTapAuth/DeviceConfig/DevicePreferences/AddDevice/SoftwareUpdates/SettingsModals + the
+  pre-existing LocalServerPanel/PlanBadge), plus logic pulled to tested modules:
+  `utils/batteryPresets.ts`, `utils/settingsStorage.ts` (centralized the ~55 `lt_*`/`sh_*` keys that
+  were duplicated across 3 drifting copies), `utils/shellyDevice.ts`, `hooks/useVehicleSharing.ts`,
+  `hooks/useLinkTapDiscovery.ts`. RTL component tests for 4 panels. **Latent bug found + FLAGGED (not
+  fixed):** the `settings_updated` rehydrate effect skips 4 notification toggles (flood/house/engine/
+  shore) the writer persists — preserved as-is, spawned as a task chip. Also moved **Shelly Local
+  Password** under "Advanced Vehicle Settings" (commit `fc6cce0`).
+- **Task 9 — CI coverage floor** (`vitest.config.ts` thresholds 55/55/50/50; CI runs `test:coverage`).
+- **Firestore rules-as-code**: `firestore.rules` + `firebase.json` + `.firebaserc` in the main repo
+  (the consolidated ruleset is now deployable via `firebase deploy --only firestore:rules`).
+- **Task 12 — Operator admin site: BUILT + DEPLOYED + LIVE.** In the **website** repo
+  (folded in per owner): static console at **`/admin`** (live at https://boatrvguardian.com/admin),
+  4 tabs — **Vehicles** (tier + 30-day trial), **Users** (membership-aggregated + trial/FCM), 
+  **Operations** (sensorState freshness + a worker `/api/health` ping), **Operators** (add/revoke
+  admins). Auth model: Firebase Google sign-in + an `admin` **custom claim**; enforcement is
+  **Firestore rules** (admin read + tier-only update + adminAudit) + the one privileged backend, a
+  **Cloudflare Pages Function** `functions/api/operators.ts` (verifies the caller's ID token w/ jose,
+  requires `admin===true`, then grant/revoke via Identity Toolkit). **Production state applied this
+  session:** rules deployed (ruleset `050ddf26…`), `admin:true` granted to **jgearinger@gmail.com**
+  (uid `1cxYPLyucuOfwp28F9cc2DY5cN33`), authorized domains now include `admin.boatrvguardian.com` +
+  `boatrvguardian.com`, Pages project `boat-rv-guardian` has secrets `FIREBASE_PROJECT_ID/
+  CLIENT_EMAIL/PRIVATE_KEY`, website deployed to Pages production. Smoke-verified: `/admin`=200,
+  `/api/operators`=401 on no/invalid token (gate works). NOT yet exercised with a real signed-in
+  session (Google OAuth = owner clicks).
+
+### ⚠️ OPEN / next actions
+- **[Boat-RV-Guardian#1](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/1) — worker `/api/health`** is OPEN on branch `worker-health-endpoint` (the classifier misread it and blocked the
+  merge). MERGE it to deploy the worker (auto-deploys on push to `main`); until then the console's
+  Operations tab shows "Worker: down".
+- **Attach `admin.boatrvguardian.com`** to the `boat-rv-guardian` Pages project (Cloudflare dashboard
+  → Pages → Custom domains; `wrangler` has no domain command). It's already an authorized Firebase
+  domain, so it works once attached — the cleaner home than `boatrvguardian.com/admin`.
+- **Notif-toggle rehydrate bug** (above) — fix is 4 setters; spawned as a chip, owner-confirm desired.
+- Untouched backlog (PR-able, no hardware): **Task 4** (worker-enforced monitor-role), **Task 6**
+  (server-side trial expiry + history-retention pruning). Hardware-gated: **Task 1**, **Task 3 inc 5+**.
+
+### 🔑 Credentials / machine state (do NOT travel — re-establish on the other machine)
+- **Firebase service-account key** used for all admin ops:
+  `~/Downloads/boat-rv-guardian-9f8a4-firebase-adminsdk-fbsvc-c5a1a6cdc6.json` (machine-local, NOT in
+  git). On another machine, re-download: Firebase console → Project Settings → Service accounts →
+  Generate new private key. Admin scripts live in `website-boatrvguardian/scripts/`
+  (`grant-admin.mjs`, `add-authorized-domain.mjs`) — run with `GOOGLE_APPLICATION_CREDENTIALS=<key>`
+  or `gcloud auth application-default login`. **Owner should delete/rotate the downloaded key when done.**
+- **Pre-change Firestore rules backup** (for rollback): `~/Downloads/firestore.rules.backup-27972921…txt`.
+- **gcloud**: installed `~/google-cloud-sdk` (not on PATH), account `jgearinger@sc4tech.com`, project
+  set — but tokens are STALE; needs interactive `gcloud auth login` / ADC re-auth.
+- **wrangler**: authed `jgearinger@sc4tech.com`; scopes = Workers + **Pages** + D1, **no DNS/Zone**
+  (so DNS + Pages custom-domain attach are dashboard-only). `firebase` CLI not installed (use `npx firebase-tools`).
+- The agent could not run the Firebase/Cloudflare PRODUCTION writes itself (sandbox classifier blocks
+  prod deploys/grants + a self-named admin); the owner ran the prepared one-line scripts. Same pattern
+  applies on the next machine.
