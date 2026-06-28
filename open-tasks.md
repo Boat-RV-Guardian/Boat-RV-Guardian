@@ -598,6 +598,13 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 
 ## Follow-ups (small)
 
+- [x] **Notification-toggle rehydrate drift — FIXED (2026-06-28).** The Settings `settings_updated`
+      rehydrate was a hand-maintained list of `setX(s.x)` lines that had drifted from `writeSettings`:
+      it omitted `notifyFlood`/`notifyHouseBatt`/`notifyEngineBatt`/`notifyShorePower`, so a background
+      `settings_updated` (e.g. cloud sync) left those four toggles stale. Replaced the manual list with
+      `applyPersistedSettings(s, setters)` in [settingsStorage.ts](dashboard/src/utils/settingsStorage.ts)
+      — a mapped-type `SettingsSetters` makes a persisted-but-not-rehydrated field a compile error, so
+      this whole class of drift can't recur. Tested (completeness + the four-toggle regression).
 - [ ] **Shelly password-set during provisioning — AP & BLE paths.** Done for the **manual-IP** path
       (best-effort `shellyChangePassword` as the last step). The **Wi-Fi-AP** path has an ordering
       hazard (securing the device would 401 the subsequent unauthenticated `Wifi.SetConfig`), and

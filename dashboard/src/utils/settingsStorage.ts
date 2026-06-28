@@ -212,3 +212,20 @@ export function writeSettings(s: PersistedSettings): void {
   localStorage.setItem('lt_shore_high_v', s.shoreHighV.toString());
   localStorage.setItem('lt_shore_crit_high_v', s.shoreCritHighV.toString());
 }
+
+// One React state setter per persisted field. Declared as a mapped type over PersistedSettings so
+// that a NEW field added to PersistedSettings is a COMPILE error at the call site until a setter is
+// supplied — which is exactly the drift that silently dropped the flood/house/engine/shore
+// notification toggles from the Settings `settings_updated` rehydrate before this existed.
+export type SettingsSetters = {
+  [K in keyof PersistedSettings]: (value: PersistedSettings[K]) => void;
+};
+
+// Apply every persisted field to its corresponding setter. Iterating the full key set (rather than a
+// hand-maintained list of `setX(s.x)` lines) means a field can never again be persisted-but-not-
+// rehydrated. Used by the Settings page's `settings_updated` handler.
+export function applyPersistedSettings(s: PersistedSettings, setters: SettingsSetters): void {
+  for (const key of Object.keys(s) as (keyof PersistedSettings)[]) {
+    (setters[key] as (value: PersistedSettings[keyof PersistedSettings]) => void)(s[key]);
+  }
+}
