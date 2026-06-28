@@ -130,9 +130,11 @@ from the production `tsc -b`. Run with `npm test` (or `npm run test:watch`).
       Task 3 extracted the panels: RTL tests for `AccountPanel` (entitlement gate: cloud-history
       toggle disabled with an "upgrade" note when the tier has no retention),
       `AdvancedDeviceSettingsPanel` (battery-threshold round-to-0.1 + flip-to-custom; shore fields
-      don't flip), `SoftwareUpdatesPanel`, and `NotificationsPanel`. **Remaining:** the monitor-role
-      command gating lives in `LinkTapWidget`, not Settings — cover it when that widget's logic is
-      pulled into hooks (Task 3 increment 5+).
+      don't flip), `SoftwareUpdatesPanel`, and `NotificationsPanel`. **Extended 2026-06-28 (PR #16):**
+      both-path RTL tests for the Account SMS + integrations Premium gates (free → upgrade note + hidden
+      inputs; Premium → inputs render). **Remaining (only):** the monitor-role command gating lives in
+      `LinkTapWidget`, not Settings — cover it when that widget's logic is pulled into hooks (Task 3
+      increment 5+, hardware-gated).
 
 ---
 
@@ -320,8 +322,10 @@ Tasks:
       active vehicle's entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by
       SyncModal + `tier_updated` event). **Legacy/unset vehicles grandfather to `premium` so this
       changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
-- [~] **1-month free Basic trial** — grant new users/vehicles 30 days of Basic, tracked **per-user
-      AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
+- [~] **1-month free Basic trial** — **built end to end (2026-06-28): predicate + `/api/trial`
+      endpoint (#9), consumer auto-grant (#10), admin re-trial guard (admin-site#1).** Only native-app
+      verification of the auto-grant remains. Original spec below. Grant new users/vehicles 30 days of
+      Basic, tracked **per-user AND per-vehicle** (anti-abuse: can't farm trials via new vehicles or re-adding). Resolve trial
       server-side (worker/admin) and write `tier='basic'` for the trial window with an expiry; the
       client matrix needs no change (it reads `tier`). **Decided (2026-06-25): record eligibility at
       `users/{uid}.trialsUsed[]` (vehicle ids the user has already trialed) + `vehicles/{vid}.trialEndsAt`
@@ -340,20 +344,25 @@ Tasks:
         PATCH). Ineligible callers get `{granted:false}` (idempotent). The daily cron already lapses it
         back to `free` at expiry. Enforcement is server-side so the client can't bypass the anti-abuse
         rule by skipping the `trialsUsed` write. Smoke-check after deploy: `/api/trial` = 401 on no token.
-  - [ ] **Remaining — client wiring (behavior change; verify in the native app):** call `/api/trial`
-        (with the user's ID token) once a NEW vehicle's cloud doc exists, to auto-grant the 30-day
-        Basic trial; reflect `{granted:true}` locally (stash `tier`/`trialEndsAt` like
-        `setActiveVehicleTier`). Also point the admin console's "Start trial" at this endpoint so it,
-        too, is eligibility-gated (today it writes `tier=basic` directly with no check).
+  - [x] **Client auto-grant landed (2026-06-28, PR #10) — VERIFY IN NATIVE APP:** `requestTrial` +
+        a guarded one-shot trigger in SyncModal call `/api/trial` once a NEW owned vehicle's cloud doc
+        exists; the cloud snapshot reflects the granted tier back. Behavior change (new vehicles →
+        30-day Basic) — confirm end to end with a test account.
+  - [x] **Admin "Start trial" eligibility-gated (2026-06-28, admin-site#1):** the console warns +
+        records `override:true` when re-trialing an already-trialed vehicle (`isVehicleTrialEligible`).
+  - [ ] **Remaining:** native-app verification of the auto-grant; (optional) explicit local stash of
+        the granted tier for instant UI instead of waiting on the snapshot.
 - [x] **Plan panel (2026-06-25):** [pages/settings/SubscriptionPanel.tsx](dashboard/src/pages/settings/SubscriptionPanel.tsx)
       — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
       tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
       the Task 3 panel-split pattern. Browser-verified (renders, reacts to `tier_updated`, no errors).
 - [x] **First functional gate (2026-06-25):** cloud-history toggle disabled for tiers with no
       retention (free) — inert under grandfathering. See [Settings.tsx](dashboard/src/pages/Settings.tsx).
-- [ ] **Remaining gates:** LinkTapWidget honors `canRemoteControl` off-LAN (needs the local-vs-remote
-      seam — best with hardware), hide SMS-alert config unless `canSmsAlert` (no SMS UI yet). Drop
-      GRANDFATHERED_TIER to a real default once the admin override + Stripe exist.
+- [~] **Remaining gates:** ~~hide SMS-alert config unless `canSmsAlert`~~ **DONE 2026-06-28 (PR #12,
+      #16)** — the Account SMS + integrations sections are Premium-gated with upgrade notes, covered by
+      both-path RTL tests. Still open: LinkTapWidget honors `canRemoteControl` off-LAN (needs the
+      local-vs-remote seam — hardware-gated); drop GRANDFATHERED_TIER to a real default once the admin
+      override + Stripe exist.
 - [~] Enforce server-side in the worker too — **history-retention pruning + trial expiry DONE**
       (2026-06-27, PR #3, daily cron); action/trigger handling + SMS send still TODO. Client gating
       stays advisory only (cf. Task 4 monitor-role lesson).
@@ -362,7 +371,9 @@ Tasks:
       vehicle's tier window AND lapses expired Basic trials (`trialEndsAt` past → `tier='free'`). Pure
       selectors in [worker/src/retention.ts](worker/src/retention.ts) (14 tests). Inert under
       grandfathering (legacy→premium keeps all) until real tiers are assigned; per-run delete cap.
-- [ ] SMS/voice alerts (Premium): provider (Twilio?) + per-event opt-in UI + worker send path.
+- [~] SMS/voice alerts (Premium): ~~per-event opt-in UI + worker send path~~ **both DONE 2026-06-28
+      (worker scaffold #11, opt-in UI #12)**; only a live **provider (Twilio)** + wiring
+      `dispatchSmsForEvent` into the worker alert path remain.
 - [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
       who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
       Premium" mental model and the sharing goal (a shared mechanic sees the owner's history).
@@ -373,9 +384,10 @@ Tasks:
         `canSmsAlertForTier` (Premium-only, mirrors `canSmsAlert`) + `smsRecipientsForEvent`
         (Premium AND per-event opt-in, dedup/trim) + `dispatchSmsForEvent` (attempted/sent counts).
         11 tests; unwired (changes no behavior) until a provider + the opt-in UI land.
-  - [ ] **Remaining:** the account-portal **per-event opt-in UI** (phone numbers + which events
-        escalate), gated by `canSmsAlert`; then wire `dispatchSmsForEvent` into the worker alert path
-        and drop in a real provider (Twilio).
+  - [x] **Account-portal per-event opt-in UI landed (2026-06-28, PR #12):** Premium-gated SMS section
+        in Account.tsx (phone numbers + per-event escalation) → synced `sh_sms_prefs`; pure
+        [utils/smsPrefs.ts](dashboard/src/utils/smsPrefs.ts) (tested).
+  - [ ] **Remaining:** wire `dispatchSmsForEvent` into the worker alert path + a real provider (Twilio).
 
 ---
 
@@ -614,20 +626,37 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
       [utils/historyCsv.ts](dashboard/src/utils/historyCsv.ts) (tested); Account RTL tests cover the
       new sections. Gates green (tsc + 128 tests + build).
 - [ ] Real upgrade/downgrade/cancel, monthly⇄yearly (Stripe).
-- [ ] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
+- [~] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
       subscription applies to; manage multiple vehicles; (future) fleet/multi-vehicle discount.
-- [ ] **Trial** status + days left; enforce per-user+per-vehicle eligibility (ties to Task 6 trial).
+      **DONE 2026-06-28 (read-only, PR #14):** Account.tsx "Your vehicles & plans" lists every local
+      vehicle with its resolved tier + marks the active one (`vehiclePlanRows`, tested). Remaining:
+      in-portal *switching* of the active vehicle (needs VehicleManager) + real multi-vehicle billing.
+- [x] **Trial status + days left (2026-06-28).** Account.tsx shows trial days-left; server-side
+      per-user+per-vehicle eligibility is enforced by the worker (`isTrialEligible` + `/api/trial`,
+      Task 6) and the consumer auto-grant (#10) / admin guard (admin-site#1).
 - [ ] Payment method, **invoices/receipts**, billing history (via Stripe Customer Portal).
 
 **Recommended additions (my suggestions — confirm scope):**
-- [ ] **Notification channels:** add/verify **phone number(s) for SMS/voice** (Premium) and manage
-      push devices — these are account-level and don't belong in per-device settings.
-- [ ] **Integrations/API tokens** (Premium): issue/rotate tokens for Home Assistant / MQTT / webhooks.
-- [ ] **Data & privacy:** export history (Premium), delete data, see retention window; **delete
-      account** (GDPR/Play/App-Store requirement).
-- [ ] **Usage vs plan:** storage used, device/vehicle counts, telemetry resolution in effect.
+- [x] **Notification channels — DONE 2026-06-28 (PR #12).** Premium-gated SMS/voice opt-in in
+      Account.tsx (phone numbers + per-event escalation), stored in the synced `sh_sms_prefs`. Decided
+      per-vehicle (matches per-vehicle entitlements + the worker's SmsPrefs shape). Push-device
+      management still TODO.
+- [x] **Integrations/API tokens — DONE 2026-06-28 (PR #15).** Premium-gated issue/mask/revoke in
+      Account.tsx, stored in the synced `sh_api_tokens`. Scaffold — no server validates them yet.
+- [x] **Data & privacy — delete-account DONE 2026-06-28 (PR #18, verify in native app).** Account.tsx
+      "Delete account" (type-DELETE-to-confirm); pure plan+executor in
+      [utils/accountDeletion.ts](dashboard/src/utils/accountDeletion.ts) (solo-owned → delete, shared →
+      leave; tested). CSV export + retention window already shown (export = Premium). ⚠️ irreversible +
+      Firebase-coupled — verify the `requires-recent-login` re-auth path in the native app.
+- [x] **Usage vs plan — DONE (2026-06-28).** "Usage & limits" section (telemetry resolution, hosted
+      history, device + vehicle counts) via `usageRows`.
 - [ ] **Sharing overview** (read-only mirror of the app's Friends): who has access to each vehicle.
-- [ ] **Account basics:** email, password/SSO, display name; **priority-support** entry for Premium.
+      **Deferred:** needs a live cloud member feed (Firestore listener) that doesn't fit Account.tsx's
+      deliberately Firebase-free design without a test harness, AND it's largely redundant with the
+      existing **Settings → Friends** tab. Low marginal value vs coupling cost.
+- [~] **Account basics — DONE 2026-06-28 (PR #14):** Account.tsx shows the signed-in display name +
+      email + a Premium priority-support line (via a `user` prop). Remaining: *editing* display
+      name/password/SSO (Firebase updateProfile).
 - [ ] Receipts/billing emails (transactional email provider) — note: there's currently "no email
       service" (see CLAUDE.md sharing); billing will need one (Stripe can send receipts).
 
