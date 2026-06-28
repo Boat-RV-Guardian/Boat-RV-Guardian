@@ -467,10 +467,17 @@ merge). This delivers most of increments 2/3/5 at once, safely (no live-worker c
       as a self-host cap, and `GET /api/history`. Memory/File storage; 21 tests.
 - [x] **Hourly downsampling DONE (2026-06-25, cloud-server main):** raw samples for 7 days, then
       one-per-hour for older data (`downsampleHistory`, tested) — bounds the premium ~3y window.
-- [ ] **Increment 4 (remaining):** `SqliteStorage`/`D1Storage` behind the `Storage` interface (today:
-      Memory + File JSON). Native-dep or `node:sqlite` (experimental) tradeoff — defer until needed at scale.
-- [ ] **Follow-up:** a Cloudflare adapter sharing this core, then unify with / retire the live worker;
-      CI in brvg-cloud-server (tsc + tests + docker build); hardware smoke of the real LinkTap/FCM calls.
+- [x] **Increment 4 DONE (brvg-cloud-server#3):** `SqlStorage` over a tiny `SqlDriver` seam
+      ([src/sql.ts](https://github.com/Boat-RV-Guardian/brvg-cloud-server/blob/main/src/sql.ts)) +
+      `NodeSqliteDriver` (node:sqlite, self-host) + `D1Driver`
+      ([src/d1.ts](https://github.com/Boat-RV-Guardian/brvg-cloud-server/blob/main/src/d1.ts)) behind
+      the `Storage` interface (Memory + File JSON remain for dev). Verified present 2026-06-28.
+- [x] **Cloudflare adapter + CI DONE:** a Cloudflare Worker adapter reusing the core
+      ([src/worker.ts](https://github.com/Boat-RV-Guardian/brvg-cloud-server/blob/main/src/worker.ts)),
+      and CI (`.github/workflows/ci.yml`) already runs **tsc + tests + build + docker build**. Verified
+      2026-06-28.
+- [ ] **Follow-up (remaining):** unify with / retire the main repo's live `worker/` (owner-driven
+      cutover via the Firestore storage + Cloudflare adapter); hardware smoke of the real LinkTap/FCM calls.
 - [x] **App wiring DONE (2026-06-25):** `registerShellyWebhooks` appends `&key=<sh_webhook_key>` for
       custom servers (default hosted worker gets none); worker `RESERVED_PARAMS` now drops `key` so an
       auth key is never stored as telemetry. All 3 PRs (cloud-server #1, website #1/#2) merged.
