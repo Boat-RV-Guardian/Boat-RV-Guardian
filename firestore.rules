@@ -21,7 +21,9 @@ service cloud.firestore {
     }
 
     match /vehicles/{vid} {
-      allow read:   if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
+      // `resource == null` allows reading a not-yet-created doc (returns exists:false) instead of
+      // denying it — without this, a brand-new vehicle's onSnapshot errors and the create path never runs.
+      allow read:   if (request.auth != null && (resource == null || request.auth.uid in resource.data.allowedUsers))
                     || isAdmin();
       allow create: if request.auth != null && request.auth.uid in request.resource.data.allowedUsers;
       allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
@@ -30,8 +32,12 @@ service cloud.firestore {
                     // latter backs the admin console's "delete user" (drop them from shared vehicles).
                     || (isAdmin()
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers']));
-      // Operators may delete a vehicle (admin console "delete vehicle" + sole-owned cleanup on user delete).
-      allow delete: if isAdmin();
+      // Operators may delete any vehicle (admin console). A SOLE owner may delete their own vehicle —
+      // this is what lets the consumer account-deletion hard-delete the boats you solely own.
+      allow delete: if isAdmin()
+                    || (request.auth != null
+                        && request.auth.uid in resource.data.allowedUsers
+                        && resource.data.allowedUsers.size() == 1);
 
       match /history/{histId} {
         // History docs (monthly usage/events rollups) carry no allowedUsers of their own —

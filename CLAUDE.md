@@ -169,14 +169,19 @@ service cloud.firestore {
     }
 
     match /vehicles/{vid} {
-      allow read:   if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
+      // resource == null lets a not-yet-created doc be read (exists:false) instead of denied — required
+      // so a brand-new vehicle's onSnapshot doesn't error before SyncModal can create it.
+      allow read:   if (request.auth != null && (resource == null || request.auth.uid in resource.data.allowedUsers))
                     || isAdmin();
       allow create: if request.auth != null && request.auth.uid in request.resource.data.allowedUsers;
       allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
                     || isValidClaim(vid)
                     || (isAdmin()
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers']));
-      allow delete: if isAdmin();
+      allow delete: if isAdmin()
+                    || (request.auth != null
+                        && request.auth.uid in resource.data.allowedUsers
+                        && resource.data.allowedUsers.size() == 1);
 
       match /history/{histId} {
         // History docs (monthly usage/events rollups) carry no allowedUsers of their own —

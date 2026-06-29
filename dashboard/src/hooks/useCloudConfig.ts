@@ -87,11 +87,24 @@ export function useCloudConfig(activeVid: string | null) {
     setLoading(true);
 
     const vehicleRef = doc(db, 'vehicles', activeVid);
-    const unsubscribeVehicle = onSnapshot(vehicleRef, (snap) => {
-      setActiveVehicleConfig(snap.exists() ? snap.data() : {});
-      setConfigVid(activeVid);
-      setLoading(false);
-    });
+    const unsubscribeVehicle = onSnapshot(
+      vehicleRef,
+      (snap) => {
+        setActiveVehicleConfig(snap.exists() ? snap.data() : {});
+        setConfigVid(activeVid);
+        setLoading(false);
+      },
+      (_err) => {
+        // Firestore rules DENY reading a not-yet-created vehicle doc (resource is null, so the
+        // allowedUsers check fails). Without handling that, the success callback never fires, configVid
+        // never matches activeVid, and SyncModal's resolution effect never gets to CREATE the doc — so a
+        // brand-new vehicle could never sync. Treat the error as "no cloud doc yet" so the create path
+        // runs; the create write itself IS permitted (the caller puts the uid in allowedUsers).
+        setActiveVehicleConfig({});
+        setConfigVid(activeVid);
+        setLoading(false);
+      },
+    );
 
     return () => unsubscribeVehicle();
   }, [activeVid]);
