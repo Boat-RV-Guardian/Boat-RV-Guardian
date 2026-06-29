@@ -55,6 +55,7 @@ export default function Settings({ user }: { user: any }) {
   // Vehicle Modals State
   const [showNewVehicleModal, setShowNewVehicleModal] = useState(false);
   const [newVehicleNameInput, setNewVehicleNameInput] = useState('');
+  const [newVehicleType, setNewVehicleType] = useState<'' | 'boat' | 'rv'>('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -62,7 +63,7 @@ export default function Settings({ user }: { user: any }) {
   // Cross-device sync
   // Cloud-vehicle reconciliation lives in SyncModal (always mounted) so it works app-wide.
   // Settings only needs the cloud write helpers; its vehiclesMap refreshes via settings_updated.
-  const { cloudVehicles, userConfig, updateVehicleConfig, updateUserConfig, deleteVehicleConfig } = useCloudConfig(null);
+  const { cloudVehicles, userConfig, updateVehicleConfig, updateUserConfig, deleteVehicleConfig, hardDeleteVehicleConfig } = useCloudConfig(null);
   const [defaultVidSaving, setDefaultVidSaving] = useState(false);
 
   // --- Friends / Sharing (Friends tab): state, derived roles/members + handlers live in the hook ---
@@ -70,8 +71,9 @@ export default function Settings({ user }: { user: any }) {
     pendingInvites, shareEmail, setShareEmail, shareRole, setShareRole, shareMsg, setShareMsg,
     lastInvite, sentInvites, friendsBusy,
     sharedWithMe, activeCloudVehicle, isActiveAdmin, activeVehicleName, activeMembers,
+    activeOwner, isActiveOwner,
     handleCreateInvite, handleAcceptInvite, handleDeclineInvite, handleRemoveMember,
-    handleCancelInvite, handleLeaveVehicle,
+    handleCancelInvite, handleLeaveVehicle, handleTransferOwnership,
   } = useVehicleSharing({ user, cloudVehicles, activeVid, activeTab });
 
   // Sync Toggles
@@ -87,6 +89,16 @@ export default function Settings({ user }: { user: any }) {
   const volUnit = unitSystem === 'imperial' ? 'Gallons' : 'Liters';
   const [timeZone, setTimeZone] = useState(() => localStorage.getItem('lt_tz') || ((Intl as any).supportedValuesOf ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC'));
   const [vesselNickname, setVesselNickname] = useState(() => localStorage.getItem('lt_vessel_name') || '');
+  // Per-vehicle Boat/RV type. Managed directly (not via the synced-settings machinery): writeSettings
+  // doesn't touch lt_vehicle_type, getLocalVehicleConfig syncs it, and switchVehicle backs it up.
+  const [vehicleType, setVehicleType] = useState<'' | 'boat' | 'rv'>(() => (localStorage.getItem('lt_vehicle_type') as '' | 'boat' | 'rv') || '');
+  const [isEditingType, setIsEditingType] = useState(false);
+  const changeVehicleType = (t: 'boat' | 'rv') => {
+    localStorage.setItem('lt_vehicle_type', t);
+    setVehicleType(t);
+    setIsEditingType(false);
+    window.dispatchEvent(new Event('settings_updated')); // persist + cloud-sync like any other config edit
+  };
   const [shellyLocalPassword, setShellyLocalPassword] = useState(() => localStorage.getItem('sh_local_password') || '');
   const [showShellyPw, setShowShellyPw] = useState(false);
   // Shelly local password is read-only until "Edit"; on "Save" we confirm + push to every device.
@@ -293,6 +305,8 @@ export default function Settings({ user }: { user: any }) {
         shoreHighV: setShoreHighV,
         shoreCritHighV: setShoreCritHighV,
       });
+      // lt_vehicle_type is managed outside the synced-settings map — re-read it on switch/cloud-sync.
+      setVehicleType((localStorage.getItem('lt_vehicle_type') as '' | 'boat' | 'rv') || '');
       setDevices(getDevices());
 
       const currentVid = getActiveVehicleId();
@@ -460,12 +474,13 @@ export default function Settings({ user }: { user: any }) {
 
   const handleAddNewVehicle = () => {
     setNewVehicleNameInput('');
+    setNewVehicleType('');
     setShowNewVehicleModal(true);
   };
 
   const confirmAddNewVehicle = () => {
-    const newVid = addNewVehicle(newVehicleNameInput || 'New Vehicle');
-    switchVehicle(newVid);
+    const newVid = addNewVehicle(newVehicleNameInput || 'New Vehicle', newVehicleType);
+    switchVehicle(newVid); // loads the new vehicle's config (incl. type) into root → settings_updated refreshes UI
     setShowNewVehicleModal(false);
   };
 
@@ -593,8 +608,17 @@ export default function Settings({ user }: { user: any }) {
 
   const handleDeleteVehicle = () => {
     const idToDelete = activeVid;
-    deleteVehicle(idToDelete);                       // local removal + tombstone + switch to fallback
-    deleteVehicleConfig(idToDelete).catch(() => {}); // remove self from cloud allowedUsers
+    // Sole owner → HARD-delete the cloud doc so it doesn't linger orphaned in the admin portal.
+    // Shared → just remove self (leave). Hard-delete needs the `delete` rule deployed; fall back to a
+    // leave if it's rejected so we at least detach this user.
+    const cv = (cloudVehicles || []).find((v: any) => v.id === idToDelete);
+    const others = ((cv?.allowedUsers as string[]) || []).filter((u) => u !== user?.uid);
+    deleteVehicle(idToDelete); // local removal + tombstone + switch to fallback
+    if (cv && others.length === 0) {
+      hardDeleteVehicleConfig(idToDelete).catch(() => deleteVehicleConfig(idToDelete).catch(() => {}));
+    } else {
+      deleteVehicleConfig(idToDelete).catch(() => {});
+    }
     setShowDeleteModal(false);
     setDeleteConfirmChecked(false);
   };
@@ -622,6 +646,8 @@ export default function Settings({ user }: { user: any }) {
             onSwitchVehicle={handleSwitchVehicle} onAddNewVehicle={handleAddNewVehicle}
             isEditingName={isEditingName} setIsEditingName={setIsEditingName}
             vesselNickname={vesselNickname} setVesselNickname={setVesselNickname}
+            vehicleType={vehicleType} onChangeVehicleType={changeVehicleType}
+            isEditingType={isEditingType} setIsEditingType={setIsEditingType}
             showShellyPw={showShellyPw} setShowShellyPw={setShowShellyPw}
             isEditingShellyPw={isEditingShellyPw} setIsEditingShellyPw={setIsEditingShellyPw}
             shellyPwDraft={shellyPwDraft} setShellyPwDraft={setShellyPwDraft}
@@ -804,6 +830,7 @@ export default function Settings({ user }: { user: any }) {
           shareRole={shareRole} onShareRoleChange={setShareRole}
           onCreateInvite={handleCreateInvite} lastInvite={lastInvite}
           activeMembers={activeMembers} activeVid={activeVid} onRemoveMember={handleRemoveMember}
+          activeOwner={activeOwner} isActiveOwner={isActiveOwner} onTransferOwnership={handleTransferOwnership}
           sentInvitesForActive={sentInvites[activeVid] || []} onCancelInvite={handleCancelInvite}
           sharedWithMe={sharedWithMe} onLeaveVehicle={handleLeaveVehicle}
         />
@@ -820,6 +847,7 @@ export default function Settings({ user }: { user: any }) {
         onConfirmRemoveDevice={confirmRemoveDevice}
         showNewVehicleModal={showNewVehicleModal} newVehicleNameInput={newVehicleNameInput}
         setNewVehicleNameInput={setNewVehicleNameInput}
+        newVehicleType={newVehicleType} setNewVehicleType={setNewVehicleType}
         onCancelNewVehicle={() => setShowNewVehicleModal(false)} onConfirmNewVehicle={confirmAddNewVehicle}
         pendingSwitchVid={pendingSwitchVid}
         onCancelSwitch={() => setPendingSwitchVid(null)} onConfirmSwitch={confirmSwitchAndStopLocalServer}

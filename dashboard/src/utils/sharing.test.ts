@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../services/firebase', () => ({ auth: mocks.auth, db: {} }));
 
-import { getMyRole, getMembers } from './sharing';
+import { getMyRole, getMembers, getOwner, isOwner } from './sharing';
 const auth = mocks.auth;
 
 beforeEach(() => { auth.currentUser = null; });
@@ -52,5 +52,18 @@ describe('getMembers', () => {
   it('returns an empty list when there are no members', () => {
     expect(getMembers({})).toEqual([]);
     expect(getMembers(null)).toEqual([]);
+  });
+});
+
+describe('getOwner / isOwner', () => {
+  it('reads the explicit owner field', () => {
+    expect(getOwner({ owner: 'u1', allowedUsers: ['u1', 'u2'] })).toBe('u1');
+    expect(isOwner({ owner: 'u1' }, 'u1')).toBe(true);
+    expect(isOwner({ owner: 'u1' }, 'u2')).toBe(false);
+  });
+  it('falls back to the sole member of a legacy vehicle with no owner field', () => {
+    expect(getOwner({ allowedUsers: ['only'] })).toBe('only');
+    expect(getOwner({ allowedUsers: ['a', 'b'] })).toBeNull(); // ambiguous → no owner
+    expect(getOwner({})).toBeNull();
   });
 });

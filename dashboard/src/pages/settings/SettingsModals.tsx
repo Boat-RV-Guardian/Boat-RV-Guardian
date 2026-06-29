@@ -27,6 +27,8 @@ interface Props {
   showNewVehicleModal: boolean;
   newVehicleNameInput: string;
   setNewVehicleNameInput: (v: string) => void;
+  newVehicleType: '' | 'boat' | 'rv';
+  setNewVehicleType: (v: 'boat' | 'rv') => void;
   onCancelNewVehicle: () => void;
   onConfirmNewVehicle: () => void;
   // Switch vehicle while local server runs
@@ -96,9 +98,27 @@ export default function SettingsModals(p: Props) {
               onChange={(e) => p.setNewVehicleNameInput(e.target.value)}
               autoFocus
             />
+            <label className="form-label" style={{ marginTop: '16px', display: 'block' }}>Type</label>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {([['boat', '🚤', 'Boat'], ['rv', '🚐', 'RV']] as const).map(([val, emoji, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => p.setNewVehicleType(val)}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: '10px', cursor: 'pointer', color: '#fff',
+                    border: p.newVehicleType === val ? '2px solid var(--accent-cyan)' : '1px solid rgba(255,255,255,0.15)',
+                    background: p.newVehicleType === val ? 'rgba(0,242,254,0.12)' : 'rgba(255,255,255,0.04)',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                  }}
+                >
+                  <span style={{ fontSize: '1.5rem' }}>{emoji}</span>{label}
+                </button>
+              ))}
+            </div>
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button className="btn-secondary" onClick={p.onCancelNewVehicle} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn-primary" onClick={p.onConfirmNewVehicle} style={{ flex: 1 }} disabled={!p.newVehicleNameInput.trim()}>Create</button>
+              <button className="btn-primary" onClick={p.onConfirmNewVehicle} style={{ flex: 1 }} disabled={!p.newVehicleNameInput.trim() || !p.newVehicleType}>Create</button>
             </div>
           </div>
         </ModalOverlay>

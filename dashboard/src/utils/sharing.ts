@@ -32,6 +32,9 @@ export const ROLE_LABELS: Record<VehicleRole, string> = {
   monitor: 'Monitor only',
 };
 
+// A vehicle has ONE owner (the `owner` uid field), distinct from — and above — Full Admin. The owner
+// is the only one who can transfer ownership (client-gated). See getOwner/isOwner/transferOwnership.
+
 export interface Invite {
   id: string;
   vehicleId: string;
@@ -69,7 +72,21 @@ export function getMembers(vehicleData: any): Member[] {
   }));
 }
 
-/** Make sure the current user is recorded as an admin member of a vehicle they own. */
+/**
+ * The vehicle's OWNER uid (a single owner, distinct from — and above — Full Admin). Falls back to a
+ * legacy single-member vehicle's only member when the `owner` field hasn't been backfilled yet.
+ */
+export function getOwner(vehicleData: any): string | null {
+  if (vehicleData?.owner) return vehicleData.owner;
+  const allowed: string[] = vehicleData?.allowedUsers || [];
+  return allowed.length === 1 ? allowed[0] : null; // legacy sole-member vehicle
+}
+
+export function isOwner(vehicleData: any, uid: string | null | undefined): boolean {
+  return !!uid && getOwner(vehicleData) === uid;
+}
+
+/** Make sure the current user is recorded as an admin member AND the owner of a vehicle they created. */
 export async function ensureOwnerAdmin(vid: string): Promise<void> {
   const user = auth.currentUser;
   if (!user || !vid) return;
@@ -77,12 +94,26 @@ export async function ensureOwnerAdmin(vid: string): Promise<void> {
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const data = snap.data() as any;
+  const patch: any = {};
   if (!data.members?.[user.uid]) {
-    await setDoc(ref, {
-      members: { [user.uid]: { role: 'admin', email: emailKey(user.email || '') } },
-      allowedUsers: arrayUnion(user.uid),
-    }, { merge: true });
+    patch.members = { [user.uid]: { role: 'admin', email: emailKey(user.email || '') } };
+    patch.allowedUsers = arrayUnion(user.uid);
   }
+  if (!data.owner) patch.owner = user.uid; // first writer becomes the owner
+  if (Object.keys(patch).length) await setDoc(ref, patch, { merge: true });
+}
+
+/**
+ * Transfer ownership of a vehicle to another member. The new owner is promoted to Full Admin; the
+ * previous owner keeps their admin membership (they can be removed separately). Owner-only in the UI;
+ * the new owner must already be a member (be on allowedUsers) so the doc stays valid.
+ */
+export async function transferOwnership(vid: string, newOwnerUid: string, newOwnerEmail: string): Promise<void> {
+  await updateDoc(doc(db, 'vehicles', vid), {
+    owner: newOwnerUid,
+    [`members.${newOwnerUid}`]: { role: 'admin', email: emailKey(newOwnerEmail || '') },
+    allowedUsers: arrayUnion(newOwnerUid),
+  });
 }
 
 /** Create a pending invite (admin only, enforced by rules). Returns the invite for display. */

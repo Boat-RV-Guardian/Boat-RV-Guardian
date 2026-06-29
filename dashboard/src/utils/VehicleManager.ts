@@ -175,10 +175,10 @@ export function switchVehicle(newId: string) {
   dispatchSettingsUpdatedGuarded();
 }
 
-export function addNewVehicle(name: string = 'New Vehicle') {
+export function addNewVehicle(name: string = 'New Vehicle', type: '' | 'boat' | 'rv' = '') {
   const map = getVehiclesMap();
   const id = generateVehicleId();
-  const newConfig = { ...VEHICLE_DEFAULT_CONFIG, lt_vessel_name: name, sh_local_password: generateShellyPassword() };
+  const newConfig = { ...VEHICLE_DEFAULT_CONFIG, lt_vessel_name: name, lt_vehicle_type: type, sh_local_password: generateShellyPassword() };
   map[id] = { id, config: newConfig };
   saveVehiclesMap(map);
   return id;

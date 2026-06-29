@@ -20,6 +20,10 @@ interface Props {
   setIsEditingName: (v: boolean) => void;
   vesselNickname: string;
   setVesselNickname: (v: string) => void;
+  vehicleType: '' | 'boat' | 'rv';
+  onChangeVehicleType: (t: 'boat' | 'rv') => void;
+  isEditingType: boolean;
+  setIsEditingType: (v: boolean) => void;
   showShellyPw: boolean;
   setShowShellyPw: (v: boolean) => void;
   isEditingShellyPw: boolean;
@@ -98,6 +102,36 @@ export default function VehiclesPanel(p: Props) {
             style={{ padding: '8px 16px', height: '42px' }}
           >
             {p.isEditingName ? 'Save' : 'Edit'}
+          </button>
+        </div>
+
+        {/* Vehicle Type (Boat / RV) — set at creation, changeable here. */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px' }}>
+          <div style={{ flex: 1 }}>
+            <label className="form-label">Vehicle Type</label>
+            {p.isEditingType ? (
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {([['boat', '🚤 Boat'], ['rv', '🚐 RV']] as const).map(([val, label]) => (
+                  <button key={val} type="button" onClick={() => p.onChangeVehicleType(val)}
+                    style={{
+                      flex: 1, padding: '10px', borderRadius: '8px', cursor: 'pointer', color: '#fff',
+                      border: p.vehicleType === val ? '2px solid var(--accent-cyan)' : '1px solid rgba(255,255,255,0.15)',
+                      background: p.vehicleType === val ? 'rgba(0,242,254,0.12)' : 'rgba(255,255,255,0.04)',
+                    }}>{label}</button>
+                ))}
+              </div>
+            ) : (
+              <div className="form-input" style={{ opacity: 0.8, height: '42px', display: 'flex', alignItems: 'center' }}>
+                {p.vehicleType === 'boat' ? '🚤 Boat' : p.vehicleType === 'rv' ? '🚐 RV' : 'Not set'}
+              </div>
+            )}
+          </div>
+          <button
+            className={p.isEditingType ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => p.setIsEditingType(!p.isEditingType)}
+            style={{ padding: '8px 16px', height: '42px' }}
+          >
+            {p.isEditingType ? 'Done' : 'Change'}
           </button>
         </div>
 

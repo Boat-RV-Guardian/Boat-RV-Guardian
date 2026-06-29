@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db, auth, doc, onSnapshot, setDoc } from '../services/firebase';
-import { collection, query, where, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { collection, query, where, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 
 export interface UserConfig {
@@ -134,5 +134,12 @@ export function useCloudConfig(activeVid: string | null) {
     }, { merge: true });
   };
 
-  return { userConfig, activeVehicleConfig, configVid, cloudVehicles, updateUserConfig, updateVehicleConfig, deleteVehicleConfig, loading };
+  // Hard-delete the vehicle's cloud doc. For a vehicle the user SOLELY owns — otherwise removing self
+  // (deleteVehicleConfig) leaves an orphaned doc with empty allowedUsers that lingers in the admin
+  // portal. Requires the `delete` rule (sole owner / operator); callers fall back to a leave on failure.
+  const hardDeleteVehicleConfig = async (vid: string) => {
+    await deleteDoc(doc(db, 'vehicles', vid));
+  };
+
+  return { userConfig, activeVehicleConfig, configVid, cloudVehicles, updateUserConfig, updateVehicleConfig, deleteVehicleConfig, hardDeleteVehicleConfig, loading };
 }

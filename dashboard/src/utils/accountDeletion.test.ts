@@ -1,5 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
-import { accountDeletionPlan, executeAccountDeletion, type DeletionDeps, type VehicleAccess } from './accountDeletion';
+import { accountDeletionPlan, classifyForDeletion, executeAccountDeletion, type DeletionDeps, type VehicleAccess } from './accountDeletion';
+
+describe('classifyForDeletion', () => {
+  const vehicles: VehicleAccess[] = [
+    { id: 'solo', allowedUsers: ['me'], owner: 'me' },                  // sole → delete
+    { id: 'mine-shared', allowedUsers: ['me', 'b', 'c'], owner: 'me' }, // I own + others → decide
+    { id: 'theirs', allowedUsers: ['me', 'b'], owner: 'b' },            // shared with me → leave
+    { id: 'notmine', allowedUsers: ['x', 'y'], owner: 'x' },            // not a member → ignored
+  ];
+  it('separates solo-delete, owned-shared (transfer decision), and leave', () => {
+    const c = classifyForDeletion(vehicles, 'me');
+    expect(c.toDelete).toEqual(['solo']);
+    expect(c.ownedShared).toEqual([{ id: 'mine-shared', others: ['b', 'c'] }]);
+    expect(c.toLeave).toEqual(['theirs']);
+  });
+  it('a sole member is always a delete even without an owner field', () => {
+    expect(classifyForDeletion([{ id: 'v', allowedUsers: ['me'] }], 'me').toDelete).toEqual(['v']);
+  });
+});
 
 describe('accountDeletionPlan', () => {
   const vehicles: VehicleAccess[] = [

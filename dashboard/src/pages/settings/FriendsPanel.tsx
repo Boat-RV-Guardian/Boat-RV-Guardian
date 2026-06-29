@@ -26,6 +26,9 @@ interface Props {
   lastInvite: Invite | null;
   activeMembers: Member[];
   activeVid: string;
+  activeOwner: string | null;
+  isActiveOwner: boolean;
+  onTransferOwnership: (member: Member) => void;
   onRemoveMember: (vid: string, member: Member) => void;
   sentInvitesForActive: Invite[];
   onCancelInvite: (inviteId: string) => void;
@@ -139,10 +142,18 @@ export default function FriendsPanel(p: Props) {
           <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>People With Access</h3>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{p.activeVehicleName}</div>
           {p.activeMembers.map(m => (
-            <div key={m.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem' }}>
-              <span>{m.email} {m.uid === p.user.uid && <em style={{ color: 'var(--text-muted)' }}>(you)</em>} — {ROLE_LABELS[m.role]}</span>
+            <div key={m.uid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', gap: '8px' }}>
+              <span>
+                {m.uid === p.activeOwner && <span title="Owner" style={{ marginRight: '4px' }}>👑</span>}
+                {m.email} {m.uid === p.user.uid && <em style={{ color: 'var(--text-muted)' }}>(you)</em>} — {m.uid === p.activeOwner ? 'Owner' : ROLE_LABELS[m.role]}
+              </span>
               {m.uid !== p.user.uid && (
-                <button className="btn-secondary" disabled={p.friendsBusy} onClick={() => p.onRemoveMember(p.activeVid, m)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Revoke</button>
+                <span style={{ display: 'flex', gap: '6px' }}>
+                  {p.isActiveOwner && m.uid !== p.activeOwner && (
+                    <button className="btn-secondary" disabled={p.friendsBusy} onClick={() => p.onTransferOwnership(m)} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Make owner</button>
+                  )}
+                  <button className="btn-secondary" disabled={p.friendsBusy} onClick={() => p.onRemoveMember(p.activeVid, m)} style={{ padding: '4px 10px', fontSize: '0.75rem', color: '#ef4444', borderColor: 'rgba(239,68,68,0.4)' }}>Revoke</button>
+                </span>
               )}
             </div>
           ))}

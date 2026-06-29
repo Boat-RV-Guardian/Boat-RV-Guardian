@@ -7,6 +7,43 @@ export interface VehicleAccess {
   id: string;
   /** uids with access to the vehicle (the vehicle doc's `allowedUsers`). */
   allowedUsers: string[];
+  /** The owner uid (vehicle doc `owner`), if known. */
+  owner?: string | null;
+}
+
+export interface OwnedSharedVehicle {
+  id: string;
+  /** Other members' uids (everyone with access except the user being deleted) — transfer candidates. */
+  others: string[];
+}
+
+export interface DeletionClassification {
+  /** Vehicles the user solely owns (no other members) → delete the doc. */
+  toDelete: string[];
+  /** Vehicles the user OWNS that have other members → the user must choose: transfer or delete. */
+  ownedShared: OwnedSharedVehicle[];
+  /** Vehicles shared with the user that they don't own → just remove them (leave). */
+  toLeave: string[];
+}
+
+/**
+ * Classify the user's vehicles for account deletion, distinguishing owned-and-shared vehicles (which
+ * warrant a transfer-or-delete decision) from solo-owned (delete) and not-owned (leave). Ownership is
+ * the vehicle's `owner` field; a sole-member vehicle is always a delete regardless of owner. Pure.
+ */
+export function classifyForDeletion(vehicles: VehicleAccess[], uid: string): DeletionClassification {
+  const toDelete: string[] = [];
+  const ownedShared: OwnedSharedVehicle[] = [];
+  const toLeave: string[] = [];
+  for (const v of vehicles) {
+    const users = Array.isArray(v.allowedUsers) ? v.allowedUsers : [];
+    if (!users.includes(uid)) continue;
+    const others = users.filter((u) => u !== uid);
+    if (others.length === 0) { toDelete.push(v.id); continue; }   // sole member → delete
+    if (v.owner === uid) ownedShared.push({ id: v.id, others: others.sort() }); // I own a shared one → decide
+    else toLeave.push(v.id);                                      // shared with me, not owner → leave
+  }
+  return { toDelete: toDelete.sort(), ownedShared, toLeave: toLeave.sort() };
 }
 
 export interface DeletionPlan {

@@ -6,8 +6,8 @@
 import { useState, useEffect } from 'react';
 import { usePendingInvites } from './usePendingInvites';
 import {
-  getMyRole, getMembers, createInvite, acceptInvite, declineInvite,
-  cancelInvite, removeMember, leaveVehicle, listSentInvites, ensureOwnerAdmin,
+  getMyRole, getMembers, getOwner, createInvite, acceptInvite, declineInvite,
+  cancelInvite, removeMember, leaveVehicle, listSentInvites, ensureOwnerAdmin, transferOwnership,
   type VehicleRole, type Invite, type Member,
 } from '../utils/sharing';
 
@@ -34,6 +34,9 @@ export function useVehicleSharing({ user, cloudVehicles, activeVid, activeTab }:
   // Sharing is scoped to the ACTIVE vehicle only — you share whatever you're currently in.
   const activeCloudVehicle = (cloudVehicles || []).find(cv => cv.id === activeVid);
   const isActiveAdmin = activeCloudVehicle ? getMyRole(activeCloudVehicle) === 'admin' : false;
+  // Ownership (a single owner, above Full Admin). Only the owner may transfer ownership.
+  const activeOwner = getOwner(activeCloudVehicle);
+  const isActiveOwner = !!user && (activeOwner === user.uid || (activeOwner == null && isActiveAdmin));
   const activeVehicleName = activeCloudVehicle?.lt_vessel_name || localStorage.getItem('lt_vessel_name') || 'this vehicle';
   // Members of the active vehicle. Legacy owners have no members map yet, so synthesize the
   // current admin (you) until ensureOwnerAdmin backfills the doc.
@@ -101,12 +104,23 @@ export function useVehicleSharing({ user, cloudVehicles, activeVid, activeTab }:
     try { await leaveVehicle(vid); } catch (e: any) { setShareMsg({ text: e.message || 'Failed to leave', type: 'error' }); }
     finally { setFriendsBusy(false); }
   };
+  const handleTransferOwnership = async (member: Member) => {
+    if (!confirm(`Transfer ownership of "${activeVehicleName}" to ${member.email}? They become the owner (Full Admin); you stay an admin until removed.`)) return;
+    setShareMsg(null);
+    setFriendsBusy(true);
+    try {
+      await transferOwnership(activeVid, member.uid, member.email);
+      setShareMsg({ text: `Ownership transferred to ${member.email}.`, type: 'success' });
+    } catch (e: any) { setShareMsg({ text: e.message || 'Failed to transfer ownership', type: 'error' }); }
+    finally { setFriendsBusy(false); }
+  };
 
   return {
     pendingInvites, shareEmail, setShareEmail, shareRole, setShareRole, shareMsg, setShareMsg,
     lastInvite, sentInvites, friendsBusy,
     adminVehicles, sharedWithMe, activeCloudVehicle, isActiveAdmin, activeVehicleName, activeMembers,
+    activeOwner, isActiveOwner,
     handleCreateInvite, handleAcceptInvite, handleDeclineInvite, handleRemoveMember,
-    handleCancelInvite, handleLeaveVehicle,
+    handleCancelInvite, handleLeaveVehicle, handleTransferOwnership,
   };
 }
