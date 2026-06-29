@@ -50,7 +50,7 @@ describe('executeAccountDeletion', () => {
   it('runs every step and clears local data on the happy path', async () => {
     const deps = mockDeps();
     const res = await executeAccountDeletion({ toDelete: ['a'], toLeave: ['b'] }, 'me', deps);
-    expect(res).toEqual({ deletedVehicles: 1, leftVehicles: 1, errors: [] });
+    expect(res).toEqual({ deletedVehicles: 1, leftVehicles: 1, errors: [], authDeleted: true });
     expect(deps.deleteVehicle).toHaveBeenCalledWith('a');
     expect(deps.leaveVehicle).toHaveBeenCalledWith('b', 'me');
     expect(deps.deleteUserDoc).toHaveBeenCalledWith('me');
@@ -59,20 +59,41 @@ describe('executeAccountDeletion', () => {
     expect(deps.signOut).not.toHaveBeenCalled(); // auth delete succeeded → no extra signout needed
   });
 
-  it('records a per-vehicle error without aborting the rest', async () => {
+  it('records a per-vehicle error and ABORTS before deleting the Auth account (never orphans data)', async () => {
     const deps = mockDeps({ deleteVehicle: vi.fn(async () => { throw new Error('boom'); }) });
     const res = await executeAccountDeletion({ toDelete: ['a'], toLeave: ['b'] }, 'me', deps);
     expect(res.deletedVehicles).toBe(0);
     expect(res.leftVehicles).toBe(1);
     expect(res.errors[0]).toMatch(/delete a: boom/);
-    expect(deps.clearLocal).toHaveBeenCalled(); // cleanup still runs
+    expect(res.authDeleted).toBe(false);
+    // The fix: on a data-cleanup failure the login is preserved (user stays signed in to retry) —
+    // we do NOT delete the Auth account or clear local, so nothing is orphaned behind a dead login.
+    expect(deps.deleteAuthUser).not.toHaveBeenCalled();
+    expect(deps.clearLocal).not.toHaveBeenCalled();
+    expect(deps.signOut).not.toHaveBeenCalled();
   });
 
-  it('signs out as a fallback when the Auth user delete fails (requires-recent-login)', async () => {
+  it('does NOT delete the Auth account when the user-doc delete fails', async () => {
+    const deps = mockDeps({ deleteUserDoc: vi.fn(async () => { throw new Error('denied'); }) });
+    const res = await executeAccountDeletion({ toDelete: [], toLeave: [] }, 'me', deps);
+    expect(res.authDeleted).toBe(false);
+    expect(deps.deleteAuthUser).not.toHaveBeenCalled();
+  });
+
+  it('folds precheckErrors (e.g. failed transfers) in and skips the Auth delete', async () => {
+    const deps = mockDeps();
+    const res = await executeAccountDeletion({ toDelete: [], toLeave: [] }, 'me', deps, ['transfer X: nope']);
+    expect(res.authDeleted).toBe(false);
+    expect(res.errors).toContain('transfer X: nope');
+    expect(deps.deleteAuthUser).not.toHaveBeenCalled();
+  });
+
+  it('signs out as a fallback when the Auth user delete fails AFTER clean data cleanup (recent-login)', async () => {
     const deps = mockDeps({ deleteAuthUser: vi.fn(async () => { throw new Error('requires-recent-login'); }) });
     const res = await executeAccountDeletion({ toDelete: [], toLeave: [] }, 'me', deps);
     expect(res.errors.some((e) => /auth: requires-recent-login/.test(e))).toBe(true);
+    expect(res.authDeleted).toBe(false);
     expect(deps.signOut).toHaveBeenCalled();
-    expect(deps.clearLocal).toHaveBeenCalled();
+    expect(deps.clearLocal).toHaveBeenCalled(); // data was clean, so local is cleared
   });
 });

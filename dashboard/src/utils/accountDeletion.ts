@@ -85,18 +85,28 @@ export interface DeletionResult {
   leftVehicles: number;
   /** Per-step errors that didn't abort the run (best-effort cleanup), keyed by step. */
   errors: string[];
+  /** True once the Firebase Auth login was actually deleted. False when we aborted before it because
+   *  data cleanup failed (so the user is still signed in and nothing was orphaned). */
+  authDeleted: boolean;
 }
 
 /**
- * Execute the deletion plan, then delete the user's own doc, delete the Auth user, clear local data,
- * and sign out. Vehicle ops are best-effort (an error on one is recorded but doesn't abort the rest);
- * if deleting the Auth user fails (e.g. Firebase 'requires-recent-login'), the error is surfaced so
- * the UI can prompt a re-auth — the data cleanup has still run. Orchestration only; deps do the I/O.
+ * Execute the deletion plan, then — ONLY IF all data cleanup succeeded — delete the user's own doc,
+ * delete the Auth user, clear local data, and sign out.
+ *
+ * CRITICAL ORDERING (fixes the "deleted account left the boat + user" bug): the Firebase Auth login is
+ * deleted LAST, and we ABORT before deleting it if any vehicle/user-doc delete failed. Deleting the
+ * login while data deletes were denied (e.g. stale rules, a shared boat, a transient error) would
+ * orphan the remaining vehicles/user-doc behind an account the user can no longer sign into to retry.
+ * On abort we leave the user signed in (no clearLocal/signOut) so they can fix the cause and retry.
+ *
+ * `precheckErrors` lets the caller fold in failures from steps it ran first (e.g. ownership transfers)
+ * so those also block the irreversible Auth deletion. Orchestration only; deps do the I/O.
  */
 export async function executeAccountDeletion(
-  plan: DeletionPlan, uid: string, deps: DeletionDeps,
+  plan: DeletionPlan, uid: string, deps: DeletionDeps, precheckErrors: string[] = [],
 ): Promise<DeletionResult> {
-  const errors: string[] = [];
+  const errors: string[] = [...precheckErrors];
   let deletedVehicles = 0;
   let leftVehicles = 0;
 
@@ -110,15 +120,22 @@ export async function executeAccountDeletion(
   }
   try { await deps.deleteUserDoc(uid); } catch (e: any) { errors.push(`user doc: ${e?.message || e}`); }
 
+  // Abort before the irreversible Auth deletion if ANY data cleanup failed — never orphan data behind
+  // a deleted login. The user stays signed in (no clearLocal/signOut) so the retry can complete it.
+  if (errors.length) {
+    return { deletedVehicles, leftVehicles, errors, authDeleted: false };
+  }
+
+  // Data fully cleaned → safe to remove the login, clear local, and (if Auth delete fails, e.g.
+  // requires-recent-login) sign out so the session ends and a re-auth retry can finish it.
   let authDeleted = false;
   try { await deps.deleteAuthUser(); authDeleted = true; }
   catch (e: any) { errors.push(`auth: ${e?.message || e}`); }
 
   deps.clearLocal();
-  // If the Auth user couldn't be deleted (needs recent login), still sign out so the session ends.
   if (!authDeleted) {
     try { await deps.signOut(); } catch (e: any) { errors.push(`signout: ${e?.message || e}`); }
   }
 
-  return { deletedVehicles, leftVehicles, errors };
+  return { deletedVehicles, leftVehicles, errors, authDeleted };
 }
