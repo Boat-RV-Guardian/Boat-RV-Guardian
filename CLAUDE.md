@@ -521,3 +521,55 @@ Big session, everything merged to `main` across all repos; all gates green. Vers
 - **Task 4 client wiring:** route LinkTapWidget remote control through `/api/control` (hardware-gated).
 - **Stripe** when ready (drop-in at `setActiveVehicleTier`).
 - Owner: the `brvg-admin-site` Operators-tab secrets; Tauri signing cert (Task 13); branch protection.
+
+## Session handoff — 2026-06-28 (late), trial + SMS + account-portal batch (ALL MERGED — MACHINE SWITCH)
+
+Leaving for a new machine. **All four repos clean, on `main`, `HEAD == origin/main`, zero open PRs.**
+Version still **1.0.45** (unreleased app changes on `main`; no tag cut). Clone all four on the new
+machine (see the new-machine checklist + the [[boatrvguardian-repos]] note): **Boat-RV-Guardian**,
+**brvg-cloud-server**, **website-boatrvguardian**, **brvg-admin-site**; `npm i` in each. Worker +
+website auto-deploy on merge to `main`; the worker redeployed clean this session (`/api/health`=200,
+`/api/trial`=401 verified live).
+
+### Shipped + merged this session (19 PRs across the repos)
+- **Task 6 free Basic trial — built end to end:** pure `isTrialEligible` + server-authoritative
+  `POST /api/trial` (`handleTrial`, owner-only, anti-abuse against authoritative Firestore) in
+  [worker/src/index.ts](worker/src/index.ts) (#9, DEPLOYED); consumer **auto-grant** via `requestTrial`
+  + a guarded SyncModal trigger ([utils/trial.ts](dashboard/src/utils/trial.ts), #10); admin console
+  **re-trial guard** (`isVehicleTrialEligible`, brvg-admin-site#1, DEPLOYED).
+- **Task 6/14 SMS/voice — scaffold complete (no provider):** worker send-path interface
+  [worker/src/sms.ts](worker/src/sms.ts) (`SmsSender`/`noopSmsSender`/`dispatchSmsForEvent`, #11) +
+  Premium opt-in **UI** in Account.tsx → synced `sh_sms_prefs` ([utils/smsPrefs.ts](dashboard/src/utils/smsPrefs.ts), #12).
+- **Task 8 cost lever:** worker **telemetry write-coalescing** — skip a `sensorState` write whose
+  content is unchanged since the isolate last wrote it, 15-min heartbeat, telemetry-only (alerts always
+  write). `sensorStateSignature`/`shouldWriteTelemetry` in [worker/src/cache.ts](worker/src/cache.ts) (#17, DEPLOYED).
+- **Task 14 account portal:** account basics (display name/email via a `user` prop) + per-vehicle plan
+  overview (`vehiclePlanRows`, #14); Premium **API tokens** (synced `sh_api_tokens`,
+  [utils/apiTokens.ts](dashboard/src/utils/apiTokens.ts), #15); **delete-account / GDPR**
+  ([utils/accountDeletion.ts](dashboard/src/utils/accountDeletion.ts) pure plan+executor + a
+  type-DELETE-to-confirm UI with lazy Firebase import, #18).
+- **Tests:** Settings rehydrate-drift fix via mapped-type `applyPersistedSettings` (#8, fixes the
+  flood/house/engine/shore notif-toggle bug flagged in prior handoffs); SMS+integrations gating RTL
+  tests (#16). Dashboard **172 tests**, worker **74**, all gates green.
+- **Docs:** open-tasks.md reconciled (#13, #19) — now accurate.
+
+### ⚠️ NEXT — verify in the native app (`npm run tauri dev`), with a throwaway account
+These are merged + gate-green but NOT runtime-verified (behavior changes / Firebase-coupled):
+1. **Trial auto-grant (#10):** create a new vehicle → it should get `tier=basic` + `trialEndsAt`;
+   create/re-add another → declined by the anti-abuse rule.
+2. **Delete-account (#18):** run the delete flow — esp. the Firebase `requires-recent-login` path
+   (Firebase often forces a recent login before `deleteUser`; the executor surfaces that + signs out,
+   but the UX may want an explicit re-auth prompt).
+
+### Untouched / deferred (reasons)
+- **Task 3 `useSettingsState` hook** — extract the ~56 interleaved synced-settings states + the
+  localStorage-writer effect. DEFERRED: no Settings render test, so gates can't catch a sync
+  regression — needs a click-through pass (per open-tasks + AGENTS). **(The lower-risk half — the
+  rehydrate fix — landed in #8.)**
+- **Task 14 sharing overview** — DEFERRED: redundant with Settings → Friends + would break Account's
+  Firebase-free/test-light design.
+- **Still 🟢 (do anytime, no hardware):** wire `dispatchSmsForEvent` into the worker alert path (+ a
+  real provider); editable display name / in-portal vehicle switching; main-repo Docker CI.
+- **Hardware-gated:** Task 1 (telemetry), Task 3 inc 5+ (LinkTapWidget), Task 4 client wiring, Shelly
+  password provisioning. **Owner-gated:** Task 11 DNS, Task 13 signing cert, Stripe, admin secrets,
+  branch protection.
