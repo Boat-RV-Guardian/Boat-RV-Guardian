@@ -81,16 +81,22 @@ export function exitLocalMode(storage: KeyValueStore): void {
 }
 
 export interface UserScopeResult {
-  /** True when cached data from a DIFFERENT prior owner was wiped (caller should reset app state). */
+  /** True when cached user-scoped data was actually discarded — the caller should hard-reload so no
+   *  stale in-memory/rendered state (vehicle list, active vehicle) survives the identity change. */
   wiped: boolean;
 }
 
 /**
  * Reconcile the local cache with the signed-in identity. Pass the current Firebase uid (or null when
  * signed out). If it differs from the stamped owner, all user-scoped keys are cleared and the stamp is
- * updated. `wiped` is true ONLY when there was a prior, different owner whose data we just discarded
- * (login-as-different-user or sign-out) — the first sign-in on a clean device returns `wiped:false`
- * (nothing stale to clear, and no reload needed). Same-uid restore is a complete no-op.
+ * updated. `wiped` is true whenever real user-scoped data was actually removed, so the caller reloads.
+ *
+ * IMPORTANT (cross-account boat-leak fix): `wiped` must also be true on a FIRST sign-in (no prior owner
+ * stamp) when the device still carries stale/unstamped data — e.g. legacy data from before stamping, or
+ * a prior session that didn't reload. We still clear that data, but if we DON'T also signal a reload and
+ * the new user has no cloud vehicles (so SyncModal's merge bails early and never fires settings_updated),
+ * the already-cleared boats stay rendered in memory and look like "a previous account's boats". A truly
+ * clean first sign-in removes nothing → wiped:false (no needless reload). Same-uid restore is a no-op.
  */
 export function applyUserScope(uid: string | null, storage: KeyValueStore): UserScopeResult {
   const prev = storage.getItem(DATA_OWNER_KEY) || '';
@@ -102,8 +108,9 @@ export function applyUserScope(uid: string | null, storage: KeyValueStore): User
   if (isLocalOwner(prev) && cur === '') return { wiped: false };
 
   const hadDifferentOwner = prev !== '';
-  clearUserScopedData(storage);
+  const removed = clearUserScopedData(storage);
   if (cur) storage.setItem(DATA_OWNER_KEY, cur);
   else storage.removeItem(DATA_OWNER_KEY);
-  return { wiped: hadDifferentOwner };
+  // Reload if we discarded a different owner's data OR cleared any stale/unstamped data on first sign-in.
+  return { wiped: hadDifferentOwner || removed.length > 0 };
 }
