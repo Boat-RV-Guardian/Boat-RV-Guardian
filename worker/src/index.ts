@@ -2,8 +2,9 @@ import { SignJWT, importPKCS8, jwtVerify, importX509, decodeProtectedHeader } fr
 import {
   isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
-  healthBody,
+  healthBody, smsEventKey,
 } from './events';
+import { dispatchSmsForEvent, noopSmsSender, parseSmsPrefs } from './sms';
 import {
   Cached, isCacheFresh, tokenValid, tokenExpiryMs,
   LastWrite, sensorStateSignature, shouldWriteTelemetry,
@@ -597,7 +598,28 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
       if (fcmToken) { (await sendFcmPush(env, token, fcmToken, title, body)) ? sent++ : pushFailed++; }
     }
   }
-  return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, persisted, shutoff }), {
+
+  // SMS/voice escalation (Premium, per-event opt-in — Task 6/14). Behavior-neutral today: the default
+  // noopSmsSender sends nothing (no provider wired), so this only fans out + reports counts. When a
+  // real provider (Twilio) is dropped in, this path delivers without further wiring. Only real alerts
+  // (not telemetry) whose event maps to an opt-in key, and only for Premium vehicles with that key
+  // opted in (enforced by dispatchSmsForEvent → smsRecipientsForEvent).
+  let smsAttempted = 0; let smsSent = 0;
+  if (!telemetry) {
+    const smsKey = smsEventKey(event);
+    if (smsKey) {
+      const r = await dispatchSmsForEvent(
+        noopSmsSender,
+        strField(vehicle, 'tier'),
+        parseSmsPrefs(strField(vehicle, 'sh_sms_prefs')),
+        smsKey,
+        `${title}: ${body}`,
+      );
+      smsAttempted = r.attempted; smsSent = r.sent;
+    }
+  }
+
+  return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, persisted, shutoff, sms: { attempted: smsAttempted, sent: smsSent } }), {
     headers: { 'Content-Type': 'application/json' }, status: 200,
   });
 }

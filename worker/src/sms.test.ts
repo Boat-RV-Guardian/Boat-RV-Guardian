@@ -1,8 +1,20 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  canSmsAlertForTier, smsRecipientsForEvent, noopSmsSender, dispatchSmsForEvent,
+  canSmsAlertForTier, smsRecipientsForEvent, noopSmsSender, dispatchSmsForEvent, parseSmsPrefs,
   type SmsSender, type SmsPrefs,
 } from './sms';
+
+describe('parseSmsPrefs', () => {
+  it('parses a serialized prefs string, de-duping + trimming', () => {
+    const raw = JSON.stringify({ phones: [' +15551112222 ', '+15551112222', ''], events: ['flood', 'flood', 'offline'] });
+    expect(parseSmsPrefs(raw)).toEqual({ phones: ['+15551112222'], events: ['flood', 'offline'] });
+  });
+  it('returns empty prefs for null/garbage/non-arrays', () => {
+    expect(parseSmsPrefs(null)).toEqual({ phones: [], events: [] });
+    expect(parseSmsPrefs('not json')).toEqual({ phones: [], events: [] });
+    expect(parseSmsPrefs(JSON.stringify({ phones: 'x', events: 3 }))).toEqual({ phones: [], events: [] });
+  });
+});
 
 const PREFS: SmsPrefs = { phones: ['+15551112222', '+15553334444'], events: ['flood', 'offline'] };
 
