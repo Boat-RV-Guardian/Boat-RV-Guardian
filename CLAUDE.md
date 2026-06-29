@@ -390,9 +390,10 @@ fallback) merely closes the valve **sooner** than the limit — it's a convenien
 of defense. Practical implications: (1) a missed flood-shutoff = a bounded amount of water, not a
 catastrophe; test valve paths for correctness without dramatizing; (2) **never weaken the open-limit**
 — that's the real safety net; (3) gating the cloud flood-shutoff fallback behind Basic is fine (the
-owner explicitly declined making it a free safety goodwill). **Prioritization:** the owner expects
-the **valve/flood feature to be the LEAST-used** part of the product — don't over-invest in it;
-monitoring / remote-view / history / alerts get used far more and deserve the effort.
+owner explicitly declined making it a free safety goodwill). **Prioritization (revised 2026-06-29):**
+treat the **valve/flood feature like any other sensor** — neither more nor less important than the
+others. (This supersedes the earlier "it's the LEAST-used, don't over-invest" guidance.) The safety
+model above is unchanged; this is only about UI prominence / effort allocation.
 
 ## Session handoff — 2026-06-25, product-direction planning + safe groundwork (read open-tasks.md)
 
@@ -493,8 +494,10 @@ Version lives in 7 files (see the version-bump list earlier in this doc); curren
 - **Subscription portal: WEB-first** (browser), `/account` deep-link; not embedded in the native app.
 - **Tiers** (per-vehicle, "Plex"): Free=monitor/manual-view+sync+share; Basic=control+1mo history;
   Premium=long history+SMS+integrations. Telemetry resolution + history retention are tier axes.
-- **Valve/flood is the LEAST-used feature** and the valve self-limits (volume/duration) — don't
-  over-invest; the flood automation is convenience, not the safety net.
+- **Valve/flood is treated like any other sensor** (revised 2026-06-29 — supersedes the earlier
+  "LEAST-used, don't over-invest" note). The valve still self-limits (volume/duration) and the flood
+  automation is convenience, not the safety net — that safety model is unchanged; only the
+  UI-prominence/effort framing changed (peer, not de-prioritized).
 
 ### Next up (owner had me working down: admin site → unify worker → polish)
 - **Admin/operator site** (Task 12): a real "set tier"/user console beyond coupons.

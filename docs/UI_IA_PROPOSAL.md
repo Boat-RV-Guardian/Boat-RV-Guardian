@@ -1,6 +1,21 @@
 # UI / Information-Architecture proposal (open-tasks Task 16)
 
-**Status:** proposal v1 — for owner review. No code changed. Created 2026-06-29.
+**Status:** v1 reviewed by owner 2026-06-29 — **approved to build in full.** Owner decisions folded in
+below (see §0). Created 2026-06-29.
+
+## 0. Owner decisions (2026-06-29)
+
+- **Valve/flood = treat like any other sensor** — neither more nor less important. (This corrects v1's
+  "least-used, don't give it prime real estate" framing. The *safety* model — valve self-limits, never
+  weaken the open-limit — is unrelated and unchanged.)
+- **Mobile nav:** bottom tab bar (Overview / Systems / Alerts / Settings). ✅
+- **Valve placement:** a peer device under **Systems → Water**, not its own special section. ✅
+- **Alerts v1:** event history + current-issues banner **and** push-channel management (move SMS/push
+  device management here from Account). ✅
+- **Account vs Settings cut:** identity + billing + mode in **Account**; config + devices + sharing in
+  **Settings**. ✅
+- **Naming:** Overview / Systems / Alerts / Settings accepted. ✅
+- **Sequencing:** build the whole migration (all 6 steps).
 
 The owner's ask (2026-06-28): *step back and rethink the app's UI/layout holistically — navigation,
 information hierarchy, onboarding, settings density, the dashboard/sensor pages — rather than continuing
@@ -16,8 +31,10 @@ layer is already movable). It changes nothing until we agree on a direction.
 
 From CLAUDE.md / AGENTS.md / the owner:
 
-- **Monitoring is the product.** Remote view / history / alerts are the most-used features. The
-  **valve/flood feature is the LEAST-used** and the valve self-limits — *don't give it prime real estate.*
+- **Every sensor is a peer.** Monitoring (remote view / history / alerts) is the product, and the
+  **valve/flood is treated like any other sensor** — neither privileged nor de-prioritized (owner,
+  2026-06-29). The valve self-limits and the flood automation is convenience, not the safety net, but
+  that's a *safety* fact, not a UI-prominence one.
 - **Per-vehicle "Plex" model.** Entitlements, role, tier, history all attach to the **active vehicle**.
   The active vehicle is the most important piece of global context and should be visible/switchable
   everywhere.
@@ -45,7 +62,7 @@ Plus a hidden **Account** view (`AppView='account'`) reachable only via the Plan
 | View | Content |
 |------|---------|
 | **Dashboard** (`Home`) | Vessel name + one card per category (fresh water, high water, batteries, shore power), each linking into its page. |
-| **Fresh Water** | The `LinkTapWidget` — i.e. **the water valve / LinkTap control** (the least-used feature). |
+| **Fresh Water** | The `Dashboard` page = `LinkTapWidget`(s) — i.e. **the water valve / LinkTap control** (kept always-mounted to preserve polling). |
 | **High Water** | `Sensors category="flood"` → flood `ShellyWidget`s. |
 | **Batteries** | `Sensors category="batteries"` → battery-voltage `ShellyWidget`s. |
 | **Shore Power** | `Sensors category="shore_power"` → shore `ShellyWidget`s. |
@@ -59,8 +76,8 @@ Plus a hidden **Account** view (`AppView='account'`) reachable only via the Plan
 1. **Flat 6-tab nav doesn't scale.** Dashboard, four sensor categories, and Settings sit at one level.
    Every new area = another top-level tab (already overflowing on a phone) or another panel bolted into
    Settings. There's no "room to grow."
-2. **The least-used feature has the most prominent slot.** "Fresh Water" (the valve) is a primary tab;
-   monitoring (the actual product) is fragmented across Dashboard + 3 separate category tabs.
+2. **Uneven prominence.** "Fresh Water" (the valve) gets its own primary tab while the read-only sensors
+   are split across 3 separate category tabs — inconsistent weighting for what should be peer systems.
 3. **Four sensor categories as four top-level tabs.** They're conceptually one thing — "systems /
    sensors." The Dashboard already summarizes them; the split triples the nav cost of browsing.
 4. **Two overlapping "account" surfaces.** Sign-in/out + sync toggles live in *Settings → General →
@@ -111,8 +128,10 @@ Replace the flat 6-tab row with **a persistent top bar (global context) + a 4-it
 
 One screen, section-scoped (or sub-tabbed), reusing the existing widgets unchanged:
 
-- **Water** — fresh-water level/usage **and** the valve control (`LinkTapWidget`). Grouping the valve
-  here (instead of a top-level "Fresh Water" tab) right-sizes the least-used feature without hiding it.
+- **Water** — fresh-water level/usage **and** the valve control (`LinkTapWidget`), as peer devices.
+  Grouping the valve here (instead of a top-level "Fresh Water" tab) gives it the same weight as any
+  other sensor (owner: treat it like any other sensor). The `LinkTapWidget` stays mounted (display
+  toggle) so its poll/command state machine isn't disrupted.
 - **Power** — batteries + shore power (the two voltage categories, already similar `ShellyWidget`s).
 - **Flood / High Water** — the flood sensors.
 
@@ -147,7 +166,8 @@ notification preferences. No new backend required for v1.
 
 ## 5. Why this fits the product
 
-- **Right-sizes the valve** (owner priority): present under Systems → Water, not a primary tab.
+- **Even weighting** (owner priority): the valve is a peer device under Systems → Water, not a
+  privileged primary tab.
 - **Elevates monitoring + alerts** (the high-use core) to first-class destinations.
 - **Makes the active vehicle global** — matches the per-vehicle "Plex" model.
 - **One account home** — ends the Settings/Account duplication and gives mode-switching a natural seat.
@@ -178,7 +198,7 @@ daily-use win and are the safest; 3–6 can follow as appetite allows.
 
 ---
 
-## 7. Open questions for the owner
+## 7. Open questions for the owner — ✅ RESOLVED 2026-06-29 (answers in §0)
 
 1. **Mobile nav:** bottom tab bar (Overview/Systems/Alerts/Settings) — agree?
 2. **Valve placement:** under **Systems → Water** (proposed), or does it deserve its own section given

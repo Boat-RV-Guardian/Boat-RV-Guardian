@@ -283,9 +283,10 @@ for lower tiers — controls the dominant cost (per docs/COST_ANALYSIS.md §5) A
 **Safety model (owner, 2026-06-25):** the LinkTap valve only opens with a volume/duration **limit**,
 so it can't run long enough to sink the boat — *that limit* is the real safeguard. The flood→shutoff
 automation is a **convenience** (closes it sooner). **Decided: the cloud flood-shutoff fallback stays
-Basic — NOT offered free as a safety goodwill** (the valve already prevents the catastrophe). Also,
-the owner expects the **valve/flood feature to be the LEAST-used** of the product — so don't
-over-invest in it; prioritize monitoring / remote-view / history / alerts, which get used far more.
+Basic — NOT offered free as a safety goodwill** (the valve already prevents the catastrophe).
+**Prioritization (revised 2026-06-29):** treat the **valve/flood feature like any other sensor** —
+neither more nor less important. (Supersedes the earlier "LEAST-used, don't over-invest" note; the
+safety model is unchanged — this is only about UI prominence / effort allocation.)
 
 **Billing decision:** scaffold the **entitlement/gating layer + a manual tier switch now**; move to
 **Stripe when going live** (do NOT build payments this round).
@@ -746,12 +747,14 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 than continuing to bolt panels on. Produce a proposed layout/IA before refactoring. Ties into Task 15
 (onboarding) and Task 3 (component structure already extracted, so the render layer is movable).
 
-- [~] **Proposal v1 written 2026-06-29 → [docs/UI_IA_PROPOSAL.md](docs/UI_IA_PROPOSAL.md).** Inventories
-      the current flat-6-tab IA, names the structural problems (least-used valve gets a primary tab;
-      monitoring fragmented across 4 tabs; two overlapping account surfaces; Settings is a junk drawer;
-      buried vehicle switcher; no first-class Alerts), and proposes a target IA (global bar with vehicle
-      switcher + account menu; 4 primary destinations Overview/Systems/Alerts/Settings; valve folded into
-      Systems → Water) plus a 6-step incremental, gate-green migration that re-parents the already-extracted
+- [~] **Proposal v1 written 2026-06-29; owner-reviewed + answers folded in → [docs/UI_IA_PROPOSAL.md](docs/UI_IA_PROPOSAL.md).**
+      Inventories the current flat-6-tab IA, names the structural problems (uneven prominence — the valve
+      gets its own primary tab while sensors are split across 4 tabs; two overlapping account surfaces;
+      Settings is a junk drawer; buried vehicle switcher; no first-class Alerts), and proposes a target IA
+      (global bar with vehicle switcher + account menu; 4 primary destinations Overview/Systems/Alerts/Settings;
+      **valve treated as a peer sensor under Systems**, per owner). Owner approved building it all (bottom
+      tab bar on mobile; Alerts includes push-channel mgmt). 6-step incremental, gate-green migration that
+      re-parents the already-extracted
       panels. **Awaiting owner review** (open questions at the end of the doc) before any refactor.
 
 ## 17. Vehicle ownership & type (2026-06-29)

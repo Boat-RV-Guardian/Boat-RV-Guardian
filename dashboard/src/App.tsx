@@ -9,6 +9,7 @@ import { useSensorBridge } from './hooks/useSensorBridge';
 import { auth, onAuthStateChanged, signOut, db, doc, setDoc, getDoc } from './services/firebase';
 import { buildLoginProfile } from './utils/userProfile';
 import SyncModal from './components/SyncModal';
+import GlobalBar from './components/GlobalBar';
 import CreateVehicleForm from './components/CreateVehicleForm';
 import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
@@ -135,23 +136,27 @@ export default function App() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', overflow: 'hidden' }}>
       <SyncModal />
-      <header style={{ padding: '20px', background: 'var(--bg-secondary)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '16px', flexShrink: 0, zIndex: 11 }}>
-        <div style={{
-          width: '45px',
-          height: '45px',
-          backgroundImage: 'url(/app_icon.jpg)',
-          backgroundSize: 'cover',
-          borderRadius: '10px',
-          boxShadow: '0 0 10px rgba(0, 242, 254, 0.4)'
-        }} />
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #fff, #00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-            BOAT AND RV GUARDIAN
-          </h1>
-          <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Monitor and control critical systems on your Boat or RV
-          </p>
+      <header style={{ padding: '14px 20px', background: 'var(--bg-secondary)', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexShrink: 0, zIndex: 11 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+          <div style={{
+            width: '45px',
+            height: '45px',
+            flexShrink: 0,
+            backgroundImage: 'url(/app_icon.jpg)',
+            backgroundSize: 'cover',
+            borderRadius: '10px',
+            boxShadow: '0 0 10px rgba(0, 242, 254, 0.4)'
+          }} />
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #fff, #00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap' }}>
+              BOAT AND RV GUARDIAN
+            </h1>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              Monitor and control critical systems on your Boat or RV
+            </p>
+          </div>
         </div>
+        <GlobalBar onOpenAccount={() => setCurrentView('account')} />
       </header>
       <nav style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px', padding: '15px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, zIndex: 10 }}>
         <button 
