@@ -175,8 +175,8 @@ service cloud.firestore {
       allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
                     || isValidClaim(vid)
                     || (isAdmin()
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt']));
-      allow delete: if false;
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers']));
+      allow delete: if isAdmin();
 
       match /history/{histId} {
         // History docs (monthly usage/events rollups) carry no allowedUsers of their own —
@@ -208,8 +208,9 @@ service cloud.firestore {
     match /users/{uid} {
       // Operators (Task 12) may READ user docs for the admin console's Users view (trial history +
       // FCM-token presence). Writes stay self-only.
-      allow read:  if (request.auth != null && request.auth.uid == uid) || isAdmin();
-      allow write: if request.auth != null && request.auth.uid == uid;
+      allow read:   if (request.auth != null && request.auth.uid == uid) || isAdmin();
+      allow create, update: if request.auth != null && request.auth.uid == uid;
+      allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
     }
 
     // Operator admin audit trail (Task 12): append-only, operators only.

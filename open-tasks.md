@@ -447,6 +447,14 @@ Tasks:
       if `/users` isn't listable. ⚠️ **Deploy:** admin-site auto-deploys on merge to `main`; the `/users`
       admin read clause is already in the published rules. **Sign-up vs login separation is still open
       (Task 15)** — Google sign-in still auto-creates accounts.
+- [~] **Admin delete user / vehicle (2026-06-29).** Console Vehicles + Users tabs now have a
+      confirm-gated **Delete** button (brvg-admin-site `deleteVehicleDoc` / `deleteUserData` +
+      `adminConsole`). User-delete mirrors the consumer policy (solo-owned vehicles deleted, shared ones
+      dropped, `users/{uid}` removed). **Needs the updated Firestore rules deployed** (admin `delete` on
+      /vehicles + /users, admin update of members/allowedUsers — added to `firestore.rules` + CLAUDE.md;
+      owner runs `firebase deploy --only firestore:rules`). **Remaining:** deleting the **Firebase Auth
+      account** itself needs the privileged backend (Identity Toolkit + the pending Pages Function SA
+      secrets) — until then a deleted user could sign in again and re-create a `users/{uid}` doc.
 - [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
       queryable). Needs the worker to persist send results. Low priority.
 - [x] **RELOCATED to its own repo + domain — LIVE 2026-06-28.** The console moved OFF the consumer
