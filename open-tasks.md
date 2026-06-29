@@ -746,6 +746,14 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 than continuing to bolt panels on. Produce a proposed layout/IA before refactoring. Ties into Task 15
 (onboarding) and Task 3 (component structure already extracted, so the render layer is movable).
 
+- [~] **Proposal v1 written 2026-06-29 → [docs/UI_IA_PROPOSAL.md](docs/UI_IA_PROPOSAL.md).** Inventories
+      the current flat-6-tab IA, names the structural problems (least-used valve gets a primary tab;
+      monitoring fragmented across 4 tabs; two overlapping account surfaces; Settings is a junk drawer;
+      buried vehicle switcher; no first-class Alerts), and proposes a target IA (global bar with vehicle
+      switcher + account menu; 4 primary destinations Overview/Systems/Alerts/Settings; valve folded into
+      Systems → Water) plus a 6-step incremental, gate-green migration that re-parents the already-extracted
+      panels. **Awaiting owner review** (open questions at the end of the doc) before any refactor.
+
 ## 17. Vehicle ownership & type (2026-06-29)
 
 - [x] **Boat/RV type per vehicle.** `lt_vehicle_type` ('boat'|'rv') synced per-vehicle. Asked during
