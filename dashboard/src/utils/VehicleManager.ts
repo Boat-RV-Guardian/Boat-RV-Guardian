@@ -70,6 +70,17 @@ function dispatchSettingsUpdatedGuarded() {
   (window as any).__is_syncing_cloud = false;
 }
 
+// Vehicles CREATED in this app session (in-memory; cleared on reload). A vehicle here is "new and
+// possibly not yet pushed to the cloud", so SyncModal must (a) still push it even though its cloud doc
+// doesn't exist yet, and (b) NOT prune it from the local list before the push lands. A STALE local
+// vehicle from a prior session whose cloud doc is gone (deleted by an admin or another device) is NOT
+// in this set, so it is neither resurrected nor protected — fixing the "deleted vehicle came back on
+// login" bug. The set resets on reload, which is correct: after a reload nothing is mid-creation.
+const sessionCreatedIds = new Set<string>();
+export function markSessionCreated(id: string) { sessionCreatedIds.add(id); }
+export function wasCreatedThisSession(id: string): boolean { return sessionCreatedIds.has(id); }
+export function getSessionCreatedIds(): Set<string> { return new Set(sessionCreatedIds); }
+
 // Tombstones: ids deleted locally. Filtered out of cloud re-hydration so a deleted vehicle
 // cannot reappear in the window before the cloud allowedUsers removal propagates.
 export function getDeletedVehicleIds(): string[] {
@@ -132,6 +143,7 @@ export function createLocalVehicle(name: string = 'My First Vehicle', type: '' |
   map[id] = { id, config };
   saveVehiclesMap(map);
   localStorage.setItem('lt_active_vehicle_id', id);
+  markSessionCreated(id); // new this session → SyncModal pushes it + prune protects it until pushed
   dispatchSettingsUpdatedGuarded();
   return id;
 }
@@ -181,6 +193,7 @@ export function addNewVehicle(name: string = 'New Vehicle', type: '' | 'boat' | 
   const newConfig = { ...VEHICLE_DEFAULT_CONFIG, lt_vessel_name: name, lt_vehicle_type: type, sh_local_password: generateShellyPassword() };
   map[id] = { id, config: newConfig };
   saveVehiclesMap(map);
+  markSessionCreated(id); // new this session → SyncModal pushes it + prune protects it until pushed
   return id;
 }
 
