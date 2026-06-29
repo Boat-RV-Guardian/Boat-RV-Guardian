@@ -171,6 +171,20 @@ export function getLocalVehicleConfig(): Record<string, any> {
   return config;
 }
 
+/**
+ * Does the local vehicle config diverge from the cloud copy? Compares only keys the cloud has actually
+ * seen (a key absent from the cloud doc is a newly-added field, not a divergence). Pure — the single
+ * source of truth for the "are these two configs different?" check used by SyncModal's cloud-wins
+ * resolution + live multi-device sync.
+ */
+export function cloudConfigDiffers(local: Record<string, any>, cloud: Record<string, any>): boolean {
+  for (const key of Object.keys(local)) {
+    if (cloud[key] === undefined) continue; // cloud hasn't seen this key yet — not a divergence
+    if (local[key] !== cloud[key]) return true;
+  }
+  return false;
+}
+
 export function applyCloudVehicleConfig(config: Record<string, any>) {
   for (const key of VEHICLE_KEYS) {
     // Fall back to default for keys the cloud hasn't seen yet (new fields added after initial sync)

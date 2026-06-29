@@ -776,14 +776,16 @@ vehicle delete (orphan fix), and account-deletion's vehicle hard-delete all sile
 
 ## Follow-ups (small)
 
-- [ ] **SyncModal conflict modal is legacy under no-hybrid / cloud-source-of-truth.** The first-login
-      "local vs cloud differ" modal ([components/SyncModal.tsx](dashboard/src/components/SyncModal.tsx)
-      `handleUseCloud` / `handleLogoutUseLocal`) predates the 2026-06-29 model. `handleLogoutUseLocal`
-      promises to "keep local settings, stop syncing by signing out" — but `applyUserScope` now **wipes**
-      local on sign-out, and "keep local while a cloud copy exists" is the hybrid state we banned. Under
-      cloud-as-source-of-truth the cloud should just win (pull) on login with no prompt. Audit whether the
-      modal is still reachable; if so, replace it with a silent cloud-wins pull (or a rebuild/migrate choice
-      consistent with Task 15). Low urgency — likely rarely hit now.
+- [x] **SyncModal conflict modal removed → silent cloud-wins — DONE 2026-06-29.** The modal WAS still
+      reachable (signed in + cloud config exists + local non-default + diverges), and its "Log out and use
+      local" option was a lie post-2026-06-29 (`applyUserScope` wipes local on sign-out). Replaced the
+      divergence branch in [components/SyncModal.tsx](dashboard/src/components/SyncModal.tsx) with a silent
+      cloud-wins pull (matches the no-hybrid / cloud-source-of-truth model + the existing live multi-device
+      sync), and deleted the modal JSX + `handleUseCloud`/`handleLogoutUseLocal`/`handleCancel` + `showModal`
+      state. Extracted the (previously duplicated) comparison into pure, tested
+      `cloudConfigDiffers` ([utils/configSync.ts](dashboard/src/utils/configSync.ts), 4 tests). The cloud-write
+      error banner is unchanged. ⚠️ Native-verify a real divergence (edit a setting offline on one device →
+      sign in → cloud silently wins, no prompt).
 
 - [x] **🔴 Cross-account local-vehicle bleed — FIXED (2026-06-28).** Found via native testing: a fresh
       user signing in on the same device saw the previous user's boats, because local storage was a
