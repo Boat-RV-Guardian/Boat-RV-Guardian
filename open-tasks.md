@@ -763,8 +763,8 @@ than continuing to bolt panels on. Produce a proposed layout/IA before refactori
   - [ ] **Remaining (deferred, with reason):** (a) relocate the notification toggles + SMS prefs into Alerts
         and remove the Settings→Account sign-in/sync duplication — these are wired into Settings' ~56-field
         synced-settings state machine (the `useSettingsState` extraction AGENTS.md/Task 3 flag as
-        refactor-risky / needs a click-through); do with that hook + native verify. (b) mobile bottom-tab-bar
-        styling (structure landed; cosmetic follow-up).
+        refactor-risky / needs a click-through); do with that hook + native verify. ~~(b) mobile bottom-tab-bar
+        styling~~ **DONE 2026-06-29 (PR #30)** — bottom tab bar ≤640px, top row on desktop (`useIsMobile`).
 
 ## 17. Vehicle ownership & type (2026-06-29)
 
