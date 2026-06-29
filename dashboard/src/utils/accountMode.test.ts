@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { cloudSwitchDiscardNote } from './accountMode';
+import { cloudSwitchDiscardNote, accountModeLabel } from './accountMode';
+
+describe('accountModeLabel', () => {
+  it('reports local-only, cloud, or signed-out', () => {
+    expect(accountModeLabel(false, true)).toMatch(/local-only/i);
+    expect(accountModeLabel(true, true)).toMatch(/local-only/i); // local mode wins
+    expect(accountModeLabel(true, false)).toMatch(/cloud/i);
+    expect(accountModeLabel(false, false)).toMatch(/signed out/i);
+  });
+});
 
 describe('cloudSwitchDiscardNote', () => {
   it('says nothing is lost when there are no local vehicles', () => {

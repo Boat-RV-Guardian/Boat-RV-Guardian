@@ -179,22 +179,32 @@ notification preferences. No new backend required for v1.
 
 The panels/widgets are already extracted (Task 3), so most steps are **re-parenting**, not rewrites.
 
-1. **Global bar — vehicle switcher.** Surface the existing `switchVehicle` picker in the header. Pure
-   re-parent of logic already in Settings → Vehicles. (Low risk; high daily value.)
-2. **Account menu.** Promote the Account portal to the `👤` menu; move Settings→General→Account's
-   sign-in/out + sync toggles into it; leave a redirect stub. Removes one duplication.
-3. **Consolidate Systems.** Introduce a `Systems` shell with Water/Power/Flood sections that render the
-   existing `LinkTapWidget` + `Sensors` components unchanged; collapse the 4 nav tabs to one. (View-layer
-   only — the widgets don't change.)
-4. **Primary nav → 4 items.** Swap the 6-button row for Overview/Systems/Alerts/Settings (+ deep links
-   from Dashboard cards into Systems sections).
-5. **Alerts v1.** Merge the per-device event logs + `sensorState` into one vehicle-scoped view; link
-   notification prefs. Pure UI over existing data.
-6. **Slim Settings.** Remove the migrated Account/billing panels; keep Devices/Sharing/Updates/Prefs.
+1. ✅ **Global bar — vehicle switcher + account button** (PR #25). Surfaces the active-vehicle switcher
+   in the header + an account entry. Done.
+2. ✅ **Account button** (PR #25) — the Account portal is reachable from the global bar.
+3. ✅ **Consolidate Systems** (PR #26) — `Systems` shell with Water/Power/Flood sections rendering the
+   existing `LinkTapWidget` + `Sensors` unchanged (valve always-mounted to keep the Flooding Sentry
+   running). Done.
+4. ✅ **Primary nav → 4 items** (PR #26) — Overview / Systems / Alerts / Settings, with Overview cards
+   deep-linking into Systems sections. Done.
+5. ✅ **Alerts v1** (PR #27) — merged per-device event timeline + current-issues banner + a
+   notification-prefs link. Done.
+6. ✅ **Account = identity + mode home** (PR #28) — sign-out + mode (Cloud/Local) + switch-to-cloud in
+   the Account portal. Done (additive).
 
-Each step ships behind the four gates (`tsc -b`, dashboard tests + RTL, `vite build`) and a native
-click-through (it's a navigation change → verify in `npm run tauri dev`). Steps 1–2 deliver most of the
-daily-use win and are the safest; 3–6 can follow as appetite allows.
+**Remaining (deferred, with reason):**
+- 🚧 **Relocate the notification toggles + SMS prefs into Alerts, and remove the Settings→Account
+  sign-in/sync duplication.** These panels are wired into Settings' ~56-field **synced-settings state
+  machine** (the `useSettingsState` extraction that AGENTS.md / Task 3 explicitly mark "refactor-risky,
+  do with a click-through pass"). Moving them blind risks the settings-sync writer/rehydrate. Do this
+  with the `useSettingsState` hook + a native click-through. Until then: the panels stay where their
+  state lives, Alerts links to notification prefs, and the Account portal is the identity/mode home.
+- 🚧 **Mobile bottom-tab-bar styling.** The 4-item nav structure is in; the bottom-bar-on-mobile
+  responsive treatment is a cosmetic follow-up.
+
+Each step shipped behind the four gates (`tsc -b`, dashboard tests + RTL, `vite build`). Because these
+are navigation/behavior changes, a native click-through (`npm run tauri dev`) is the remaining
+verification — flagged on each PR.
 
 ---
 
