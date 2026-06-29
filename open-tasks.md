@@ -680,9 +680,13 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
       **Deferred:** needs a live cloud member feed (Firestore listener) that doesn't fit Account.tsx's
       deliberately Firebase-free design without a test harness, AND it's largely redundant with the
       existing **Settings → Friends** tab. Low marginal value vs coupling cost.
-- [~] **Account basics — DONE 2026-06-28 (PR #14):** Account.tsx shows the signed-in display name +
-      email + a Premium priority-support line (via a `user` prop). Remaining: *editing* display
-      name/password/SSO (Firebase updateProfile).
+- [~] **Account basics — DONE 2026-06-28 (PR #14); display-name editing DONE 2026-06-29.** Account.tsx
+      shows the signed-in display name + email + a Premium priority-support line (via a `user` prop). The
+      display name is now **editable** in place — pure/tested `checkDisplayName`/`saveDisplayName`
+      ([utils/displayName.ts](dashboard/src/utils/displayName.ts)) + a dedicated lazy-Firebase
+      [EditDisplayName](dashboard/src/components/EditDisplayName.tsx) component (updates the Auth profile,
+      best-effort mirrors `users/{uid}.displayName` for the admin Users tab). Remaining: editing
+      *password/SSO*. ⚠️ Native-verify the actual Auth `updateProfile` write.
 - [ ] Receipts/billing emails (transactional email provider) — note: there's currently "no email
       service" (see CLAUDE.md sharing); billing will need one (Stripe can send receipts).
 

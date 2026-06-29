@@ -14,6 +14,7 @@ import {
 } from '../utils/apiTokens';
 import { requestTrial } from '../utils/trial';
 import DeleteAccountButton from '../components/DeleteAccountButton';
+import EditDisplayName from '../components/EditDisplayName';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -137,7 +138,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Signed in as</span>
-              <span>{user.displayName || '—'}</span>
+              <EditDisplayName uid={user.uid} displayName={user.displayName} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Email</span>
