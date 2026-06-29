@@ -199,8 +199,8 @@ The panels/widgets are already extracted (Task 3), so most steps are **re-parent
   do with a click-through pass"). Moving them blind risks the settings-sync writer/rehydrate. Do this
   with the `useSettingsState` hook + a native click-through. Until then: the panels stay where their
   state lives, Alerts links to notification prefs, and the Account portal is the identity/mode home.
-- 🚧 **Mobile bottom-tab-bar styling.** The 4-item nav structure is in; the bottom-bar-on-mobile
-  responsive treatment is a cosmetic follow-up.
+- ✅ **Mobile bottom-tab-bar styling** (PR #30) — the 4-item nav renders as a bottom tab bar (icon over
+  label) on viewports ≤ 640px and a top row on desktop (`useIsMobile` / `isMobileWidth`).
 
 Each step shipped behind the four gates (`tsc -b`, dashboard tests + RTL, `vite build`). Because these
 are navigation/behavior changes, a native click-through (`npm run tauri dev`) is the remaining
