@@ -754,8 +754,17 @@ than continuing to bolt panels on. Produce a proposed layout/IA before refactori
       (global bar with vehicle switcher + account menu; 4 primary destinations Overview/Systems/Alerts/Settings;
       **valve treated as a peer sensor under Systems**, per owner). Owner approved building it all (bottom
       tab bar on mobile; Alerts includes push-channel mgmt). 6-step incremental, gate-green migration that
-      re-parents the already-extracted
-      panels. **Awaiting owner review** (open questions at the end of the doc) before any refactor.
+      re-parents the already-extracted panels.
+  - [x] **Migration steps 1–6 SHIPPED 2026-06-29 (PRs #25–#28):** global bar with vehicle switcher +
+        account button (#25); Systems shell consolidating the 4 sensor/valve tabs with the valve as a peer,
+        always-mounted to keep the Flooding Sentry running (#26); 4-item nav Overview/Systems/Alerts/Settings
+        (#26); Alerts v1 — merged event timeline + current-issues banner (#27); Account = identity + mode home
+        (sign-out + Cloud/Local mode + switch-to-cloud) (#28). All gate-green; ⚠️ native click-through pending.
+  - [ ] **Remaining (deferred, with reason):** (a) relocate the notification toggles + SMS prefs into Alerts
+        and remove the Settings→Account sign-in/sync duplication — these are wired into Settings' ~56-field
+        synced-settings state machine (the `useSettingsState` extraction AGENTS.md/Task 3 flag as
+        refactor-risky / needs a click-through); do with that hook + native verify. (b) mobile bottom-tab-bar
+        styling (structure landed; cosmetic follow-up).
 
 ## 17. Vehicle ownership & type (2026-06-29)
 

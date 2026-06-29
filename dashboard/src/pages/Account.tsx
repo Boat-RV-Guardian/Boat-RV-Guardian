@@ -15,6 +15,7 @@ import {
 import { requestTrial } from '../utils/trial';
 import DeleteAccountButton from '../components/DeleteAccountButton';
 import EditDisplayName from '../components/EditDisplayName';
+import AccountActions from '../components/AccountActions';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -154,6 +155,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         ) : (
           <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sign in to manage your account details.</p>
         )}
+        <AccountActions user={user} />
       </div>
 
       {/* Current plan */}

@@ -12,6 +12,13 @@
  * Warning shown to a local-only user before switching to a cloud account. `localVehicleCount` is how
  * many vehicles currently live only on this device (and would therefore be discarded on the rebuild).
  */
+/** Human label for the device's account mode, shown in the Account portal. */
+export function accountModeLabel(signedIn: boolean, localMode: boolean): string {
+  if (localMode) return 'Local-only (this device)';
+  if (signedIn) return 'Cloud (synced)';
+  return 'Signed out';
+}
+
 export function cloudSwitchDiscardNote(localVehicleCount: number): string {
   if (localVehicleCount <= 0) {
     return 'Signing in starts a fresh cloud account on this device — nothing is stored locally yet, so nothing is lost.';
