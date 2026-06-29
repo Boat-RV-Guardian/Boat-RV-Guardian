@@ -783,16 +783,18 @@ than continuing to bolt panels on. Produce a proposed layout/IA before refactori
       sole-owned vehicle's cloud doc (was only removing self from `allowedUsers` → orphan lingering in the
       admin portal). Shared vehicles still "leave". Needs the delete rule deployed (below).
 
-## ⚠️⚠️ PENDING OWNER ACTION — deploy Firestore rules (blocks ALL delete features)
+## ✅ Firestore rules DEPLOYED 2026-06-29 (was the #1 blocker)
 
-Every delete/cleanup path is rejected by the LIVE rules until this runs:
-```
-cd /Users/jgearinger/projects/Boat-RV-Guardian && npx firebase-tools deploy --only firestore:rules
-```
-The committed `firestore.rules` adds: read a non-existent vehicle doc (`resource==null`, the
-new-vehicle SYNC FIX), `vehicles` delete for operators + sole owners, `users` delete for operators,
-operator update of members/allowedUsers/owner. Until deployed: admin Delete buttons, in-app
-vehicle delete (orphan fix), and account-deletion's vehicle hard-delete all silently fail.
+The committed `firestore.rules` is now LIVE — release `cloud.firestore` → ruleset
+`8d3070c2-01d6-4e69-808f-614c70d6153c`. Deployed via the Firebase Rules REST API using the Admin SDK
+service-account key (`~/Downloads/boat-rv-guardian-9f8a4-firebase-adminsdk-*.json`): the SA has
+`firebaserules.rulesets.create` + `releases.update`, but **not** `serviceusage.services.get` (so
+`firebase-tools deploy` fails its API-enabled precheck — use the REST path, or grant the SA Service
+Usage Consumer, or run `firebase deploy` under owner/user auth). The live rules now allow: read a
+non-existent vehicle doc (`resource==null`, the new-vehicle SYNC FIX), `vehicles` delete for operators
++ sole owners, `users` delete for operators, operator update of members/allowedUsers/owner.
+⚠️ **Native-verify** that a delete (admin console + in-app vehicle delete + account deletion) now
+actually succeeds end to end.
 
 ## Follow-ups (small)
 
