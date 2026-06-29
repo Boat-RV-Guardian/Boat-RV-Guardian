@@ -27,7 +27,7 @@ import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 import { readSettings, writeSettings, applyPersistedSettings } from '../utils/settingsStorage';
 
-const APP_VERSION = '1.0.45';
+const APP_VERSION = '1.0.46';
 
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
