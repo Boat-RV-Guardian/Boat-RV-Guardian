@@ -320,8 +320,9 @@ Tasks:
       support), `getVehicleTier`/`getEntitlements`/`tierAtLeast`/`automationAtLeast`, `BASIC_TRIAL_DAYS`,
       labels + pricing. [hooks/useEntitlements.ts](dashboard/src/hooks/useEntitlements.ts) returns the
       active vehicle's entitlements reactively (mirrors the role pattern; `lt_vehicle_tier` stashed by
-      SyncModal + `tier_updated` event). **Legacy/unset vehicles grandfather to `premium` so this
-      changes NO behavior yet** — see GRANDFATHERED_TIER. Gate features off the booleans, not ad-hoc.
+      SyncModal + `tier_updated` event). **Default tier is now `free` (`DEFAULT_TIER`, 2026-06-28 owner
+      decision — was `premium` while grandfathering; no users to grandfather pre-launch).** A new vehicle
+      starts Free; gates are now live. Gate features off the booleans, not ad-hoc.
 - [~] **1-month free Basic trial** — **built end to end (2026-06-28): predicate + `/api/trial`
       endpoint (#9), consumer auto-grant (#10), admin re-trial guard (admin-site#1).** Only native-app
       verification of the auto-grant remains. Original spec below. Grant new users/vehicles 30 days of
@@ -344,14 +345,20 @@ Tasks:
         PATCH). Ineligible callers get `{granted:false}` (idempotent). The daily cron already lapses it
         back to `free` at expiry. Enforcement is server-side so the client can't bypass the anti-abuse
         rule by skipping the `trialsUsed` write. Smoke-check after deploy: `/api/trial` = 401 on no token.
-  - [x] **Client auto-grant landed (2026-06-28, PR #10) — VERIFY IN NATIVE APP:** `requestTrial` +
-        a guarded one-shot trigger in SyncModal call `/api/trial` once a NEW owned vehicle's cloud doc
-        exists; the cloud snapshot reflects the granted tier back. Behavior change (new vehicles →
-        30-day Basic) — confirm end to end with a test account.
+  - [x] **Trial is OPT-IN, not auto-granted (2026-06-28 owner decision).** A new vehicle defaults to
+        Free; the user starts the 30-day Basic trial explicitly via a **"Start free trial"** button in
+        the Account portal ([pages/Account.tsx](dashboard/src/pages/Account.tsx) → `onStartTrial` →
+        `requestTrial` → `/api/trial`), shown only when signed in + tier is Free + no prior trial. On
+        grant the UI optimistically stashes `lt_vehicle_tier=basic` + `lt_vehicle_trial_ends` for instant
+        feedback (the cloud snapshot re-confirms). The old SyncModal auto-grant + `lt_trial_attempted_*`
+        flag were removed. ~~Client auto-grant (PR #10).~~
   - [x] **Admin "Start trial" eligibility-gated (2026-06-28, admin-site#1):** the console warns +
         records `override:true` when re-trialing an already-trialed vehicle (`isVehicleTrialEligible`).
-  - [ ] **Remaining:** native-app verification of the auto-grant; (optional) explicit local stash of
-        the granted tier for instant UI instead of waiting on the snapshot.
+  - [x] **Optimistic local stash on grant — DONE (2026-06-28):** `onStartTrial` writes
+        `lt_vehicle_tier`/`lt_vehicle_trial_ends` + fires `tier_updated` so the UI flips to Basic
+        immediately instead of waiting on the snapshot.
+  - [ ] **Remaining:** native-app verification of the opt-in "Start free trial" flow (signed-in,
+        Free vehicle → button grants Basic + ~30 days; an already-trialed vehicle is declined).
 - [x] **Plan panel (2026-06-25):** [pages/settings/SubscriptionPanel.tsx](dashboard/src/pages/settings/SubscriptionPanel.tsx)
       — read-only per-vehicle plan + feature checklist (pure `entitlementSummary`/`formatRetention`,
       tested), rendered in Settings → General. First real `useEntitlements` consumer + an instance of
@@ -361,8 +368,8 @@ Tasks:
 - [~] **Remaining gates:** ~~hide SMS-alert config unless `canSmsAlert`~~ **DONE 2026-06-28 (PR #12,
       #16)** — the Account SMS + integrations sections are Premium-gated with upgrade notes, covered by
       both-path RTL tests. Still open: LinkTapWidget honors `canRemoteControl` off-LAN (needs the
-      local-vs-remote seam — hardware-gated); drop GRANDFATHERED_TIER to a real default once the admin
-      override + Stripe exist.
+      local-vs-remote seam — hardware-gated). ~~Drop GRANDFATHERED_TIER to a real default~~ **DONE
+      2026-06-28** — default is now `DEFAULT_TIER='free'`; gates are live for new vehicles.
 - [~] Enforce server-side in the worker too — **history-retention pruning + trial expiry DONE**
       (2026-06-27, PR #3, daily cron); action/trigger handling + SMS send still TODO. Client gating
       stays advisory only (cf. Task 4 monitor-role lesson).
@@ -429,6 +436,17 @@ Tasks:
       2026-06-27 session handoff in [CLAUDE.md](CLAUDE.md) for the exact production state + credentials.
 - [x] **Worker `/api/health` for the live ops signal — MERGED + DEPLOYED (2026-06-27, PR #1).** The
       Operations tab pings it; live `/api/health` returns 200. The "Worker: down" state is cleared.
+- [x] **🔴 New users / logins didn't appear in the Users tab — FIXED (2026-06-28, two parts).**
+      Root cause: there was **no user registry** — the Users tab was built only from vehicles' `members`
+      maps, so a signed-in account with no vehicle (or a new vehicle that only had `allowedUsers`) was
+      invisible. Fixes: **(consumer)** every sign-in now merge-writes a `users/{uid}` profile
+      (`buildLoginProfile` in [utils/userProfile.ts](dashboard/src/utils/userProfile.ts), wired in
+      App.tsx `onAuthStateChanged`); the new-vehicle cloud push now also seeds the owner into `members`
+      via `ensureOwnerAdmin`. **(admin-site)** the Users tab reads the `/users` collection as its base
+      overlaid with membership (`loadUsers` in `src/scripts/adminData.ts`), falling back to membership
+      if `/users` isn't listable. ⚠️ **Deploy:** admin-site auto-deploys on merge to `main`; the `/users`
+      admin read clause is already in the published rules. **Sign-up vs login separation is still open
+      (Task 15)** — Google sign-in still auto-creates accounts.
 - [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
       queryable). Needs the worker to persist send results. Low priority.
 - [x] **RELOCATED to its own repo + domain — LIVE 2026-06-28.** The console moved OFF the consumer
@@ -662,8 +680,72 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 
 ---
 
+## 15. Onboarding & auth UX (found 2026-06-28 via native testing)
+
+**Priority:** High — these block clean account testing and are first-run polish gaps.
+
+- [ ] **Separate Sign Up from Login.** Signing in with a non-existent email **instantly creates an
+      account** (the email/password path auto-creates). Split into explicit **Log in** vs **Sign up**
+      flows in [pages/Login.tsx](dashboard/src/pages/Login.tsx) — login should error "no account found"
+      instead of silently registering; sign-up is a deliberate, separate action (ideally with
+      confirm-password / basic validation).
+- [x] **No-vehicle screen sign-out — DONE (2026-06-28).** Added a "Sign out" button to the logged-in
+      no-vehicle onboarding screen ([App.tsx](dashboard/src/App.tsx)) so you're no longer stuck on
+      "Create a Vehicle".
+- [~] **"Create a local-only account" option + cloud-mode switch.** Per the **Configuration sync model**
+      (CLAUDE.md, 2026-06-29): **config sync is hosted-cloud-only**; encourage cloud, fall back to local/self-host.
+  - [x] **Local-only mode on the login screen — DONE (2026-06-29).** A "📱 Use this device only (local
+        mode, no account)" button stamps a synthetic `local:<rand>` owner
+        ([utils/userScope.ts](dashboard/src/utils/userScope.ts) `enterLocalMode`); the session is isolated
+        + persists offline (the null-user launch event no longer wipes it) and **never touches the cloud**
+        (all cloud paths require a Firebase user). Signing into a real account from local mode wipes the
+        local session (clean switch); "Use a cloud account instead" exits local mode. 4 tests.
+  - [ ] **In-app Settings → "Switch to cloud mode"** (for a local user who already has vehicles). **No
+        hybrid accounts (owner, 2026-06-29) — a device is EITHER cloud OR local, device-wide.** Two sanctioned
+        transitions, both total: **(a) Rebuild** — sign into cloud, wipe the local session, rebuild vehicles
+        fresh (this is already what `applyUserScope` does on cloud sign-in from local); **(b) Migrate** — a
+        "migrate local account to the cloud" flow that uploads the local vehicles to the new cloud account,
+        then switches the device to cloud mode. Never leave a mix of local + cloud vehicles on one device.
+  - [ ] **Private/self-host server does NOT sync config** — each device configured independently; the
+        `sh_webhook_*` fields are for the webhook/action relay only (doc'd; verify no code path syncs config
+        through a custom server).
+- [ ] **Verify/fix cloud sync of newly-created vehicles in native dev** (open from this session): a boat
+      created in the native app may not be writing to Firestore. Confirm via the admin Vehicles tab;
+      if missing, capture the exact Firestore write error (in-app error surface) and fix. Distinct from
+      the members-map gap below.
+
+## 16. Interface / layout rethink (requested 2026-06-28)
+
+**Priority:** Medium — explicit owner ask: step back and rethink the app's UI/layout holistically
+(navigation, information hierarchy, onboarding, settings density, the dashboard/sensor pages) rather
+than continuing to bolt panels on. Produce a proposed layout/IA before refactoring. Ties into Task 15
+(onboarding) and Task 3 (component structure already extracted, so the render layer is movable).
+
 ## Follow-ups (small)
 
+- [ ] **SyncModal conflict modal is legacy under no-hybrid / cloud-source-of-truth.** The first-login
+      "local vs cloud differ" modal ([components/SyncModal.tsx](dashboard/src/components/SyncModal.tsx)
+      `handleUseCloud` / `handleLogoutUseLocal`) predates the 2026-06-29 model. `handleLogoutUseLocal`
+      promises to "keep local settings, stop syncing by signing out" — but `applyUserScope` now **wipes**
+      local on sign-out, and "keep local while a cloud copy exists" is the hybrid state we banned. Under
+      cloud-as-source-of-truth the cloud should just win (pull) on login with no prompt. Audit whether the
+      modal is still reachable; if so, replace it with a silent cloud-wins pull (or a rebuild/migrate choice
+      consistent with Task 15). Low urgency — likely rarely hit now.
+
+- [x] **🔴 Cross-account local-vehicle bleed — FIXED (2026-06-28).** Found via native testing: a fresh
+      user signing in on the same device saw the previous user's boats, because local storage was a
+      single global blob never cleared on logout/account-switch — exposing cached secrets (`lt_cloud_key`,
+      `sh_local_password`, `sh_webhook_key`) across accounts. **Decision (owner): cloud (login) is the
+      source of truth; local storage is a per-user offline cache.** New pure/tested
+      [utils/userScope.ts](dashboard/src/utils/userScope.ts) (`applyUserScope`/`clearUserScopedData`):
+      stamps localStorage with the owning uid and wipes all user-scoped `lt_*`/`sh_*` keys when the
+      signed-in identity changes (login-as-other / sign-out), keeping device-local prefs (LOCAL_ONLY_KEYS).
+      **Same-user restore (offline relaunch) is a no-op so the offline cache survives.** Wired into
+      `App.tsx` `onAuthStateChanged` (wipe ⇒ hard reload). Onboarding now **requires sign-in** — the
+      "Create a Local Vehicle (no account)" path was removed (signed-out = no vehicles). 6 tests.
+      **Remaining follow-up:** make SyncModal reconciliation prune local vehicles no longer in the user's
+      cloud list (e.g. one they left elsewhere) — additive merge still keeps stale-but-own entries; lower
+      priority now that cross-account bleed is closed. Native-verify the login/logout/switch cycle.
 - [x] **Notification-toggle rehydrate drift — FIXED (2026-06-28).** The Settings `settings_updated`
       rehydrate was a hand-maintained list of `setX(s.x)` lines that had drifted from `writeSettings`:
       it omitted `notifyFlood`/`notifyHouseBatt`/`notifyEngineBatt`/`notifyShorePower`, so a background

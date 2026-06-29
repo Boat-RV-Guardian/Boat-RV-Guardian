@@ -12,6 +12,13 @@ real: the same logic runs on **Cloudflare Workers (hosted)** and as a **Node/Doc
 (self-host)**. Per the cost analysis (docs/COST_ANALYSIS.md), hosted storage should move to
 **Cloudflare D1 (SQLite)**, which also means self-host can use plain SQLite/libSQL — *same SQL*.
 
+> **Scope: relay only — NO configuration sync (owner decision, 2026-06-29).** A self-hosted/private
+> server handles the **sensor webhook + action relay** (and its own telemetry/history) — it does **not**
+> sync app configuration between devices. **Configuration sync is a hosted-BoatRVGuardian-cloud feature
+> only.** With a private server, each device's configuration is built independently on that device. The
+> product encourages hosted cloud use and treats self-host as the open-source fallback. See the
+> "Configuration sync model" section in [CLAUDE.md](../CLAUDE.md).
+
 ## Shape: shared core + thin adapters + pluggable storage
 
 ```

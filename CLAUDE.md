@@ -84,6 +84,64 @@ invitee's email and accepted manually; the inviter shares a copyable message.
   credentials could still call the device API directly; hardening that requires routing control
   through the worker.
 
+## Per-user local data — cloud is source of truth, local is a per-user cache (2026-06-28)
+
+**Invariant:** the signed-in Firebase account owns the local data. Local storage (`lt_*`/`sh_*`) is an
+**offline cache of the currently-signed-in user only** — never a shared global blob. The cloud
+(Firestore, keyed to the user's `allowedUsers` vehicles) is the source of truth for the vehicle list.
+
+- [utils/userScope.ts](dashboard/src/utils/userScope.ts) stamps localStorage with the owning uid
+  (`lt_data_owner_uid`). `applyUserScope(uid)` wipes all user-scoped `lt_*`/`sh_*` keys (vehicles,
+  per-vehicle config + **secrets**, role/tier/trial stashes, per-device history/logs) when the identity
+  changes — login-as-different-user OR sign-out. It **keeps** device-local prefs (`LOCAL_ONLY_KEYS`:
+  tz/unit/notification toggles/polling flags) and is a **no-op on same-user restore** so the offline
+  cache survives an offline relaunch.
+- Wired in `App.tsx` `onAuthStateChanged`: a wipe triggers a hard reload so no in-memory state from the
+  prior session leaks. **Do not** add code that reads/writes vehicle data while signed out, or that
+  persists vehicles outside this ownership model.
+- Onboarding offers **hosted cloud sign-in (encouraged default)** or **local-only mode** (no account).
+  Local-only data is still owned/isolated via a synthetic local owner id (so it can't bleed into a real
+  account); a local-only user upgrades to sync by switching to cloud mode in Settings (see the config-sync
+  model below). Offline still works for a once-signed-in cloud user (Firebase Auth persists the session).
+- Known follow-up: SyncModal's cloud reconciliation is still **additive** (it adds the user's cloud
+  vehicles but doesn't prune ones they've since left elsewhere). Safe now that cross-account bleed is
+  closed; prune later for full cloud-authoritative behavior.
+
+## Configuration sync model — hosted cloud only; self-host & local are per-device (2026-06-29)
+
+**Decision (owner):** configuration sync is a **hosted-BoatRVGuardian-cloud feature only**. Encourage
+cloud use; **fall back to open-source/self-host** when the user opts out.
+
+**A device (and its vehicles) is EITHER cloud OR local — never both. No hybrid accounts** (mixing the two
+caused real bugs). The mode is **device-wide**, not per-vehicle. You cannot have some local vehicles and
+some cloud vehicles on one device. Transitions between modes are explicit and total:
+- **Local → cloud:** either **rebuild** the vehicles in the cloud (the current behavior — signing into a
+  cloud account from local mode **wipes** the local session via `applyUserScope`, so you start clean in the
+  cloud) OR a future **"migrate local account to the cloud"** flow that uploads the local vehicles, then
+  switches the device to cloud mode. Never a merge that leaves a mix.
+- **Cloud → local:** sign out / enter local mode → the cloud data leaves this device (cloud remains the
+  source of truth server-side); the local session is its own isolated thing.
+
+Three modes:
+
+1. **Cloud mode (encouraged default).** Signed in to the hosted cloud → per-vehicle configuration syncs
+   across all the user's devices (Firestore is the source of truth; see the per-user section above). This
+   is the paid/hosted product and the only mode where config sync happens.
+2. **Private / self-hosted server (open-source fallback).** The self-host server (brvg-cloud-server /
+   `worker/` self-host) **relays sensor webhooks + actions only — it does NOT sync configuration.** So
+   with a private server, **each device's configuration must be built/entered on that device
+   independently** (no cross-device config sync). `sh_webhook_url`/`sh_webhook_user`/`sh_webhook_key`
+   point a device at the private server for the relay; they do not move config between devices.
+3. **Local-only mode (no account).** No sync at all — configuration is device-local. To enable sync the
+   user must go to **Settings → switch to cloud mode** (sign in to the hosted cloud).
+
+**Implications for code:** never sync configuration through a self-hosted/custom server — config sync is
+bound to the hosted Firestore path and the signed-in account. The private-server URL/credentials are for
+the webhook/action relay only. **Never build a hybrid state** (a device holding both local and cloud
+vehicles); a mode switch is total (rebuild or migrate, then wipe the other side) — `applyUserScope` already
+wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
+is tracked in open-tasks Task 15.)
+
 ## Consolidated Firestore rules (publish in the Firebase console)
 
 Merge into the project rules (preserve any existing `users` rule):
