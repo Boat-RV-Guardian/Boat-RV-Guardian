@@ -1,3 +1,10 @@
+// INVARIANT (Configuration sync model, CLAUDE.md 2026-06-29): configuration sync is a HOSTED-CLOUD
+// feature only — it flows exclusively through Firestore (`db` below: onSnapshot to read, setDoc to
+// write). It is NEVER routed through a self-hosted/custom server. The per-vehicle `sh_webhook_url` /
+// `sh_webhook_user` / `sh_webhook_key` fields point a device at a private relay for sensor webhooks +
+// worker actions ONLY; they are plain synced *data*, not a sync transport. Do not add a code path here
+// (or in SyncModal/configSync) that fetches or pushes config to that custom server — that would create
+// the banned hybrid/self-host-sync state. Verified 2026-06-29: this hook is Firestore-only.
 import { useState, useEffect } from 'react';
 import { db, auth, doc, onSnapshot, setDoc } from '../services/firebase';
 import { collection, query, where, arrayUnion, arrayRemove, deleteDoc } from 'firebase/firestore';

@@ -727,9 +727,13 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
           tests cover the branch. ⚠️ Native-verify the actual local→cloud sign-in/reload cycle.
     - [ ] **Migrate path** (upload local vehicles, then switch) — still open; bigger, needs a careful
           upload/dedup flow. Until then the in-app switch is rebuild-only (warned).
-  - [ ] **Private/self-host server does NOT sync config** — each device configured independently; the
-        `sh_webhook_*` fields are for the webhook/action relay only (doc'd; verify no code path syncs config
-        through a custom server).
+  - [x] **Private/self-host server does NOT sync config — VERIFIED 2026-06-29.** Audited every reader of
+        `sh_webhook_url`/`sh_webhook_user`/`sh_webhook_key`: they appear only in the Shelly webhook relay
+        ([ProvisionShellyModal.tsx](dashboard/src/components/ProvisionShellyModal.tsx)), the worker action
+        base ([utils/trial.ts](dashboard/src/utils/trial.ts)), Settings UI state, and as synced config
+        *data*. Configuration sync itself is Firestore-only ([hooks/useCloudConfig.ts](dashboard/src/hooks/useCloudConfig.ts)
+        `onSnapshot`/`setDoc`; SyncModal → `applyCloudVehicleConfig`) — no `fetch()` carries config to any
+        custom server. Documented the invariant at the sync entry point so it can't silently regress.
 - [ ] **Verify/fix cloud sync of newly-created vehicles in native dev** (open from this session): a boat
       created in the native app may not be writing to Firestore. Confirm via the admin Vehicles tab;
       if missing, capture the exact Firestore write error (in-app error surface) and fix. Distinct from
