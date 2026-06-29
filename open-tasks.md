@@ -692,11 +692,11 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 
 **Priority:** High — these block clean account testing and are first-run polish gaps.
 
-- [ ] **Separate Sign Up from Login.** Signing in with a non-existent email **instantly creates an
-      account** (the email/password path auto-creates). Split into explicit **Log in** vs **Sign up**
-      flows in [pages/Login.tsx](dashboard/src/pages/Login.tsx) — login should error "no account found"
-      instead of silently registering; sign-up is a deliberate, separate action (ideally with
-      confirm-password / basic validation).
+- [x] **Separate Sign Up from Login — DONE (v1.0.46).** [pages/Login.tsx](dashboard/src/pages/Login.tsx)
+      now has an explicit `isLogin` mode toggle: login with a non-existent email errors "No account
+      found…" (no silent register), sign-up is the deliberate alternate action, and federated (Google)
+      sign-in enforces the same rule via `enforceMode` (a brand-new Google `isNewUser` in login mode is
+      undone + told to switch to Sign Up).
 - [x] **No-vehicle screen sign-out — DONE (2026-06-28).** Added a "Sign out" button to the logged-in
       no-vehicle onboarding screen ([App.tsx](dashboard/src/App.tsx)) so you're no longer stuck on
       "Create a Vehicle".
@@ -708,12 +708,21 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
         + persists offline (the null-user launch event no longer wipes it) and **never touches the cloud**
         (all cloud paths require a Firebase user). Signing into a real account from local mode wipes the
         local session (clean switch); "Use a cloud account instead" exits local mode. 4 tests.
-  - [ ] **In-app Settings → "Switch to cloud mode"** (for a local user who already has vehicles). **No
+  - [~] **In-app Settings → "Switch to cloud mode"** (for a local user who already has vehicles). **No
         hybrid accounts (owner, 2026-06-29) — a device is EITHER cloud OR local, device-wide.** Two sanctioned
         transitions, both total: **(a) Rebuild** — sign into cloud, wipe the local session, rebuild vehicles
         fresh (this is already what `applyUserScope` does on cloud sign-in from local); **(b) Migrate** — a
         "migrate local account to the cloud" flow that uploads the local vehicles to the new cloud account,
         then switches the device to cloud mode. Never leave a mix of local + cloud vehicles on one device.
+    - [x] **Rebuild path exposed in-app — DONE (2026-06-29).** Settings → Account is now local-mode-aware
+          ([AccountPanel.tsx](dashboard/src/pages/settings/AccountPanel.tsx) `localMode` prop): a local user
+          sees a "You're in local-only mode" section with a **discard warning** (pure, tested
+          `cloudSwitchDiscardNote` in [utils/accountMode.ts](dashboard/src/utils/accountMode.ts) — "your N
+          vehicles stay on this device, not uploaded") and a **"Switch to a cloud account"** button that opens
+          the inline Login. Signing in drives the existing `applyUserScope` wipe+reload = the rebuild. RTL
+          tests cover the branch. ⚠️ Native-verify the actual local→cloud sign-in/reload cycle.
+    - [ ] **Migrate path** (upload local vehicles, then switch) — still open; bigger, needs a careful
+          upload/dedup flow. Until then the in-app switch is rebuild-only (warned).
   - [ ] **Private/self-host server does NOT sync config** — each device configured independently; the
         `sh_webhook_*` fields are for the webhook/action relay only (doc'd; verify no code path syncs config
         through a custom server).
