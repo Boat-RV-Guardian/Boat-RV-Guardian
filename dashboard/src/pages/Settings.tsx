@@ -26,6 +26,7 @@ import SettingsModals from './settings/SettingsModals';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 import { readSettings, writeSettings, applyPersistedSettings } from '../utils/settingsStorage';
+import { isLocalMode } from '../utils/userScope';
 
 const APP_VERSION = '1.0.46';
 
@@ -665,7 +666,7 @@ export default function Settings({ user }: { user: any }) {
 
           {/* Account Information (moved below Vehicles) */}
           <AccountPanel
-            user={user} showLogin={showLogin} setShowLogin={setShowLogin}
+            user={user} localMode={isLocalMode(localStorage)} showLogin={showLogin} setShowLogin={setShowLogin}
             syncSettingsCloud={syncSettingsCloud} setSyncSettingsCloud={setSyncSettingsCloud}
             canCloudHistory={canCloudHistory}
             storeHistoryCloud={storeHistoryCloud} setStoreHistoryCloud={setStoreHistoryCloud}

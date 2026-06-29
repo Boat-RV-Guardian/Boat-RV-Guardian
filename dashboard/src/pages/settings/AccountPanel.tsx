@@ -6,6 +6,7 @@
 import Login from '../Login';
 import { auth, signOut } from '../../services/firebase';
 import type { Vehicle } from '../../utils/VehicleManager';
+import { cloudSwitchDiscardNote } from '../../utils/accountMode';
 
 interface UserConfigLike {
   startupMode?: 'default' | 'last';
@@ -14,6 +15,8 @@ interface UserConfigLike {
 
 interface Props {
   user: any;
+  /** True when this device is in local-only mode (a synthetic `local:` owner, no Firebase account). */
+  localMode: boolean;
   showLogin: boolean;
   setShowLogin: (v: boolean) => void;
   syncSettingsCloud: boolean;
@@ -34,16 +37,27 @@ export default function AccountPanel(p: Props) {
     <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', marginBottom: '16px' }}>Account Information</h3>
     {!p.user ? (
       <div>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-          Sign in to Boat-RV-Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
-        </p>
+        {p.localMode ? (
+          <>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+              You’re in <strong>local-only mode</strong> — everything is stored on this device and nothing syncs to the cloud. Switch to a cloud account to enable remote monitoring, cross-device sync, vehicle sharing, and away push notifications.
+            </p>
+            <p style={{ color: '#f59e0b', fontSize: '0.85rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '10px 12px', margin: '0 0 4px' }}>
+              ⚠️ {cloudSwitchDiscardNote(Object.keys(p.vehiclesMap).length)}
+            </p>
+          </>
+        ) : (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+            Sign in to Boat-RV-Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
+          </p>
+        )}
         {!p.showLogin ? (
           <button
             className="btn-primary"
             onClick={() => p.setShowLogin(true)}
             style={{ marginTop: '16px' }}
           >
-            Log into Boat-RV-Guardian.com
+            {p.localMode ? 'Switch to a cloud account' : 'Log into Boat-RV-Guardian.com'}
           </button>
         ) : (
           <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
