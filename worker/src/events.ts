@@ -44,6 +44,23 @@ export function isFloodShutoff(event: string): boolean {
   return FLOOD_EVENT_RE.test(event) && !isAlarmCleared(event) && !isTelemetry(event);
 }
 
+/**
+ * Map a raw Shelly webhook event to the semantic SMS opt-in key the user toggles in the account
+ * portal (mirrors SMS_EVENT_CATALOG in dashboard/src/utils/smsPrefs.ts: flood / low_battery /
+ * shore_power / offline). Returns null for telemetry and anything not SMS-eligible. Best-effort
+ * pattern match — device event names vary, so this is conservative; tune against real device events
+ * as they're observed. Pure.
+ */
+export function smsEventKey(event: string): string | null {
+  if (!event || isTelemetry(event)) return null;
+  if (isFloodShutoff(event)) return 'flood';
+  const e = event.toLowerCase();
+  if (/(?:low|crit)[._ ]*batt|batt[a-z]*[._ ]*(?:low|crit)|low_?battery/.test(e)) return 'low_battery';
+  if (/shore|mains[._ ]*(?:lost|off|fail)|power[._ ]*(?:lost|fail|out|off)/.test(e)) return 'shore_power';
+  if (/offline|disconnect|unreachable/.test(e)) return 'offline';
+  return null;
+}
+
 /** Query params that are routing/identity/auth, not sensor telemetry to cache. */
 export const RESERVED_PARAMS: ReadonlySet<string> = new Set(['vid', 'event', 'device', 'key']);
 

@@ -9,7 +9,28 @@ import {
   shouldPersistTelemetry,
   healthBody,
   WORKER_SERVICE,
+  smsEventKey,
 } from './events';
+
+describe('smsEventKey', () => {
+  it('maps the flood family to flood (not the cleared/telemetry variants)', () => {
+    expect(smsEventKey('flood.alarm')).toBe('flood');
+    expect(smsEventKey('leak')).toBe('flood');
+    expect(smsEventKey('flood.alarm_off')).toBeNull(); // cleared
+    expect(smsEventKey('flood.measurement')).toBeNull(); // telemetry
+  });
+  it('maps low-battery / shore-power / offline events', () => {
+    expect(smsEventKey('low_battery')).toBe('low_battery');
+    expect(smsEventKey('battery.low')).toBe('low_battery');
+    expect(smsEventKey('shore.power.lost')).toBe('shore_power');
+    expect(smsEventKey('device.offline')).toBe('offline');
+  });
+  it('returns null for unmapped / empty events', () => {
+    expect(smsEventKey('button.push')).toBeNull();
+    expect(smsEventKey('')).toBeNull();
+    expect(smsEventKey('voltmeter.change')).toBeNull(); // telemetry
+  });
+});
 
 describe('isFloodShutoff', () => {
   it('triggers on real flood/leak/alarm events', () => {

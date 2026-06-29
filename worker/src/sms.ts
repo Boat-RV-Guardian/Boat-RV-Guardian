@@ -40,6 +40,23 @@ export function smsRecipientsForEvent(
   return [...new Set(prefs.phones.map((p) => String(p).trim()).filter(Boolean))];
 }
 
+/**
+ * Parse the vehicle doc's `sh_sms_prefs` field (a JSON string the dashboard writes via
+ * serializeSmsPrefs) into SmsPrefs, tolerating empty/corrupt input. De-dupes + trims. Mirrors
+ * parseSmsPrefs in dashboard/src/utils/smsPrefs.ts so both sides read the same shape. Pure.
+ */
+export function parseSmsPrefs(raw: string | null | undefined): SmsPrefs {
+  if (!raw) return { phones: [], events: [] };
+  try {
+    const o = JSON.parse(raw) as { phones?: unknown; events?: unknown };
+    const phones = Array.isArray(o.phones) ? o.phones.map((p) => String(p).trim()).filter((s) => s.length > 0) : [];
+    const events = Array.isArray(o.events) ? o.events.map((e) => String(e)).filter((s) => s.length > 0) : [];
+    return { phones: [...new Set(phones)], events: [...new Set(events)] };
+  } catch {
+    return { phones: [], events: [] };
+  }
+}
+
 /** Send-path interface. A real provider implements this; the worker depends only on the interface. */
 export interface SmsSender {
   sendSms(to: string, body: string): Promise<{ ok: boolean; error?: string }>;

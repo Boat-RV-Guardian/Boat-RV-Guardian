@@ -380,8 +380,9 @@ Tasks:
       selectors in [worker/src/retention.ts](worker/src/retention.ts) (14 tests). Inert under
       grandfathering (legacy→premium keeps all) until real tiers are assigned; per-run delete cap.
 - [~] SMS/voice alerts (Premium): ~~per-event opt-in UI + worker send path~~ **both DONE 2026-06-28
-      (worker scaffold #11, opt-in UI #12)**; only a live **provider (Twilio)** + wiring
-      `dispatchSmsForEvent` into the worker alert path remain.
+      (worker scaffold #11, opt-in UI #12)**; ~~wiring `dispatchSmsForEvent` into the worker alert path~~
+      **DONE 2026-06-29 (PR #31, awaiting owner merge — worker auto-deploys)** — behavior-neutral via
+      `noopSmsSender`; only a live **provider (Twilio)** remains.
 - [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
       who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
       Premium" mental model and the sharing goal (a shared mechanic sees the owner's history).
@@ -395,7 +396,11 @@ Tasks:
   - [x] **Account-portal per-event opt-in UI landed (2026-06-28, PR #12):** Premium-gated SMS section
         in Account.tsx (phone numbers + per-event escalation) → synced `sh_sms_prefs`; pure
         [utils/smsPrefs.ts](dashboard/src/utils/smsPrefs.ts) (tested).
-  - [ ] **Remaining:** wire `dispatchSmsForEvent` into the worker alert path + a real provider (Twilio).
+  - [~] **Wiring DONE 2026-06-29 (PR #31):** `dispatchSmsForEvent` is now called in the worker alert path
+        (`handleShellyWebhook`) via the `noopSmsSender` — behavior-neutral until a provider lands. New pure
+        `smsEventKey` (raw Shelly event → catalog key: flood/low_battery/shore_power/offline) +
+        `parseSmsPrefs` (worker reads the vehicle's synced `sh_sms_prefs`). Only a real **provider (Twilio)**
+        remains (drop a `SmsSender` impl in place of `noopSmsSender`). ⚠️ Worker auto-deploys on merge.
 
 ---
 
