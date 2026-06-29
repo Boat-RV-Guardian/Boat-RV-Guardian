@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCloudConfig } from '../hooks/useCloudConfig';
-import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig } from '../utils/configSync';
+import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig, cloudConfigDiffers } from '../utils/configSync';
 import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle } from '../utils/VehicleManager';
 import { getMyRole, ensureOwnerAdmin } from '../utils/sharing';
-import { auth, signOut } from '../services/firebase';
+import { auth } from '../services/firebase';
 
 export default function SyncModal() {
   const [activeVid, setActiveVid] = useState(getActiveVehicleId());
   const { activeVehicleConfig, configVid, cloudVehicles, userConfig, updateVehicleConfig } = useCloudConfig(activeVid);
-  const [showModal, setShowModal] = useState(false);
   const [hasResolved, setHasResolved] = useState(false);
   // Surfaces a cloud-write failure to the user instead of swallowing it in the console (Firestore
   // writes are otherwise fire-and-forget, so a permission/network error was invisible).
@@ -162,31 +161,19 @@ export default function SyncModal() {
       }
       setHasResolved(true);
     } else {
-      // Cloud config exists
-      if (isLocalDefault) {
-        // Local is default, just pull cloud config silently
+      // Cloud config exists → the cloud is the source of truth (CLAUDE.md config-sync model,
+      // 2026-06-29). If local is the untouched default OR it has diverged from the cloud, pull the
+      // cloud copy silently — no prompt. (This replaced the old "Cloud Sync Conflict" modal, whose
+      // "log out and use local" option became a lie once applyUserScope started wiping local on
+      // sign-out; cloud-wins-on-login matches the no-hybrid model and the live multi-device sync
+      // below.) An identical local config needs no pull (it would only fire a redundant
+      // settings_updated).
+      if (isLocalDefault || cloudConfigDiffers(getLocalVehicleConfig(), activeVehicleConfig)) {
         (window as any).__is_syncing_cloud = true;
         applyCloudVehicleConfig(activeVehicleConfig);
         (window as any).__is_syncing_cloud = false;
-        setHasResolved(true);
-      } else {
-        // Check for identicalness — skip keys the cloud hasn't seen yet (newly added fields)
-        let isIdentical = true;
-        const local = getLocalVehicleConfig();
-        for (const key of Object.keys(local)) {
-          if (activeVehicleConfig[key] === undefined) continue;
-          if (local[key] !== activeVehicleConfig[key]) {
-            isIdentical = false;
-            break;
-          }
-        }
-        
-        if (isIdentical) {
-          setHasResolved(true);
-        } else {
-          setShowModal(true);
-        }
       }
+      setHasResolved(true);
     }
   }, [activeVehicleConfig, configVid, hasResolved, activeVid]);
 
@@ -202,13 +189,7 @@ export default function SyncModal() {
     if (!activeVehicleConfig || Object.keys(activeVehicleConfig).length === 0) return;
     if (autoSaveTimer.current) return; // our own pending change should win
 
-    const local = getLocalVehicleConfig();
-    let differs = false;
-    for (const key of Object.keys(local)) {
-      if (activeVehicleConfig[key] === undefined) continue;
-      if (local[key] !== activeVehicleConfig[key]) { differs = true; break; }
-    }
-    if (!differs) return;
+    if (!cloudConfigDiffers(getLocalVehicleConfig(), activeVehicleConfig)) return;
 
     (window as any).__is_syncing_cloud = true; // suppress the auto-save echo of this applied change
     applyCloudVehicleConfig(activeVehicleConfig);
@@ -243,64 +224,14 @@ export default function SyncModal() {
     };
   }, [hasResolved, activeVid]);
 
-  if (!showModal) {
-    // No conflict modal — but still surface a cloud-sync error if one occurred.
-    if (!syncError) return null;
-    return (
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, background: '#7f1d1d', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', boxShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
-        <span style={{ flex: 1 }}>⚠️ {syncError}</span>
-        <button onClick={() => setSyncError(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Dismiss</button>
-      </div>
-    );
-  }
-
-  // Keep this device's local settings and stop syncing by signing out — the cloud copy is left
-  // untouched (we do NOT overwrite it). The local profile stays exactly as-is.
-  const handleLogoutUseLocal = async () => {
-    setShowModal(false);
-    setHasResolved(true);
-    try { await signOut(auth); } catch { /* ignore */ }
-  };
-
-  const handleUseCloud = () => {
-    (window as any).__is_syncing_cloud = true;
-    applyCloudVehicleConfig(activeVehicleConfig || {});
-    (window as any).__is_syncing_cloud = false;
-    setShowModal(false);
-    setHasResolved(true);
-  };
-
-  const handleCancel = () => {
-    setShowModal(false);
-    setHasResolved(true);
-  };
-
+  // Cloud-sync conflicts are resolved silently (cloud-wins, above) under the no-hybrid /
+  // cloud-as-source-of-truth model — there is no longer a conflict modal. This component now only
+  // surfaces a cloud-write error banner if one occurred.
+  if (!syncError) return null;
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.8)', zIndex: 10000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      backdropFilter: 'blur(5px)'
-    }}>
-      <div className="glass-card" style={{ maxWidth: '400px', width: '90%' }}>
-        <h3 style={{ marginTop: 0, color: 'var(--accent-cyan)' }}>Cloud Sync Conflict</h3>
-        <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-          This vehicle has a different configuration saved in the cloud than what's on this device. How do you want to resolve it?
-        </p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
-          <button className="btn-primary" onClick={handleUseCloud}>
-            ☁️ Use the cloud copy
-          </button>
-          <button className="btn-secondary" onClick={handleLogoutUseLocal}>
-            📱 Log out and use local
-          </button>
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '8px 0' }}></div>
-          <button className="btn-secondary" onClick={handleCancel}>
-            Cancel and go back
-          </button>
-        </div>
-      </div>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, background: '#7f1d1d', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', boxShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
+      <span style={{ flex: 1 }}>⚠️ {syncError}</span>
+      <button onClick={() => setSyncError(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Dismiss</button>
     </div>
   );
 }

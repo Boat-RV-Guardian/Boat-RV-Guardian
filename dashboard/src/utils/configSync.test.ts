@@ -6,6 +6,7 @@ import {
   isLocalVehicleConfigDefault,
   getLocalVehicleConfig,
   applyCloudVehicleConfig,
+  cloudConfigDiffers,
   VEHICLE_DEFAULT_CONFIG,
 } from './configSync';
 
@@ -99,5 +100,24 @@ describe('getLocalVehicleConfig / applyCloudVehicleConfig round-trip', () => {
   it('applyCloudVehicleConfig migrates OLD-default thresholds pulled from the cloud', () => {
     applyCloudVehicleConfig({ lt_batt_crit_v: '11.5' }); // old default arriving from cloud
     expect(localStorage.getItem('lt_batt_crit_v')).toBe('11.8'); // corrected to new standard
+  });
+});
+
+describe('cloudConfigDiffers (cloud-wins comparison)', () => {
+  it('returns false when every cloud-seen key matches', () => {
+    expect(cloudConfigDiffers({ a: '1', b: '2' }, { a: '1', b: '2' })).toBe(false);
+  });
+
+  it('returns true when a shared key differs', () => {
+    expect(cloudConfigDiffers({ a: '1', b: '2' }, { a: '1', b: '9' })).toBe(true);
+  });
+
+  it('ignores keys the cloud has not seen yet (newly added fields)', () => {
+    // `b` is absent from the cloud doc — a new field, not a divergence.
+    expect(cloudConfigDiffers({ a: '1', b: '2' }, { a: '1' })).toBe(false);
+  });
+
+  it('treats a differing value on a cloud-seen key as a divergence even with new local keys', () => {
+    expect(cloudConfigDiffers({ a: '1', b: '2' }, { a: '9' })).toBe(true);
   });
 });
