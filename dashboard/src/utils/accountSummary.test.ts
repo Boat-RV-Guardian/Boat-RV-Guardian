@@ -56,17 +56,17 @@ describe('vehiclePlanRows', () => {
   it('returns [] for an empty map', () => {
     expect(vehiclePlanRows({}, null)).toEqual([]);
   });
-  it('resolves names + grandfathers unset tiers, marking + sorting the active vehicle first', () => {
+  it('resolves names + defaults unset tiers to Free, marking + sorting the active vehicle first', () => {
     const map = {
       v1: { config: { lt_vessel_name: 'Zephyr', tier: 'basic' } },
-      v2: { config: { lt_vessel_name: 'Anchor', tier: '' } },       // unset → grandfathered premium
+      v2: { config: { lt_vessel_name: 'Anchor', tier: '' } },       // unset → default Free
       v3: { config: { lt_vessel_name: '', tier: 'free' } },          // blank name
     };
     const rows = vehiclePlanRows(map, 'v3');
     expect(rows[0]).toEqual({ id: 'v3', name: 'Unnamed vehicle', tier: 'free', active: true });
     // the rest sorted by name: Anchor before Zephyr
     expect(rows.map((r) => r.id)).toEqual(['v3', 'v2', 'v1']);
-    expect(rows.find((r) => r.id === 'v2')!.tier).toBe('premium');
+    expect(rows.find((r) => r.id === 'v2')!.tier).toBe('free');
     expect(rows.every((r) => r.id === 'v3' ? r.active : !r.active)).toBe(true);
   });
 });

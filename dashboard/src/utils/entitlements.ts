@@ -32,13 +32,13 @@ export const AUTOMATION_ORDER: readonly AutomationLevel[] = ['none', 'essential'
 export const BASIC_TRIAL_DAYS = 30;
 
 /**
- * The tier assumed for a vehicle that has no `tier` field yet (legacy / pre-billing vehicles).
- * Set to `premium` so the entitlement layer can ship WITHOUT changing behavior for anyone — existing
- * single-user owners keep full access. Once the admin "set tier" switch / Stripe assign real tiers,
- * stored values take over. Do NOT lower this default to 'free' until billing + the admin override
- * exist, or every current user instantly loses remote control of their own boat.
+ * The tier a vehicle gets when it has no `tier` field yet. **Free is the product default** (owner
+ * decision, pre-launch): a new vehicle starts Free and the user must explicitly opt into the 30-day
+ * Basic trial (or redeem/buy a plan). There are no legacy users to grandfather, so this is a clean
+ * default rather than a migration hedge. Stored tier values (set by the trial grant, the admin
+ * override, or Stripe) always take precedence on read.
  */
-export const GRANDFATHERED_TIER: Tier = 'premium';
+export const DEFAULT_TIER: Tier = 'free';
 
 export interface Entitlements {
   tier: Tier;
@@ -151,7 +151,7 @@ export function isTier(value: unknown): value is Tier {
 
 /**
  * Resolve the tier of a vehicle from its cloud doc. Reads `vehicleData.tier`; falls back to
- * GRANDFATHERED_TIER for legacy/unset vehicles. Invalid stored values also fall back (defensive).
+ * DEFAULT_TIER (Free) for vehicles with no tier yet. Invalid stored values also fall back (defensive).
  *
  * NOTE: this does NOT evaluate the Basic free trial — trial state (and its per-user/per-vehicle
  * anti-abuse tracking) is resolved server-side and written into `tier` for the trial window. See
@@ -159,7 +159,7 @@ export function isTier(value: unknown): value is Tier {
  */
 export function getVehicleTier(vehicleData: any): Tier {
   const stored = vehicleData?.tier;
-  return isTier(stored) ? stored : GRANDFATHERED_TIER;
+  return isTier(stored) ? stored : DEFAULT_TIER;
 }
 
 /** Resolve the full entitlement set for a vehicle. */

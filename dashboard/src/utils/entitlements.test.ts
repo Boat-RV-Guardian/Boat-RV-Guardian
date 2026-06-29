@@ -6,7 +6,7 @@ import {
   automationAtLeast,
   isTier,
   TIER_FEATURES,
-  GRANDFATHERED_TIER,
+  DEFAULT_TIER,
   TIER_PRICING,
   BASIC_TRIAL_DAYS,
   formatRetention,
@@ -20,16 +20,17 @@ describe('getVehicleTier', () => {
     expect(getVehicleTier({ tier: 'premium' })).toBe('premium');
   });
 
-  it('falls back to the grandfathered tier for legacy/unset vehicles', () => {
-    expect(getVehicleTier({})).toBe(GRANDFATHERED_TIER);
-    expect(getVehicleTier(null)).toBe(GRANDFATHERED_TIER);
-    expect(getVehicleTier(undefined)).toBe(GRANDFATHERED_TIER);
+  it('defaults to Free for vehicles with no tier yet', () => {
+    expect(DEFAULT_TIER).toBe('free');
+    expect(getVehicleTier({})).toBe(DEFAULT_TIER);
+    expect(getVehicleTier(null)).toBe(DEFAULT_TIER);
+    expect(getVehicleTier(undefined)).toBe(DEFAULT_TIER);
   });
 
-  it('falls back on invalid stored values (defensive)', () => {
-    expect(getVehicleTier({ tier: 'gold' })).toBe(GRANDFATHERED_TIER);
-    expect(getVehicleTier({ tier: 42 })).toBe(GRANDFATHERED_TIER);
-    expect(getVehicleTier({ tier: '' })).toBe(GRANDFATHERED_TIER);
+  it('falls back to Free on invalid stored values (defensive)', () => {
+    expect(getVehicleTier({ tier: 'gold' })).toBe(DEFAULT_TIER);
+    expect(getVehicleTier({ tier: 42 })).toBe(DEFAULT_TIER);
+    expect(getVehicleTier({ tier: '' })).toBe(DEFAULT_TIER);
   });
 });
 
@@ -82,10 +83,10 @@ describe('tier feature matrix', () => {
 });
 
 describe('getEntitlements', () => {
-  it('legacy vehicle (no tier) is grandfathered to full access — no behavior change', () => {
-    const e = getEntitlements({ lt_vessel_name: 'Old Boat' });
-    expect(e.canRemoteControl).toBe(true); // would break existing owners if false
-    expect(e).toBe(TIER_FEATURES[GRANDFATHERED_TIER]);
+  it('a vehicle with no tier defaults to Free (no remote control until the user opts in)', () => {
+    const e = getEntitlements({ lt_vessel_name: 'New Boat' });
+    expect(e.canRemoteControl).toBe(false);
+    expect(e).toBe(TIER_FEATURES[DEFAULT_TIER]);
   });
 
   it('a free-tier vehicle cannot remote-control', () => {

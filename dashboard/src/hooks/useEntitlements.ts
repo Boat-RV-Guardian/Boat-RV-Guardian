@@ -6,8 +6,8 @@ import { TIER_FEATURES, getVehicleTier, type Entitlements, type Tier } from '../
 // by SyncModal and a 'tier_updated' event is fired when it changes. This hook reads that and returns
 // the resolved feature set, re-rendering on 'tier_updated' / 'settings_updated'.
 //
-// Unset tier falls back to GRANDFATHERED_TIER (via getVehicleTier), so until billing assigns real
-// tiers this returns full access and changes no behavior. Gate features off the returned booleans
+// Unset tier falls back to DEFAULT_TIER = Free (via getVehicleTier): a new vehicle is Free until the
+// user opts into the Basic trial or a plan assigns a tier. Gate features off the returned booleans
 // (e.g. `entitlements.canControl`) rather than ad-hoc checks.
 
 function readTier(): Tier {

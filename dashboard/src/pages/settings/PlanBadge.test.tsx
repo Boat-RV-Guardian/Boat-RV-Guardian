@@ -3,17 +3,24 @@ import { render, screen } from '@testing-library/react';
 import PlanBadge from './PlanBadge';
 
 // Component test for the compact plan indicator (open-tasks Task 6). Driven by
-// localStorage['lt_vehicle_tier'] (what SyncModal stashes); unset → grandfathered Premium.
+// localStorage['lt_vehicle_tier'] (what SyncModal stashes); unset → default Free.
 
 beforeEach(() => {
   localStorage.removeItem('lt_vehicle_tier');
 });
 
 describe('PlanBadge', () => {
-  it('shows the tier and a "Manage plan" button for Premium (grandfathered/unset)', () => {
+  it('shows the tier and a "Manage plan" button for Premium', () => {
+    localStorage.setItem('lt_vehicle_tier', 'premium');
     render(<PlanBadge />);
     expect(screen.getByText('Premium')).toBeTruthy();
     expect(screen.getByRole('button', { name: /manage plan/i })).toBeTruthy();
+  });
+
+  it('defaults to Free (Upgrade button) when no tier is set', () => {
+    render(<PlanBadge />);
+    expect(screen.getByText('Free')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /upgrade/i })).toBeTruthy();
   });
 
   it('shows an Upgrade button for non-Premium tiers', () => {
