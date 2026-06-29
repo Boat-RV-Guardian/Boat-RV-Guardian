@@ -12,7 +12,8 @@ import {
   parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
   type ApiToken,
 } from '../utils/apiTokens';
-import { accountDeletionPlan, executeAccountDeletion, type VehicleAccess } from '../utils/accountDeletion';
+import { requestTrial } from '../utils/trial';
+import DeleteAccountButton from '../components/DeleteAccountButton';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -63,46 +64,6 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
     setTokenLabel('');
   };
 
-  // Account deletion (Task 14 — GDPR). Plan + orchestration are pure/tested (utils/accountDeletion);
-  // the Firebase ops are lazy-imported here so this page (and its tests) stay Firebase-free until the
-  // user actually confirms. Requires typing DELETE.
-  const [showDelete, setShowDelete] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState('');
-  const [deleteBusy, setDeleteBusy] = useState(false);
-  const [deleteMsg, setDeleteMsg] = useState<string | null>(null);
-  const onDeleteAccount = async () => {
-    if (deleteConfirm !== 'DELETE' || !user?.uid) return;
-    setDeleteBusy(true);
-    setDeleteMsg(null);
-    try {
-      const uid = user.uid;
-      const { db, auth } = await import('../services/firebase');
-      const fs = await import('firebase/firestore');
-      const { deleteUser, signOut } = await import('firebase/auth');
-      // Fetch every vehicle the user can access to decide delete-vs-leave.
-      const snap = await fs.getDocs(fs.query(fs.collection(db, 'vehicles'), fs.where('allowedUsers', 'array-contains', uid)));
-      const vehicles: VehicleAccess[] = snap.docs.map((d) => ({ id: d.id, allowedUsers: (d.data() as any).allowedUsers || [] }));
-      const plan = accountDeletionPlan(vehicles, uid);
-      const res = await executeAccountDeletion(plan, uid, {
-        deleteVehicle: (vid) => fs.deleteDoc(fs.doc(db, 'vehicles', vid)),
-        leaveVehicle: (vid, u) => fs.updateDoc(fs.doc(db, 'vehicles', vid), { allowedUsers: fs.arrayRemove(u) }),
-        deleteUserDoc: (u) => fs.deleteDoc(fs.doc(db, 'users', u)),
-        deleteAuthUser: () => (auth.currentUser ? deleteUser(auth.currentUser) : Promise.resolve()),
-        signOut: () => signOut(auth),
-        clearLocal: () => { try { localStorage.clear(); } catch { /* ignore */ } },
-      });
-      if (res.errors.length) {
-        setDeleteMsg(`Deleted ${res.deletedVehicles} vehicle(s); ${res.errors.length} step(s) need attention: ${res.errors[0]}. You may need to sign in again and retry.`);
-        setDeleteBusy(false);
-      } else {
-        // Fully done — reload to the signed-out, fresh-local state.
-        window.location.reload();
-      }
-    } catch (e: any) {
-      setDeleteMsg(`Deletion failed: ${e?.message || e}`);
-      setDeleteBusy(false);
-    }
-  };
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
   const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
@@ -121,6 +82,30 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
     const r = redeemCoupon(code);
     setMsg(r.ok ? { ok: true, text: `✓ Applied — this vehicle is now ${TIER_LABELS[r.tier!]}.` } : { ok: false, text: r.error || 'Failed' });
     if (r.ok) setCode('');
+  };
+
+  // Opt-in Basic free trial (owner decision: NOT auto-granted). The worker enforces the real
+  // per-user/per-vehicle anti-abuse rule and writes tier='basic' + trialEndsAt; the resulting cloud
+  // snapshot flows back via SyncModal → tier_updated, which re-renders this view with the new tier.
+  const [trialBusy, setTrialBusy] = useState(false);
+  const [trialMsg, setTrialMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const onStartTrial = async () => {
+    const vid = localStorage.getItem('lt_active_vehicle_id');
+    if (!vid) { setTrialMsg({ ok: false, text: 'Select a vehicle first.' }); return; }
+    setTrialBusy(true);
+    setTrialMsg(null);
+    const r = await requestTrial(vid);
+    setTrialBusy(false);
+    if (r.granted) {
+      // Optimistically reflect the grant so the UI flips to Basic immediately instead of waiting for
+      // the cloud snapshot to round-trip back through SyncModal (which still re-confirms it).
+      localStorage.setItem('lt_vehicle_tier', r.tier || 'basic');
+      if (r.trialEndsAt) localStorage.setItem('lt_vehicle_trial_ends', String(r.trialEndsAt));
+      window.dispatchEvent(new Event('tier_updated'));
+      setTrialMsg({ ok: true, text: '✓ Your 30-day Basic trial has started.' });
+    } else {
+      setTrialMsg({ ok: false, text: r.reason ? 'This vehicle isn’t eligible for a trial.' : (r.error || 'Could not start the trial.') });
+    }
   };
 
   // Premium "data export": flatten each device's on-device usage history (lt_usage_history_<id>) to
@@ -195,6 +180,24 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         </div>
       </div>
 
+      {/* Opt-in Basic free trial — only for a signed-in user on a Free vehicle that hasn't trialed yet.
+          The worker still enforces eligibility, so this is the offer, not the authorization. */}
+      {user?.uid && ent.tier === 'free' && trial.state === 'none' && (
+        <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px', borderColor: '#22c55e55' }}>
+          <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Try Basic free for 30 days</h3>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            Start a one-month Basic trial for this vehicle — automatic remote view, remote control,
+            away push, cloud flood-shutoff fallback, and ~1 month of history. No card required.
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button className="btn-primary" onClick={onStartTrial} disabled={trialBusy} style={{ padding: '8px 18px', opacity: trialBusy ? 0.6 : 1 }}>
+              {trialBusy ? 'Starting…' : 'Start free trial'}
+            </button>
+            {trialMsg && <span style={{ fontSize: '0.82rem', color: trialMsg.ok ? '#22c55e' : '#ffb3b3' }}>{trialMsg.text}</span>}
+          </div>
+        </div>
+      )}
+
       {/* Trial status (Task 14) — only when a trial marker is present */}
       {trial.state !== 'none' && (
         <div className="glass-card" style={{ display: 'flex', alignItems: 'center', gap: '10px', borderColor: trial.state === 'active' ? '#22c55e55' : '#f59e0b55' }}>
@@ -254,35 +257,10 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         </div>
 
         {/* Delete account (GDPR) — only when signed in. Solo-owned vehicles are deleted; shared ones
-            you're simply removed from. Irreversible, so it requires typing DELETE. */}
+            you're simply removed from. Shared, confirm-protected component (also in Settings → Danger Zone). */}
         {user?.uid && (
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '4px' }}>
-            {!showDelete ? (
-              <button onClick={() => { setShowDelete(true); setDeleteMsg(null); }} style={{ background: 'none', border: '1px solid #ef4444', color: '#ef4444', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '0.85rem' }}>
-                Delete account
-              </button>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <span style={{ fontSize: '0.82rem', color: '#fca5a5' }}>
-                  This permanently deletes your account and the vehicles you solely own, and removes you
-                  from shared ones. This <strong>cannot be undone.</strong> Type <strong>DELETE</strong> to confirm.
-                </span>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input
-                    value={deleteConfirm}
-                    onChange={(e) => setDeleteConfirm(e.target.value)}
-                    placeholder="DELETE"
-                    aria-label="Type DELETE to confirm"
-                    style={{ flex: '1 1 120px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
-                  />
-                  <button onClick={onDeleteAccount} disabled={deleteConfirm !== 'DELETE' || deleteBusy} style={{ background: deleteConfirm === 'DELETE' && !deleteBusy ? '#ef4444' : '#7f1d1d', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 16px', cursor: deleteConfirm === 'DELETE' && !deleteBusy ? 'pointer' : 'not-allowed', fontSize: '0.85rem' }}>
-                    {deleteBusy ? 'Deleting…' : 'Permanently delete'}
-                  </button>
-                  <button onClick={() => { setShowDelete(false); setDeleteConfirm(''); }} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>Cancel</button>
-                </div>
-                {deleteMsg && <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>{deleteMsg}</span>}
-              </div>
-            )}
+            <DeleteAccountButton uid={user.uid} />
           </div>
         )}
       </div>

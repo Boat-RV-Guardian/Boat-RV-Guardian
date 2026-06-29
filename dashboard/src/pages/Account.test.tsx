@@ -13,9 +13,10 @@ beforeEach(() => {
 });
 
 describe('Account', () => {
-  it('starts on the grandfathered Premium plan when no tier is set', () => {
+  it('defaults to the Free plan when no tier is set', () => {
     render(<Account />);
-    expect(screen.getByText('Premium')).toBeTruthy();
+    // Both the plan-name header and the price line read "Free", so match at least one.
+    expect(screen.getAllByText('Free').length).toBeGreaterThan(0);
   });
 
   it('applies a coupon and reactively updates the plan', () => {
@@ -54,7 +55,8 @@ describe('Account', () => {
     localStorage.setItem('lt_usage_history_lt1', JSON.stringify({ '2026-06-01T00:00:00.000Z': 5 }));
     let madeWith = '';
     (URL as any).createObjectURL = (b: Blob) => { madeWith = String((b as any).type || 'blob'); return 'blob:x'; };
-    render(<Account />); // no tier set → grandfathered Premium → canExport
+    localStorage.setItem('lt_vehicle_tier', 'premium'); // export is a Premium feature (canExport)
+    render(<Account />);
     const btn = screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     fireEvent.click(btn);
@@ -92,7 +94,8 @@ describe('Account', () => {
     expect(screen.getByText('active')).toBeTruthy();
   });
 
-  it('generates and revokes an integration API token (Premium grandfathered default)', () => {
+  it('generates and revokes an integration API token (Premium)', () => {
+    localStorage.setItem('lt_vehicle_tier', 'premium'); // integrations are Premium-gated
     render(<Account />);
     fireEvent.change(screen.getByPlaceholderText(/label/i), { target: { value: 'Home Assistant' } });
     fireEvent.click(screen.getByRole('button', { name: /generate/i }));
@@ -120,9 +123,29 @@ describe('Account', () => {
   });
 
   it('opens the SMS + integrations inputs on a Premium plan', () => {
-    render(<Account />); // grandfathered Premium
+    localStorage.setItem('lt_vehicle_tier', 'premium');
+    render(<Account />);
     expect(screen.getByPlaceholderText(/555 123 4567/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /generate/i })).toBeTruthy();
+  });
+
+  // --- Opt-in Basic trial (owner decision: not auto-granted) ---
+  it('offers the opt-in Basic trial for a signed-in user on a Free vehicle with no trial yet', () => {
+    localStorage.setItem('lt_vehicle_tier', 'free');
+    render(<Account user={{ uid: 'u1', email: 'a@b.c' }} />);
+    expect(screen.getByRole('button', { name: /start free trial/i })).toBeTruthy();
+  });
+
+  it('hides the trial offer when signed out', () => {
+    localStorage.setItem('lt_vehicle_tier', 'free');
+    render(<Account />);
+    expect(screen.queryByRole('button', { name: /start free trial/i })).toBeNull();
+  });
+
+  it('hides the trial offer once the vehicle is no longer Free', () => {
+    localStorage.setItem('lt_vehicle_tier', 'basic');
+    render(<Account user={{ uid: 'u1', email: 'a@b.c' }} />);
+    expect(screen.queryByRole('button', { name: /start free trial/i })).toBeNull();
   });
 
   // Delete-account UI gating (Task 14 GDPR). We exercise the confirm flow up to — but not including —

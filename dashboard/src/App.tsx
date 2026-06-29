@@ -6,11 +6,14 @@ import Settings from './pages/Settings';
 import Account from './pages/Account';
 import { usePushNotifications } from './hooks/usePushNotifications';
 import { useSensorBridge } from './hooks/useSensorBridge';
-import { auth, onAuthStateChanged } from './services/firebase';
+import { auth, onAuthStateChanged, signOut, db, doc, setDoc, getDoc } from './services/firebase';
+import { buildLoginProfile } from './utils/userProfile';
 import SyncModal from './components/SyncModal';
+import CreateVehicleForm from './components/CreateVehicleForm';
 import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
 import { migrateAllVehiclesThresholds } from './utils/configSync';
+import { applyUserScope, enterLocalMode, exitLocalMode, isLocalMode } from './utils/userScope';
 
 type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'settings' | 'account';
 
@@ -33,6 +36,9 @@ export default function App() {
   // Onboarding gate: with no vehicle the app is locked until the user signs in (cloud vehicles
   // get adopted) or explicitly creates a local vehicle. We no longer auto-create a vehicle.
   const [hasVehicle, setHasVehicle] = useState(() => hasActiveVehicle());
+  // Local-only mode: a no-account session (synthetic owner) that NEVER syncs to the cloud. Either this
+  // or cloud mode — see the "Configuration sync model" in CLAUDE.md.
+  const [localMode, setLocalMode] = useState(() => isLocalMode(localStorage));
 
   // One-time: pull pre-refresh vehicles onto the new marine/RV default thresholds (untouched values
   // only — customized ones are preserved). The active vehicle is also re-checked on every cloud pull.
@@ -54,9 +60,25 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      // Per-user data isolation: if the signed-in identity changed (different user, or sign-out),
+      // wipe the prior user's cached vehicles + secrets and hard-reload so no in-memory state from
+      // the previous session survives. Same-user restore (incl. offline relaunch) is a no-op.
+      const { wiped } = applyUserScope(currentUser?.uid ?? null, localStorage);
+      if (wiped) { window.location.reload(); return; }
       setUser(currentUser);
       setLoading(false);
       setHasVehicle(hasActiveVehicle());
+      // Register the signed-in user so the operator console can see every account (not just ones with
+      // vehicle membership). Best-effort, additive merge; a Firestore failure here is non-fatal.
+      if (currentUser) {
+        const ref = doc(db, 'users', currentUser.uid);
+        getDoc(ref)
+          .then((snap) => setDoc(ref, buildLoginProfile(currentUser, snap.exists(), Date.now()), { merge: true }))
+          .catch((e: any) => {
+            // Surface a registry-write failure so a broken Firestore connection is visible, not silent.
+            window.dispatchEvent(new CustomEvent('cloud_sync_error', { detail: `Account sync failed: ${e?.message || e}` }));
+          });
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -73,23 +95,37 @@ export default function App() {
         <SyncModal />
         <div style={{ width: '60px', height: '60px', backgroundImage: 'url(/app_icon.jpg)', backgroundSize: 'cover', borderRadius: '14px', boxShadow: '0 0 14px rgba(0,242,254,0.4)' }} />
         <h1 style={{ margin: 0, fontSize: '1.5rem', textAlign: 'center', background: 'linear-gradient(90deg,#fff,#00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Boat &amp; RV Guardian</h1>
-        {user ? (
-          <div className="card" style={{ width: '100%', maxWidth: '420px', padding: '24px', textAlign: 'center' }}>
-            <p style={{ color: 'var(--text-secondary)' }}>Setting up your vehicles… If nothing appears, create your first vehicle to get started.</p>
-            <button className="btn-primary" style={{ marginTop: '12px' }} onClick={() => { createLocalVehicle(); setHasVehicle(true); }}>Create a Vehicle</button>
+        {(user || localMode) ? (
+          <div style={{ width: '100%', maxWidth: '420px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+            <p style={{ color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
+              {localMode
+                ? 'Local-only mode — this device only, nothing syncs to the cloud. Create your first vehicle to get started.'
+                : 'Setting up your vehicles… create your first vehicle to get started.'}
+            </p>
+            <CreateVehicleForm onCreate={(name, type) => { createLocalVehicle(name, type); setHasVehicle(true); }} />
+            {localMode ? (
+              <button className="btn-secondary" onClick={() => { exitLocalMode(localStorage); setLocalMode(false); setHasVehicle(false); }}>Use a cloud account instead</button>
+            ) : (
+              <button className="btn-secondary" onClick={() => { signOut(auth).catch(() => {}); }}>Sign out</button>
+            )}
           </div>
         ) : (
           <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <p style={{ color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
-              Sign in to sync your vehicles across devices, or start a local vehicle with no account.
+              Sign in to access your vehicles. Your data is tied to your account and synced to the cloud,
+              so it’s available on any device — and never shared with anyone else on this one.
             </p>
             <Login />
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text-muted)' }}>
               <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} /><span style={{ fontSize: '0.8rem' }}>OR</span><div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.1)' }} />
             </div>
-            <button className="btn-secondary" onClick={() => { createLocalVehicle(); setHasVehicle(true); }}>
-              📱 Create a Local Vehicle (no account)
+            <button className="btn-secondary" onClick={() => { enterLocalMode(Math.random().toString(36).slice(2, 11), localStorage); setLocalMode(true); }}>
+              📱 Use this device only (local mode, no account)
             </button>
+            <p style={{ color: 'var(--text-muted)', textAlign: 'center', margin: 0, fontSize: '0.75rem' }}>
+              Local mode keeps everything on this device and never syncs to the cloud. Switch to a cloud
+              account any time to sync across devices.
+            </p>
           </div>
         )}
       </div>

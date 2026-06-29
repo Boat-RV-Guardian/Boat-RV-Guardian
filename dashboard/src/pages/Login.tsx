@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult } from '../services/firebase';
+import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult } from '../services/firebase';
+import { getAdditionalUserInfo, type UserCredential } from 'firebase/auth';
 import { open } from '@tauri-apps/plugin-shell';
 import { start, onUrl, cancel } from '@fabianlars/tauri-plugin-oauth';
 import { Capacitor } from '@capacitor/core';
@@ -11,6 +12,15 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Restore a login error that was set just before a reload (e.g. a bounced Google login that deleted
+  // the auto-created account and triggered the per-user wipe + reload).
+  useEffect(() => {
+    try {
+      const m = sessionStorage.getItem('login_error');
+      if (m) { setError(m); sessionStorage.removeItem('login_error'); }
+    } catch { /* ignore */ }
+  }, []);
 
   // Complete a signInWithRedirect round-trip. When the web popup is blocked we fall back to a
   // full-page redirect; on return Firebase has the result here. signInWithCredential (onAuthStateChanged)
@@ -39,10 +49,33 @@ export default function Login() {
         await createUserWithEmailAndPassword(auth, email, password);
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      const code = err?.code || '';
+      if (isLogin && (code === 'auth/user-not-found' || code === 'auth/invalid-credential')) {
+        setError('No account found for that email. Tap "Need an account? Sign Up" to create one.');
+      } else if (!isLogin && code === 'auth/email-already-in-use') {
+        setError('An account already exists for that email. Switch to Sign In.');
+      } else {
+        setError(err.message || 'Authentication failed');
+      }
     } finally {
       setLoading(false);
     }
+  };
+
+  // Enforce login-vs-signup for federated (Google) sign-in, which otherwise auto-creates an account.
+  // In LOGIN mode, a brand-new Google user means "no account yet" → undo the auto-create and tell them
+  // to sign up. Returns true if the sign-in is accepted. (Signup mode accepts new or existing.)
+  const enforceMode = async (cred: UserCredential): Promise<boolean> => {
+    if (!isLogin) return true;
+    if (getAdditionalUserInfo(cred)?.isNewUser) {
+      const msg = 'No account found for that Google account. Switch to "Sign Up" to create one.';
+      // Persist across the reload that deleting the user triggers (per-user wipe), so the user sees why.
+      try { sessionStorage.setItem('login_error', msg); } catch { /* ignore */ }
+      setError(msg);
+      try { await cred.user.delete(); } catch { await signOut(auth).catch(() => {}); }
+      return false;
+    }
+    return true;
   };
 
   const handleGoogleSignIn = async () => {
@@ -78,7 +111,8 @@ export default function Login() {
               
               if (idToken) {
                 const credential = GoogleAuthProvider.credential(idToken);
-                await signInWithCredential(auth, credential);
+                const cred = await signInWithCredential(auth, credential);
+                await enforceMode(cred);
                 setLoading(false);
                 return;
               } else {
@@ -112,7 +146,8 @@ export default function Login() {
         const result = await FirebaseAuthentication.signInWithGoogle();
         if (result.credential?.idToken) {
           const credential = GoogleAuthProvider.credential(result.credential.idToken);
-          await signInWithCredential(auth, credential);
+          const cred = await signInWithCredential(auth, credential);
+          await enforceMode(cred);
         } else {
           setError('Failed to obtain Google ID Token from Native Auth');
         }
@@ -123,7 +158,8 @@ export default function Login() {
         // full-page redirect there (completed by the getRedirectResult effect above).
         const provider = new GoogleAuthProvider();
         try {
-          await signInWithPopup(auth, provider);
+          const cred = await signInWithPopup(auth, provider);
+          await enforceMode(cred);
           setLoading(false);
         } catch (popupErr: any) {
           const code = popupErr?.code || '';

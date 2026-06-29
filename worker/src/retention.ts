@@ -58,7 +58,7 @@ export const BASIC_TRIAL_DAYS = 30;
  *       `users/{uid}.trialsUsed` (blocks re-adding a removed vehicle / farming across users), AND
  *   (b) the vehicle has never carried a `trialEndsAt` at all — even a long-expired one blocks a
  *       re-trial (blocks farming a fresh trial onto an old vehicle).
- * Pure so it can gate any grant path (auto-grant on vehicle creation, the admin "Start trial" action).
+ * Pure so it can gate any grant path (the user's opt-in "Start free trial", the admin "Start trial" action).
  */
 export function isTrialEligible(
   vid: string,

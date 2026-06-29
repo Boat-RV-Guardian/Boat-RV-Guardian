@@ -114,7 +114,7 @@ export function hasActiveVehicle(): boolean {
 
 // Explicitly create the first/local vehicle (used by the onboarding "Create a local vehicle"
 // action), seeding from any existing root keys, then make it active.
-export function createLocalVehicle(name: string = 'My First Vehicle'): string {
+export function createLocalVehicle(name: string = 'My First Vehicle', type: '' | 'boat' | 'rv' = ''): string {
   const map = getVehiclesMap();
   const id = generateVehicleId();
   const config: Record<string, string> = {};
@@ -123,6 +123,8 @@ export function createLocalVehicle(name: string = 'My First Vehicle'): string {
   }
   config.lt_vessel_name = name;
   localStorage.setItem('lt_vessel_name', name);
+  config.lt_vehicle_type = type;
+  localStorage.setItem('lt_vehicle_type', type);
   if (!config.sh_local_password) {
     config.sh_local_password = generateShellyPassword();
     localStorage.setItem('sh_local_password', config.sh_local_password);

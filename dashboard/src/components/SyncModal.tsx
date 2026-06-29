@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig } from '../utils/configSync';
 import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle } from '../utils/VehicleManager';
-import { getMyRole } from '../utils/sharing';
-import { requestTrial } from '../utils/trial';
+import { getMyRole, ensureOwnerAdmin } from '../utils/sharing';
 import { auth, signOut } from '../services/firebase';
 
 export default function SyncModal() {
@@ -11,6 +10,9 @@ export default function SyncModal() {
   const { activeVehicleConfig, configVid, cloudVehicles, userConfig, updateVehicleConfig } = useCloudConfig(activeVid);
   const [showModal, setShowModal] = useState(false);
   const [hasResolved, setHasResolved] = useState(false);
+  // Surfaces a cloud-write failure to the user instead of swallowing it in the console (Firestore
+  // writes are otherwise fire-and-forget, so a permission/network error was invisible).
+  const [syncError, setSyncError] = useState<string | null>(null);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Adoption (silent pull of the user's cloud vehicles) runs once per login session.
   const adoptedRef = useRef(false);
@@ -32,6 +34,13 @@ export default function SyncModal() {
   useEffect(() => {
     if (!auth.currentUser) adoptedRef.current = false;
   }, [userConfig]);
+
+  // Let other modules (e.g. App's user-registry write) surface a cloud-write failure in the banner.
+  useEffect(() => {
+    const onErr = (e: Event) => { const m = (e as CustomEvent).detail; if (typeof m === 'string') setSyncError(m); };
+    window.addEventListener('cloud_sync_error', onErr);
+    return () => window.removeEventListener('cloud_sync_error', onErr);
+  }, []);
 
   // Stash the current user's role for the active vehicle so device widgets can gate controls.
   // Defaults to 'admin' when the vehicle isn't cloud-shared (single-user / offline).
@@ -55,22 +64,9 @@ export default function SyncModal() {
     if (trialChanged) localStorage.setItem('lt_vehicle_trial_ends', trialEnds);
     if (tierChanged || trialChanged) window.dispatchEvent(new Event('tier_updated'));
 
-    // Auto-grant the one-month free Basic trial for a brand-new vehicle I OWN (open-tasks Task 6).
-    // Conditions: signed in, the vehicle has a cloud doc, I'm its admin (owner), and it has neither a
-    // tier nor any prior trial yet. The server (`POST /api/trial`) enforces the real per-user /
-    // per-vehicle anti-abuse rule and writes tier='basic' + trialEndsAt; the resulting cloud snapshot
-    // flows back through the stash above, so we don't touch tier state here. A per-vehicle "attempted"
-    // flag makes this fire at most once per device (and a grant flips `tier`, so it won't recur).
-    const hasCloudDoc = !!activeVehicleConfig && Object.keys(activeVehicleConfig).length > 0;
-    if (auth.currentUser && hasCloudDoc && role === 'admin' && !tier && !trialEnds) {
-      const attemptedKey = `lt_trial_attempted_${activeVid}`;
-      if (!localStorage.getItem(attemptedKey)) {
-        localStorage.setItem(attemptedKey, '1'); // set first so a re-render can't double-fire
-        requestTrial(activeVid).then((r) => {
-          if (!r.granted) console.debug('[trial] not granted:', r.reason || r.error);
-        });
-      }
-    }
+    // NOTE: the Basic free trial is OPT-IN (owner decision) — a new vehicle defaults to Free and the
+    // user starts the 30-day trial explicitly from the Account portal (requestTrial → POST /api/trial,
+    // which enforces the per-user/per-vehicle anti-abuse rule). We deliberately do NOT auto-grant here.
   }, [activeVehicleConfig, configVid, activeVid]);
 
   // Cloud-vehicle reconciliation — runs app-wide (SyncModal is always mounted), so a login
@@ -156,9 +152,13 @@ export default function SyncModal() {
     const isLocalDefault = isLocalVehicleConfigDefault();
 
     if (!activeVehicleConfig || Object.keys(activeVehicleConfig).length === 0) {
-      // New cloud vehicle: push local config to cloud silently
+      // New cloud vehicle: push local config to cloud, then seed the owner into the `members` map so
+      // the vehicle is attributable (the admin Users tab + role resolution read `members`, not just
+      // `allowedUsers`). Surface any write failure instead of swallowing it.
       if (!isLocalDefault) {
-        updateVehicleConfig(activeVid, getLocalVehicleConfig());
+        updateVehicleConfig(activeVid, getLocalVehicleConfig())
+          .then(() => ensureOwnerAdmin(activeVid))
+          .catch((e: any) => setSyncError(`Cloud sync failed: ${e?.message || e}`));
       }
       setHasResolved(true);
     } else {
@@ -232,7 +232,8 @@ export default function SyncModal() {
         // Only write if the active vehicle hasn't changed since the event — otherwise a switch
         // happened mid-debounce and this would target the wrong record.
         if (getActiveVehicleId() !== vidAtEvent) return;
-        updateVehicleConfig(vidAtEvent, getLocalVehicleConfig());
+        updateVehicleConfig(vidAtEvent, getLocalVehicleConfig())
+          .catch((e: any) => setSyncError(`Cloud sync failed: ${e?.message || e}`));
       }, 2000);
     };
     window.addEventListener('settings_updated', handleSettingsUpdated);
@@ -242,7 +243,16 @@ export default function SyncModal() {
     };
   }, [hasResolved, activeVid]);
 
-  if (!showModal) return null;
+  if (!showModal) {
+    // No conflict modal — but still surface a cloud-sync error if one occurred.
+    if (!syncError) return null;
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, background: '#7f1d1d', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', boxShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
+        <span style={{ flex: 1 }}>⚠️ {syncError}</span>
+        <button onClick={() => setSyncError(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Dismiss</button>
+      </div>
+    );
+  }
 
   // Keep this device's local settings and stop syncing by signing out — the cloud copy is left
   // untouched (we do NOT overwrite it). The local profile stays exactly as-is.

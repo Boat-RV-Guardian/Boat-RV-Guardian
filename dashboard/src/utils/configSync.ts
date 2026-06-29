@@ -63,6 +63,7 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
   lt_shore_high_v: '126',
   lt_shore_crit_high_v: '132',
   lt_vessel_name: 'New Vehicle',
+  lt_vehicle_type: '',   // 'boat' | 'rv' (chosen at creation; '' = unspecified/legacy)
   sh_local_password: '', // per-vehicle Shelly local device password (auto-generated on create)
   sh_webhook_url: '',    // per-vehicle custom cloud worker URL (blank ⇒ DEFAULT_WORKER_URL)
   sh_webhook_user: '',   // username for a self-hosted cloud server (issued by its admin page; Task 7)

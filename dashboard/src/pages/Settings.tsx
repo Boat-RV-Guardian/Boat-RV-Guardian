@@ -9,6 +9,8 @@ import { useLinkTapDiscovery } from '../hooks/useLinkTapDiscovery';
 import { deviceLocalHost, findVoltmeterId } from '../utils/shellyDevice';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
+import DeleteAccountButton from '../components/DeleteAccountButton';
+import { auth } from '../services/firebase';
 import LocalServerPanel from './settings/LocalServerPanel';
 import VehiclesPanel from './settings/VehiclesPanel';
 import AccountPanel from './settings/AccountPanel';
@@ -692,7 +694,18 @@ export default function Settings({ user }: { user: any }) {
           </button>
           {Object.keys(vehiclesMap).length <= 1 && (
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '8px' }}>
-              You cannot delete your only vehicle. Add another vehicle first.
+              You cannot delete your only vehicle. To remove everything, delete your account below.
+            </div>
+          )}
+          {auth.currentUser?.uid && (
+            <div style={{ borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '14px', marginTop: '16px' }}>
+              <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginBottom: '8px' }}>
+                Permanently delete my account{Object.keys(vehiclesMap).length <= 1 ? ' and my last vehicle' : ' and all my vehicles'}.
+              </div>
+              <DeleteAccountButton
+                uid={auth.currentUser.uid}
+                intro="This permanently deletes your account, the vehicles you solely own (including this one), and removes you from any shared vehicles."
+              />
             </div>
           )}
         </div>
