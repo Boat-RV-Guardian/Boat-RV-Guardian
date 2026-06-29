@@ -182,6 +182,56 @@ vehicle/user added. Live at `brvg-tools.sc4tech.com`.
 3. Pending from before: brvg-admin-site Operators-tab SA secrets (for Auth-account deletion); Tauri signing
    cert; Stripe; branch protection.
 
+## Session handoff — 2026-06-29 (late) — IA redesign + Firestore rules DEPLOYED + account/sync bug fixes
+
+Big session, all merged to `main`, every PR gate-green (dashboard tsc + **250 tests** + build; worker
+74→79 tests + wrangler dry-run). **No version bump/tag cut** — unreleased app changes sit on `main`.
+Theme: shipped the Task 16 UI/IA redesign end-to-end, **deployed the Firestore rules** (the long-standing
+#1 blocker), and fixed a cluster of account/sync bugs found in native testing.
+
+**Task 16 IA redesign — DONE (PRs #24–#28, #30):** the flat 6-tab nav is replaced by a **global bar**
+(persistent vehicle switcher + account button) over **4 primary destinations: Overview / Systems / Alerts
+/ Settings** (bottom tab bar on mobile ≤640px). The 4 sensor/valve tabs collapsed into **Systems** with
+Water/Power/Flood sections — **the valve is now a PEER sensor under Water** (owner corrected the earlier
+"valve is least-used, don't give it real estate" framing → "treat like any other sensor"; the safety model
+is unchanged). The valve widget stays always-mounted so the Flooding Sentry keeps running. **Alerts v1** =
+merged per-device event timeline + current-issues banner. **Account** is now the identity/mode home
+(sign-out + Cloud/Local mode + switch-to-cloud). Design doc: [docs/UI_IA_PROPOSAL.md](docs/UI_IA_PROPOSAL.md).
+Still deferred (refactor-risky, needs a click-through): relocating the notification toggles + SMS prefs
+into Alerts, which depends on the `useSettingsState` extraction (Task 3).
+
+**Firestore rules DEPLOYED 2026-06-29** (see BLOCKING ACTIONS #1 above) — release `cloud.firestore` →
+ruleset `8d3070c2…`. **Confirmed working: admin-portal delete of users/vehicles now succeeds.** Deploy
+method when `firebase-tools` fails its serviceusage precheck: the Firebase Rules REST API + the Admin SDK
+SA key (the SA has `firebaserules.rulesets.create` + `releases.update`, not `serviceusage.services.get`).
+
+**Account/sync bug fixes (found in native testing, all merged):**
+- **#32 — delete-account no longer orphans:** `executeAccountDeletion` deleted the Auth login even when the
+  Firestore deletes failed → data orphaned behind a dead account. Now the Auth account is deleted LAST and
+  ONLY if all data cleanup succeeded; otherwise it aborts and keeps you signed in to retry.
+- **#33 — cross-account boat leak:** `applyUserScope` cleared stale localStorage but on a FIRST sign-in
+  returned `wiped:false` (no reload), so cleared boats stayed rendered. Now it reloads whenever it actually
+  wiped data.
+- **#34 — admin deletes didn't stick (resurrection):** on login, `SyncModal` pushed the stale LOCAL config
+  back to the cloud when the cloud doc was gone — re-creating admin-deleted vehicles. Now it only pushes a
+  vehicle **created this session** (VehicleManager tracks session-created ids), and a new
+  **cloud-authoritative prune** drops local vehicles the loaded cloud snapshot no longer lists.
+- **#31 — worker SMS wiring** (merged + DEPLOYED): `dispatchSmsForEvent` is wired into the alert path via
+  `noopSmsSender` (behavior-neutral; only a Twilio provider remains).
+
+**⚠️ Known gap (owner action): a deleted account can still LOG IN** — the admin portal deletes the
+Firestore docs but NOT the Firebase Auth account. Deleting the Auth account needs the **brvg-admin-site
+Operators-tab SA secrets** (`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`). Until then a "deleted" user
+signs in and lands on onboarding (no boats; it no longer resurrects them).
+
+**⚠️ Native-verify queue (consumer app, `npm run tauri dev`, throwaway accounts):** delete-account
+(no orphan), account-switch / new-user login (no prior-account boats), admin-delete then re-login (stays
+gone), new-vehicle creation (persists). Also the whole new nav shell.
+
+**Data state (checked live 2026-06-29):** 3 vehicles — `MVP` (jgearinger@gmail.com), `sc4 veh 2` +
+`Sc4 boat 1` (jgearinger@sc4tech.com); 2 users (same). The sc4tech boats were resurrected before #34;
+re-deleting them in the admin portal will now stick.
+
 ## Consolidated Firestore rules (publish in the Firebase console)
 
 Merge into the project rules (preserve any existing `users` rule):
