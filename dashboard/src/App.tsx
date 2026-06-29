@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import Home from './pages/Home';
-import Dashboard from './pages/Dashboard';
-import Sensors from './pages/Sensors';
+import Systems from './pages/Systems';
+import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
 import Account from './pages/Account';
 import { usePushNotifications } from './hooks/usePushNotifications';
@@ -15,23 +15,21 @@ import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
 import { migrateAllVehiclesThresholds } from './utils/configSync';
 import { applyUserScope, enterLocalMode, exitLocalMode, isLocalMode } from './utils/userScope';
-
-type AppView = 'home' | 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'settings' | 'account';
+import { parseViewTarget, sectionForCategory, type AppView, type SystemsSection } from './utils/navTargets';
 
 export default function App() {
   usePushNotifications();
   useSensorBridge(); // app-level: handle sleepy-sensor local webhooks regardless of active page
   // Deep link (web): app.boatrvguardian.com/?view=account lands on the subscription portal. The
   // native app's Plan "Upgrade/Manage" button opens that URL in the system browser.
-  const [currentView, setCurrentView] = useState<AppView>(() => {
-    try {
-      const v = new URLSearchParams(window.location.search).get('view');
-      if (v && ['home', 'fresh_water', 'high_water', 'batteries', 'shore_power', 'settings', 'account'].includes(v)) {
-        return v as AppView;
-      }
-    } catch { /* no-op */ }
-    return 'home';
-  });
+  const initialTarget = (() => {
+    try { return parseViewTarget(new URLSearchParams(window.location.search).get('view')); }
+    catch { return null; }
+  })();
+  const [currentView, setCurrentView] = useState<AppView>(initialTarget?.view ?? 'overview');
+  const [systemsSection, setSystemsSection] = useState<SystemsSection>(initialTarget?.section ?? 'water');
+  // Navigate to a destination (view + optional Systems section) from one place.
+  const goTo = (view: AppView, section?: SystemsSection) => { if (section) setSystemsSection(section); setCurrentView(view); };
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   // Onboarding gate: with no vehicle the app is locked until the user signs in (cloud vehicles
@@ -54,7 +52,12 @@ export default function App() {
 
   // In-app navigation requests (e.g. the Plan badge's "Upgrade" button → Account view).
   useEffect(() => {
-    const go = (e: Event) => { const v = (e as CustomEvent).detail; if (typeof v === 'string') setCurrentView(v as AppView); };
+    const go = (e: Event) => {
+      const v = (e as CustomEvent).detail;
+      if (typeof v !== 'string') return;
+      const t = parseViewTarget(v);
+      if (t) goTo(t.view, t.section);
+    };
     window.addEventListener('navigate_view', go);
     return () => window.removeEventListener('navigate_view', go);
   }, []);
@@ -159,58 +162,30 @@ export default function App() {
         <GlobalBar onOpenAccount={() => setCurrentView('account')} />
       </header>
       <nav style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px', padding: '15px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, zIndex: 10 }}>
-        <button 
-          className={currentView === 'home' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('home')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-        >
-          📊 Dashboard
-        </button>
-        <button 
-          className={currentView === 'fresh_water' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('fresh_water')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-        >
-          Fresh Water
-        </button>
-        <button 
-          className={currentView === 'high_water' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('high_water')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-        >
-          High Water/Flood
-        </button>
-        <button 
-          className={currentView === 'batteries' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('batteries')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-        >
-          Batteries
-        </button>
-        <button 
-          className={currentView === 'shore_power' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('shore_power')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-        >
-          Shore Power
-        </button>
-        <button 
-          className={currentView === 'settings' ? 'btn-primary' : 'btn-secondary'} 
-          onClick={() => setCurrentView('settings')}
-          style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none', marginLeft: 'auto' }}
-        >
-          ⚙️ Settings
-        </button>
+        {([
+          { v: 'overview', label: '📊 Overview' },
+          { v: 'systems', label: '🛰 Systems' },
+          { v: 'alerts', label: '🔔 Alerts' },
+          { v: 'settings', label: '⚙️ Settings' },
+        ] as { v: AppView; label: string }[]).map((tab) => (
+          <button
+            key={tab.v}
+            className={currentView === tab.v ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => setCurrentView(tab.v)}
+            style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </nav>
 
       <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-        {currentView === 'home' && <Home onNavigate={setCurrentView} />}
-        <div style={{ display: currentView === 'fresh_water' ? 'block' : 'none', height: '100%' }}>
-          <Dashboard />
+        {currentView === 'overview' && <Home onNavigate={(cat) => goTo('systems', sectionForCategory(cat))} />}
+        {/* Systems stays mounted (display:none when inactive) so the valve's Flooding Sentry keeps running. */}
+        <div style={{ display: currentView === 'systems' ? 'block' : 'none', height: '100%' }}>
+          <Systems active={currentView === 'systems'} section={systemsSection} onSection={setSystemsSection} />
         </div>
-        {currentView === 'high_water' && <Sensors category="flood" />}
-        {currentView === 'batteries' && <Sensors category="batteries" />}
-        {currentView === 'shore_power' && <Sensors category="shore_power" />}
+        {currentView === 'alerts' && <Alerts />}
         {currentView === 'settings' && <Settings user={user} />}
         {currentView === 'account' && <Account user={user} />}
       </div>
