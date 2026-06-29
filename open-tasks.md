@@ -740,10 +740,30 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
         *data*. Configuration sync itself is Firestore-only ([hooks/useCloudConfig.ts](dashboard/src/hooks/useCloudConfig.ts)
         `onSnapshot`/`setDoc`; SyncModal → `applyCloudVehicleConfig`) — no `fetch()` carries config to any
         custom server. Documented the invariant at the sync entry point so it can't silently regress.
-- [ ] **Verify/fix cloud sync of newly-created vehicles in native dev** (open from this session): a boat
+- [~] **Verify/fix cloud sync of newly-created vehicles in native dev** (open from this session): a boat
       created in the native app may not be writing to Firestore. Confirm via the admin Vehicles tab;
       if missing, capture the exact Firestore write error (in-app error surface) and fix. Distinct from
-      the members-map gap below.
+      the members-map gap below. **Hardened 2026-06-29 (PR #34):** new vehicles are now tracked as
+      `markSessionCreated` so SyncModal reliably pushes them (and the new cloud-authoritative prune won't
+      drop an in-flight new vehicle). ⚠️ Still native-verify that a freshly-created boat appears in the
+      admin Vehicles tab.
+
+## ⚠️ Account/sync bugs found in native testing 2026-06-29 — FIXED (native-verify pending)
+
+All three were found by the owner running the native app; merged to `main`, gate-green, but not yet
+native-verified. See the CLAUDE.md "Session handoff — 2026-06-29 (late)" for the full writeup.
+- [~] **Delete-account orphaned data (#32):** Auth login was deleted even when the Firestore deletes
+      failed → boats + user doc left behind a dead account. Fixed: Auth deleted LAST, only if data
+      cleanup fully succeeded; else abort + stay signed in to retry.
+- [~] **Cross-account boat leak (#33):** a new-user login showed a previous account's boats.
+      `applyUserScope` now reloads whenever it actually wiped data (was `wiped:false` on first sign-in).
+- [~] **Admin deletes didn't stick / resurrection (#34):** logging in re-pushed stale local config,
+      re-creating admin-deleted vehicles. Fixed: only push session-created vehicles + cloud-authoritative
+      prune of stale local entries.
+- [ ] **Deleted account can still LOG IN (owner-gated):** admin delete removes the Firestore docs but not
+      the Firebase Auth account — needs the brvg-admin-site Operators-tab SA secrets
+      (`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`). Until set, a "deleted" user signs in to onboarding
+      (no boats; no longer resurrects them).
 
 ## 16. Interface / layout rethink (requested 2026-06-28)
 
