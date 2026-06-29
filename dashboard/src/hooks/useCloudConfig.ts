@@ -26,6 +26,10 @@ export function useCloudConfig(activeVid: string | null) {
   // never compares one vehicle's cloud data against another vehicle's local config.
   const [configVid, setConfigVid] = useState<string | null>(null);
   const [cloudVehicles, setCloudVehicles] = useState<Record<string, any>[]>([]);
+  // True once the vehicles query has returned a real snapshot (even an empty one). Lets SyncModal tell
+  // "the cloud genuinely lists 0 vehicles for me" (safe to prune stale local) from "haven't loaded yet"
+  // (the initial empty array) — so we never prune against a not-yet-loaded list.
+  const [cloudVehiclesLoaded, setCloudVehiclesLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Subscribe to user document and accessible vehicles
@@ -47,6 +51,7 @@ export function useCloudConfig(activeVid: string | null) {
         setUserConfig(null);
         setActiveVehicleConfig(null);
         setCloudVehicles([]);
+        setCloudVehiclesLoaded(false); // signed out → the cloud list is unknown again (don't prune)
         setLoading(false);
         return;
       }
@@ -67,6 +72,7 @@ export function useCloudConfig(activeVid: string | null) {
           vehicles.push({ id: doc.id, ...doc.data() });
         });
         setCloudVehicles(vehicles);
+        setCloudVehiclesLoaded(true); // a real snapshot arrived (possibly empty) — cloud list is known
         setLoading(false);
       });
     });
@@ -148,5 +154,5 @@ export function useCloudConfig(activeVid: string | null) {
     await deleteDoc(doc(db, 'vehicles', vid));
   };
 
-  return { userConfig, activeVehicleConfig, configVid, cloudVehicles, updateUserConfig, updateVehicleConfig, deleteVehicleConfig, hardDeleteVehicleConfig, loading };
+  return { userConfig, activeVehicleConfig, configVid, cloudVehicles, cloudVehiclesLoaded, updateUserConfig, updateVehicleConfig, deleteVehicleConfig, hardDeleteVehicleConfig, loading };
 }

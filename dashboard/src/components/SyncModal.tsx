@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig, cloudConfigDiffers } from '../utils/configSync';
-import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle } from '../utils/VehicleManager';
+import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle, wasCreatedThisSession, getSessionCreatedIds } from '../utils/VehicleManager';
+import { vehiclesToPrune } from '../utils/vehiclePrune';
 import { getMyRole, ensureOwnerAdmin } from '../utils/sharing';
 import { auth } from '../services/firebase';
 
 export default function SyncModal() {
   const [activeVid, setActiveVid] = useState(getActiveVehicleId());
-  const { activeVehicleConfig, configVid, cloudVehicles, userConfig, updateVehicleConfig } = useCloudConfig(activeVid);
+  const { activeVehicleConfig, configVid, cloudVehicles, cloudVehiclesLoaded, userConfig, updateVehicleConfig } = useCloudConfig(activeVid);
   const [hasResolved, setHasResolved] = useState(false);
   // Surfaces a cloud-write failure to the user instead of swallowing it in the console (Firestore
   // writes are otherwise fire-and-forget, so a permission/network error was invisible).
@@ -137,6 +138,35 @@ export default function SyncModal() {
     }
   }, [cloudVehicles, userConfig]);
 
+  // Cloud-authoritative prune: once the cloud vehicle snapshot has LOADED, drop any local vehicle the
+  // cloud no longer lists (deleted by an admin / another device), so it can't keep showing — or get
+  // resurrected. Protects vehicles created THIS session (maybe unpushed) + tombstoned ids. Runs even
+  // when the cloud lists zero (a fully-deleted user). If the active vehicle is pruned, switch to a
+  // remaining one (or clear → onboarding).
+  useEffect(() => {
+    if (!auth.currentUser || localStorage.getItem('lt_sync_cloud') === 'false') return;
+    if (!cloudVehiclesLoaded) return; // never prune against a not-yet-loaded list
+
+    const cloudIds = new Set((cloudVehicles || []).map((cv) => cv.id));
+    const map = getVehiclesMap();
+    const prune = vehiclesToPrune(Object.keys(map), cloudIds, getSessionCreatedIds(), getDeletedVehicleIds());
+    if (prune.length === 0) return;
+
+    for (const id of prune) delete map[id];
+    saveVehiclesMap(map);
+
+    (window as any).__is_syncing_cloud = true;
+    const active = getActiveVehicleId();
+    if (!map[active]) {
+      const next = Object.keys(map)[0] || '';
+      if (next) switchVehicle(next); // loads a surviving vehicle (fires settings_updated)
+      else { localStorage.removeItem('lt_active_vehicle_id'); window.dispatchEvent(new Event('settings_updated')); }
+    } else {
+      window.dispatchEvent(new Event('settings_updated'));
+    }
+    (window as any).__is_syncing_cloud = false;
+  }, [cloudVehicles, cloudVehiclesLoaded]);
+
   useEffect(() => {
     if (!auth.currentUser || hasResolved) return;
     // Critical: only act once the cloud snapshot we're holding actually belongs to the
@@ -151,10 +181,12 @@ export default function SyncModal() {
     const isLocalDefault = isLocalVehicleConfigDefault();
 
     if (!activeVehicleConfig || Object.keys(activeVehicleConfig).length === 0) {
-      // New cloud vehicle: push local config to cloud, then seed the owner into the `members` map so
-      // the vehicle is attributable (the admin Users tab + role resolution read `members`, not just
-      // `allowedUsers`). Surface any write failure instead of swallowing it.
-      if (!isLocalDefault) {
+      // The cloud doc doesn't exist. Push local config to cloud ONLY for a vehicle CREATED THIS SESSION
+      // (a genuinely new vehicle being set up) — then seed the owner into `members` (the admin Users tab
+      // + role resolution read `members`, not just `allowedUsers`). For a STALE local vehicle whose cloud
+      // doc is gone (deleted by an admin / another device), do NOT push — that would RESURRECT a deleted
+      // vehicle. The prune effect below removes it from the local list instead.
+      if (!isLocalDefault && wasCreatedThisSession(activeVid)) {
         updateVehicleConfig(activeVid, getLocalVehicleConfig())
           .then(() => ensureOwnerAdmin(activeVid))
           .catch((e: any) => setSyncError(`Cloud sync failed: ${e?.message || e}`));
