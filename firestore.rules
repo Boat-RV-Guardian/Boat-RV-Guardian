@@ -31,7 +31,7 @@ service cloud.firestore {
                     // Operators may set tier/trial AND remove a member (members/allowedUsers) — the
                     // latter backs the admin console's "delete user" (drop them from shared vehicles).
                     || (isAdmin()
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers']));
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers', 'owner']));
       // Operators may delete any vehicle (admin console). A SOLE owner may delete their own vehicle —
       // this is what lets the consumer account-deletion hard-delete the boats you solely own.
       allow delete: if isAdmin()

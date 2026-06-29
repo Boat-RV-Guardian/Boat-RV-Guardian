@@ -729,6 +729,34 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 than continuing to bolt panels on. Produce a proposed layout/IA before refactoring. Ties into Task 15
 (onboarding) and Task 3 (component structure already extracted, so the render layer is movable).
 
+## 17. Vehicle ownership & type (2026-06-29)
+
+- [x] **Boat/RV type per vehicle.** `lt_vehicle_type` ('boat'|'rv') synced per-vehicle. Asked during
+      BOTH first-run ([CreateVehicleForm](dashboard/src/components/CreateVehicleForm.tsx)) and the
+      Settings → "+ New" modal; changeable via Settings → Vehicles → "Change". (`addNewVehicle(name,type)`.)
+- [x] **Owner field (above Full Admin).** Vehicle doc gets a single `owner` uid; creator becomes owner
+      (`ensureOwnerAdmin` backfills). Pure `getOwner`/`isOwner` ([utils/sharing.ts](dashboard/src/utils/sharing.ts), tested).
+      Owner shown with 👑 in Settings → Friends → People With Access.
+- [x] **Transfer ownership.** Owner-only "Make owner" button per member (Friends tab) → `transferOwnership`
+      (new owner becomes Full Admin; works under existing member-update rules).
+- [x] **Transfer-or-delete on account deletion.** `classifyForDeletion` (tested) splits solo-owned (delete)
+      / owned-shared (CHOOSE: transfer to a member or delete) / shared-not-owned (leave). The
+      [DeleteAccountButton](dashboard/src/components/DeleteAccountButton.tsx) prompts per owned-shared vehicle.
+- [x] **In-app vehicle delete no longer orphans the cloud doc.** "Delete this Vehicle" now HARD-deletes a
+      sole-owned vehicle's cloud doc (was only removing self from `allowedUsers` → orphan lingering in the
+      admin portal). Shared vehicles still "leave". Needs the delete rule deployed (below).
+
+## ⚠️⚠️ PENDING OWNER ACTION — deploy Firestore rules (blocks ALL delete features)
+
+Every delete/cleanup path is rejected by the LIVE rules until this runs:
+```
+cd /Users/jgearinger/projects/Boat-RV-Guardian && npx firebase-tools deploy --only firestore:rules
+```
+The committed `firestore.rules` adds: read a non-existent vehicle doc (`resource==null`, the
+new-vehicle SYNC FIX), `vehicles` delete for operators + sole owners, `users` delete for operators,
+operator update of members/allowedUsers/owner. Until deployed: admin Delete buttons, in-app
+vehicle delete (orphan fix), and account-deletion's vehicle hard-delete all silently fail.
+
 ## Follow-ups (small)
 
 - [ ] **SyncModal conflict modal is legacy under no-hybrid / cloud-source-of-truth.** The first-login

@@ -142,6 +142,44 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-06-29, account model + ownership + delete fixes → v1.0.46
+
+Big session, all merged to `main`, gates green (dashboard tsc + **195 tests** + build), **v1.0.46 tagged**
+(release.yml builds Mac/Win/signed-APK/web). Theme: reworked the account/data model and fixed the
+"nothing syncs / nothing deletes" issues found in native testing.
+
+**Shipped (consumer app — released):**
+- **Default tier → Free** (was grandfathered Premium); **Basic trial is now OPT-IN** (button in Account),
+  not auto-granted.
+- **Per-user data isolation** ([utils/userScope.ts](dashboard/src/utils/userScope.ts)): localStorage is
+  stamped with the owning uid; identity change wipes the prior user's vehicles + secrets (fixed a real
+  cross-account credential bleed). **Local-only mode** (no account, never syncs) added to the login screen.
+- **Config sync model decided**: hosted-cloud-only; self-host = per-device config; **no hybrid accounts**
+  (see the section above). **User registry**: every login writes `users/{uid}`; admin Users tab reads it.
+- **Onboarding**: first vehicle is a name + Boat/RV form; Settings "+ New" also asks type; "Change" button.
+- **Login**: Sign In vs Sign Up separated — non-existent accounts (incl. Google `isNewUser`) are rejected in login mode.
+- **Vehicle ownership**: `owner` field (above Full Admin), 👑 in Friends, **transfer ownership**, and a
+  **transfer-or-delete prompt** when deleting an account that owns a shared vehicle.
+- **THE SYNC FIX**: a brand-new vehicle's doc doesn't exist, and the rules DENIED reading a non-existent
+  doc → the active-vehicle `onSnapshot` (no error handler) silently died → the create path never ran, so
+  new vehicles never reached Firestore. Fixed client-side (error handler in
+  [useCloudConfig.ts](dashboard/src/hooks/useCloudConfig.ts)) AND in rules (`resource==null` read).
+- **Delete fixes**: in-app "Delete this Vehicle" now HARD-deletes a sole-owned cloud doc (was orphaning
+  it); admin console can delete a vehicle/user (confirm-gated, brvg-admin-site, deployed).
+
+**Admin site (brvg-admin-site): deployed** — Users tab reads the `/users` registry; Delete buttons for
+vehicle/user added. Live at `brvg-tools.sc4tech.com`.
+
+**⚠️ BLOCKING OWNER ACTIONS (next session / when back):**
+1. **DEPLOY FIRESTORE RULES** — `npx firebase-tools deploy --only firestore:rules` (from this repo). The
+   live rules still block ALL deletes + would still deny new-vehicle reads on a fresh client. The client
+   sync fix works against current rules, but the delete features (admin + in-app + account) DO NOT until
+   this runs. **This is the #1 thing.** (Classifier blocks the agent from running prod deploys.)
+2. **Native-verify** the big behavior changes with a throwaway account: new-vehicle sync (does it appear in
+   admin Vehicles?), account deletion + transfer, local-only mode, login/signup rejection.
+3. Pending from before: brvg-admin-site Operators-tab SA secrets (for Auth-account deletion); Tauri signing
+   cert; Stripe; branch protection.
+
 ## Consolidated Firestore rules (publish in the Firebase console)
 
 Merge into the project rules (preserve any existing `users` rule):
@@ -177,7 +215,7 @@ service cloud.firestore {
       allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
                     || isValidClaim(vid)
                     || (isAdmin()
-                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers']));
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tier', 'trialEndsAt', 'members', 'allowedUsers', 'owner']));
       allow delete: if isAdmin()
                     || (request.auth != null
                         && request.auth.uid in resource.data.allowedUsers
