@@ -43,6 +43,18 @@ describe('applyUserScope', () => {
     expect(localStorage.getItem(DATA_OWNER_KEY)).toBe('userA');
   });
 
+  it('first sign-in on a device carrying UNSTAMPED stale data wipes it AND signals a reload (boat-leak fix)', () => {
+    // No owner stamp (legacy/leaked data, or a prior session that did not reload), and the device
+    // still has another account's vehicles. A new user signing in must both clear it AND reload, or
+    // the cleared-from-storage boats stay rendered (esp. when the new user has no cloud vehicles).
+    seedVehicleData(); // lt_vehicles + secrets, but NO DATA_OWNER_KEY
+    const r = applyUserScope('newUser', localStorage);
+    expect(r.wiped).toBe(true);
+    expect(localStorage.getItem('lt_vehicles')).toBeNull();
+    expect(localStorage.getItem('lt_cloud_key')).toBeNull();
+    expect(localStorage.getItem(DATA_OWNER_KEY)).toBe('newUser');
+  });
+
   it('same-user restore is a no-op — offline cache survives', () => {
     seedVehicleData();
     localStorage.setItem(DATA_OWNER_KEY, 'userA');
