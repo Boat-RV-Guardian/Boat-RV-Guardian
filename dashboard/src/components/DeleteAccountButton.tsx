@@ -87,10 +87,14 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
         deleteAuthUser: () => (auth.currentUser ? deleteUser(auth.currentUser) : Promise.resolve()),
         signOut: () => signOut(auth),
         clearLocal: () => { try { localStorage.clear(); } catch { /* ignore */ } },
-      });
-      const allErrors = [...errors, ...res.errors];
-      if (allErrors.length) {
-        setDeleteMsg(`Done with issues: ${allErrors[0]}. You may need to sign in again and retry.`);
+      }, errors); // fold ownership-transfer failures in so they also block the irreversible Auth delete
+      if (res.errors.length) {
+        // Data cleanup failed → the Auth account was deliberately NOT deleted (you're still signed in),
+        // so nothing is orphaned. Surface the cause and let the user retry.
+        const msg = res.authDeleted
+          ? `Your data was deleted, but finishing account removal needs a recent sign-in. Please sign in again and retry. (${res.errors[0]})`
+          : `Couldn't fully delete your data, so your account was NOT removed — you're still signed in. Please retry. (${res.errors[0]})`;
+        setDeleteMsg(msg);
         setDeleteBusy(false);
       } else {
         window.location.reload();
