@@ -3,6 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2024-03-20"
 compatibility_flags = ["nodejs_compat"]
 
+# User-facing API hostname (Task 11). A Workers Custom Domain — Cloudflare manages the DNS + cert.
+# Additive: the *.workers.dev route stays live, and DEFAULT_WORKER_URL is NOT flipped here (that, plus
+# re-registering Shelly webhooks against the new URL, is the hardware-gated cutover step).
+routes = [
+  { pattern = "api.boatrvguardian.com", custom_domain = true },
+]
+
 # Daily tier-maintenance sweep (open-tasks Task 6): expire lapsed Basic trials → free and prune hosted
 # history past each vehicle's tier window. 04:12 UTC — off the hour to dodge cron contention.
 [triggers]
