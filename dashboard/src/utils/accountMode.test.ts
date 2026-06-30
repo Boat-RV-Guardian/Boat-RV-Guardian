@@ -27,9 +27,10 @@ describe('cloudSwitchDiscardNote', () => {
     expect(note).not.toMatch(/1 vehicles/);
   });
 
-  it('pluralizes and warns that local data is not uploaded', () => {
+  it('pluralizes and distinguishes the rebuild (discard) option from the migrate (keep) option', () => {
     const note = cloudSwitchDiscardNote(3);
     expect(note).toMatch(/\b3 vehicles\b/);
-    expect(note).toMatch(/not uploaded automatically/i);
+    expect(note).toMatch(/discards/i);
+    expect(note).toMatch(/migrate my vehicles to the cloud/i);
   });
 });
