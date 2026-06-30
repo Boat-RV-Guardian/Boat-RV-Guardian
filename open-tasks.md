@@ -465,8 +465,11 @@ Tasks:
       owner runs `firebase deploy --only firestore:rules`). **Remaining:** deleting the **Firebase Auth
       account** itself needs the privileged backend (Identity Toolkit + the pending Pages Function SA
       secrets) — until then a deleted user could sign in again and re-create a `users/{uid}` doc.
-- [ ] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
-      queryable). Needs the worker to persist send results. Low priority.
+- [x] **Still server-backed-only:** FCM/SMS send-success status (send logs aren't stored anywhere
+      queryable). Needs the worker to persist send results. Low priority. **Implemented in
+      [Boat-RV-Guardian#42](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/42)** — worker
+      writes a `lastSend` field to `sensorState/{device}`; still pending owner merge (`worker/**`
+      auto-deploys to prod on push to `main`).
 - [x] **RELOCATED to its own repo + domain — LIVE 2026-06-28.** The console moved OFF the consumer
       brand domain into a dedicated repo **[Boat-RV-Guardian/brvg-admin-site](https://github.com/Boat-RV-Guardian/brvg-admin-site)**,
       deployed as its own Cloudflare Pages project at **https://brvg-tools.sc4tech.com** (obfuscation/

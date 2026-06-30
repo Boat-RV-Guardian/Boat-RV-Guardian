@@ -2,7 +2,7 @@ import { SignJWT, importPKCS8, jwtVerify, importX509, decodeProtectedHeader } fr
 import {
   isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
-  healthBody, smsEventKey,
+  healthBody, smsEventKey, buildLastSendField,
 } from './events';
 import { dispatchSmsForEvent, smsSenderFromEnv, parseSmsPrefs } from './sms';
 import {
@@ -620,6 +620,19 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
       );
       smsAttempted = r.attempted; smsSent = r.sent;
     }
+  }
+
+  // Persist the FCM/SMS send-success status durably (open-tasks.md §6) so "why didn't I get
+  // notified" is queryable after the fact, not just visible in this HTTP response. Alert events
+  // only (telemetry never dispatches FCM/SMS above, so there's nothing to record). A masked PATCH
+  // merges just `lastSend` onto the sensorState doc already written above — it can't clobber, or be
+  // clobbered by, the `event`/`at`/extras write (early in this function) or a later telemetry write.
+  if (!telemetry) {
+    await patchFirestoreFields(
+      env, token, `vehicles/${vid}/sensorState/${device}`,
+      { lastSend: buildLastSendField({ event, at: now, fcmSent: sent, fcmFailed: pushFailed, smsAttempted, smsSent }) },
+      ['lastSend'],
+    );
   }
 
   return new Response(JSON.stringify({ status: 'ok', notified: sent, pushFailed, event, telemetry, persisted, shutoff, sms: { attempted: smsAttempted, sent: smsSent } }), {
