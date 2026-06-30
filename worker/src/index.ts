@@ -4,7 +4,7 @@ import {
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
   healthBody, smsEventKey,
 } from './events';
-import { dispatchSmsForEvent, noopSmsSender, parseSmsPrefs } from './sms';
+import { dispatchSmsForEvent, smsSenderFromEnv, parseSmsPrefs } from './sms';
 import {
   Cached, isCacheFresh, tokenValid, tokenExpiryMs,
   LastWrite, sensorStateSignature, shouldWriteTelemetry,
@@ -19,6 +19,10 @@ export interface Env {
   FIREBASE_PROJECT_ID: string;
   FIREBASE_CLIENT_EMAIL: string;
   FIREBASE_PRIVATE_KEY: string;
+  // Optional Twilio secrets — when all three are set, the alert path sends live SMS (else noop).
+  TWILIO_ACCOUNT_SID?: string;
+  TWILIO_AUTH_TOKEN?: string;
+  TWILIO_FROM?: string;
 }
 
 // — In-isolate caches (open-tasks Task 8 cost levers) —
@@ -599,17 +603,16 @@ async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
     }
   }
 
-  // SMS/voice escalation (Premium, per-event opt-in — Task 6/14). Behavior-neutral today: the default
-  // noopSmsSender sends nothing (no provider wired), so this only fans out + reports counts. When a
-  // real provider (Twilio) is dropped in, this path delivers without further wiring. Only real alerts
-  // (not telemetry) whose event maps to an opt-in key, and only for Premium vehicles with that key
-  // opted in (enforced by dispatchSmsForEvent → smsRecipientsForEvent).
+  // SMS/voice escalation (Premium, per-event opt-in — Task 6/14). Live when the TWILIO_* secrets are
+  // set (smsSenderFromEnv → twilioSmsSender); otherwise the noop sender just fans out + reports counts.
+  // Only real alerts (not telemetry) whose event maps to an opt-in key, and only for Premium vehicles
+  // with that key opted in (enforced by dispatchSmsForEvent → smsRecipientsForEvent).
   let smsAttempted = 0; let smsSent = 0;
   if (!telemetry) {
     const smsKey = smsEventKey(event);
     if (smsKey) {
       const r = await dispatchSmsForEvent(
-        noopSmsSender,
+        smsSenderFromEnv({ accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN, from: env.TWILIO_FROM }),
         strField(vehicle, 'tier'),
         parseSmsPrefs(strField(vehicle, 'sh_sms_prefs')),
         smsKey,

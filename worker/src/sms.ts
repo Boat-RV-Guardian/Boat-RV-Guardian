@@ -74,6 +74,55 @@ export const noopSmsSender: SmsSender = {
   },
 };
 
+/** Twilio REST credentials (worker secrets). All three required for live SMS. */
+export interface TwilioConfig {
+  accountSid?: string;
+  authToken?: string;
+  from?: string; // a Twilio phone number (E.164) OR a Messaging Service SID (MGxxxxxxxx)
+}
+
+/**
+ * Live SMS via Twilio's REST API (Messages resource). Uses HTTP Basic auth (SID:token) and a
+ * form-encoded body. `from` may be a phone number (→ From) or a Messaging Service SID (→
+ * MessagingServiceSid). A non-2xx response is surfaced as `{ok:false, error}` (never throws) so one
+ * bad number can't abort the fan-out. No SDK — a single fetch keeps the worker bundle lean.
+ */
+export function twilioSmsSender(cfg: TwilioConfig): SmsSender {
+  return {
+    async sendSms(to: string, body: string) {
+      const { accountSid, authToken, from } = cfg;
+      if (!accountSid || !authToken || !from) return { ok: false, error: 'twilio not configured' };
+      const params = new URLSearchParams({ To: to, Body: body });
+      if (from.startsWith('MG')) params.set('MessagingServiceSid', from);
+      else params.set('From', from);
+      try {
+        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Basic ' + btoa(`${accountSid}:${authToken}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        });
+        if (!res.ok) return { ok: false, error: `twilio ${res.status}: ${(await res.text()).slice(0, 200)}` };
+        return { ok: true };
+      } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
+      }
+    },
+  };
+}
+
+/**
+ * Pick the SMS sender from the worker env: a real Twilio sender when all three secrets are present,
+ * otherwise the noop sender (behavior-neutral). This is the single seam the alert path calls so wiring
+ * a provider is just setting the secrets — no code change.
+ */
+export function smsSenderFromEnv(env: TwilioConfig): SmsSender {
+  if (env.accountSid && env.authToken && env.from) return twilioSmsSender(env);
+  return noopSmsSender;
+}
+
 /**
  * Fan an event's SMS out to every entitled recipient through `sender`. With the default
  * `noopSmsSender` this attempts but sends nothing (scaffold); with a real provider it sends. Returns
