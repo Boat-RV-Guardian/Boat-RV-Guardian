@@ -182,6 +182,44 @@ vehicle/user added. Live at `brvg-tools.sc4tech.com`.
 3. Pending from before: brvg-admin-site Operators-tab SA secrets (for Auth-account deletion); Tauri signing
    cert; Stripe; branch protection.
 
+## Session handoff — 2026-06-30 — SMS live, api. custom domain, live UI test (read this first)
+
+All merged to `main`, every PR gate-green. No app version bump/tag this session (worker + infra focus).
+Big theme: turned on real integrations + did the first **live in-browser UI test** of the redesign.
+
+**Shipped / DONE:**
+- **SMS is LIVE (Twilio).** Real `twilioSmsSender` + `smsSenderFromEnv` in [worker/src/sms.ts](worker/src/sms.ts)
+  (#37); the three secrets are set on the worker (`TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM`
+  via `wrangler secret put`; creds validated → Twilio API 200). Premium vehicle + opted-in event +
+  Twilio-**verified** destination → real SMS. ⚠️ Owner rotated the Auth Token at end of session — the worker
+  secret must hold the NEW value (`echo <new> | npx wrangler secret put TWILIO_AUTH_TOKEN` in `worker/`).
+  End-to-end delivery not yet test-fired (needs a verified destination cell). Twilio is a **trial** acct
+  (sends only to verified numbers; messages get a trial prefix).
+- **`api.boatrvguardian.com` LIVE** (Task 11, partial) — Workers Custom Domain on the worker, config-managed
+  in `worker/wrangler.toml` `routes` (#38/#39/#40). Verified `/api/health` over HTTPS. The zone is in the
+  **sc4tech CF account `9b75e814c0fc254c910fd1afc3c88028`**. **CI-token gotcha (fixed):** the deploy token
+  `CLOUDFLARE_PAGES_EDIT` (= "Boat-RV-Guardian GitHub Actions - Deploy") needed **Zone → Workers Routes:Edit**
+  added or CI `wrangler deploy` 401s on the route — now granted, CI green. Additive (workers.dev still live).
+- **Mobile-nav bug fixed (#36)** — the bottom tab bar sat below the fold; app shell now `height:100dvh`.
+- **Features-page tier-copy** aligned to the pricing model (website#6) + lockfile restore (#7).
+- **Live UI test (Chrome MCP, signed in as sc4tech)** — clicked the whole redesign shell: Overview /
+  Systems (Water/Power/Flood) / Alerts / Settings, vehicle switcher, account view, display-name edit — all
+  render, no console errors. This is how #36 was found.
+
+**Tooling notes (for next time):** `wrangler` is OAuth-authed to the sc4tech account (zone READ only by
+default → can't edit generic DNS; Workers Custom Domains worked via Workers Routes). Chrome MCP works for
+live UI testing against `npm run dev` (localhost:5173). Computer-use's Chrome access flow was flaky; the
+Chrome MCP (`mcp__Claude_in_Chrome__*`) is the reliable path. **Don't run `npm install` in a repo just to
+edit source** — npm 11 rewrites/shrinks `package-lock.json` and breaks CI `npm ci` (bit the worker + website
+this session; both fixed by restoring the lockfile).
+
+**Still open:** Task 11 cutover (flip `DEFAULT_WORKER_URL` → api. + re-register Shelly webhooks — HARDWARE);
+`app.`/`admin.` Pages custom domains (optional); worker FCM/SMS send-success status (low-pri, multi-repo);
+Task 4 LinkTapWidget→/api/control client wiring (hardware); the `useSettingsState` refactor (attempted +
+reverted — scattered state, high-risk, low value; the notification-panel "move" is deferred); Stripe
+(deferred per owner); native click-through of the account/sync fixes (#32/#33/#34) + delete flows.
+The `useSettingsState` extraction is NOT worth grinding — see open-tasks Task 16 note.
+
 ## Session handoff — 2026-06-29 (late) — IA redesign + Firestore rules DEPLOYED + account/sync bug fixes
 
 Big session, all merged to `main`, every PR gate-green (dashboard tsc + **250 tests** + build; worker
