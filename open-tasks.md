@@ -299,9 +299,10 @@ Tasks:
       for everyone / free and always will be" copy (footer, devices, homepage) to "app + self-host
       free; hosted cloud optional paid." **Awaiting owner review/merge.** Rows mirror `TIER_FEATURES`/
       `TIER_PRICING` — keep in sync; upgrade links use the `UPGRADE_PORTAL_URL` placeholder.
-  - [ ] **Follow-up:** decide whether to tier-qualify capability copy on the homepage/features pages
-        (e.g. "Instant cloud alerts" is a Basic+ feature) — left as-is for now (pricing page is the
-        tier source of truth).
+  - [x] **Follow-up DONE 2026-06-30 (website#6):** tier-qualified the Features page (remote control,
+        away push, cloud auto-shutoff fallback → hosted Basic/Premium; local control + local auto-shutoff
+        free; "self-host every feature free") and fixed the stale "advanced features may become paid down
+        the road" line. Homepage was already qualified in its alerts section.
 - [x] **In-app plan indicator (2026-06-25):** compact `PlanBadge` in Settings → Vehicles shows the
       active vehicle's tier + an Upgrade link (to `UPGRADE_PORTAL_URL`) when not Premium. Replaced the
       verbose in-app feature panel (owner: keep the comparison on the website).
@@ -379,10 +380,14 @@ Tasks:
       vehicle's tier window AND lapses expired Basic trials (`trialEndsAt` past → `tier='free'`). Pure
       selectors in [worker/src/retention.ts](worker/src/retention.ts) (14 tests). Inert under
       grandfathering (legacy→premium keeps all) until real tiers are assigned; per-run delete cap.
-- [~] SMS/voice alerts (Premium): ~~per-event opt-in UI + worker send path~~ **both DONE 2026-06-28
-      (worker scaffold #11, opt-in UI #12)**; ~~wiring `dispatchSmsForEvent` into the worker alert path~~
-      **DONE 2026-06-29 (PR #31, awaiting owner merge — worker auto-deploys)** — behavior-neutral via
-      `noopSmsSender`; only a live **provider (Twilio)** remains.
+- [x] **SMS/voice alerts (Premium) — LIVE 2026-06-30.** per-event opt-in UI (#12) + worker send path (#11)
+      + `dispatchSmsForEvent` wired into the alert path (#31) + a real **Twilio `SmsSender`** (#37,
+      [worker/src/sms.ts](worker/src/sms.ts) `twilioSmsSender`/`smsSenderFromEnv`) + the three Twilio
+      secrets set via `wrangler secret put` (TWILIO_ACCOUNT_SID/AUTH_TOKEN/FROM; creds validated against
+      the Twilio API). A Premium vehicle with an opted-in event + a Twilio-**verified** destination now
+      gets a real SMS. ⚠️ Owner rotated the Auth Token after setup — if so the worker secret must hold the
+      NEW token (re-run `wrangler secret put TWILIO_AUTH_TOKEN`). End-to-end delivery not yet test-fired
+      (needs a verified destination cell).
 - [x] **Decided (2026-06-25): entitlements are PER-VEHICLE.** The vehicle carries the tier; everyone
       who accesses it (owner + shared monitors) gets that vehicle's features. Matches the "the boat is
       Premium" mental model and the sharing goal (a shared mechanic sees the owner's history).
@@ -396,11 +401,10 @@ Tasks:
   - [x] **Account-portal per-event opt-in UI landed (2026-06-28, PR #12):** Premium-gated SMS section
         in Account.tsx (phone numbers + per-event escalation) → synced `sh_sms_prefs`; pure
         [utils/smsPrefs.ts](dashboard/src/utils/smsPrefs.ts) (tested).
-  - [~] **Wiring DONE 2026-06-29 (PR #31):** `dispatchSmsForEvent` is now called in the worker alert path
-        (`handleShellyWebhook`) via the `noopSmsSender` — behavior-neutral until a provider lands. New pure
-        `smsEventKey` (raw Shelly event → catalog key: flood/low_battery/shore_power/offline) +
-        `parseSmsPrefs` (worker reads the vehicle's synced `sh_sms_prefs`). Only a real **provider (Twilio)**
-        remains (drop a `SmsSender` impl in place of `noopSmsSender`). ⚠️ Worker auto-deploys on merge.
+  - [x] **Wiring DONE (#31) + Twilio provider LIVE (#37, secrets set 2026-06-30):** `dispatchSmsForEvent`
+        runs in the alert path via `smsSenderFromEnv(env)` → `twilioSmsSender` when the TWILIO_* secrets are
+        present (else noop). `smsEventKey` (raw Shelly event → catalog key) + `parseSmsPrefs` read the
+        vehicle's synced `sh_sms_prefs`. Done.
 
 ---
 
@@ -605,12 +609,19 @@ a `boatrvguardian.com` subdomain, not `*.workers.dev` / `*.web.app` / `*.github.
 - [x] **Decided (2026-06-25): `api.` = worker, `app.` = web app, `admin.` = admin site. Domain IS on
       Cloudflare**, so a Worker custom domain can be attached; I prep the config + exact DNS records,
       owner applies DNS.
-- [ ] Add the Cloudflare Worker **custom domain/route**; update `DEFAULT_WORKER_URL` and any
-      hardcoded references; keep `sh_webhook_url` per-vehicle override working.
-- [ ] Document the required **DNS records** the owner must add (DNS access is owner-only; I can
-      prepare code + the exact records but can't change DNS).
-- [ ] Re-register Shelly webhooks against the new URL once cut over (devices cache the old URL until
-      a successful poll re-registers — cf. CLAUDE.md).
+- [x] **Worker custom domain ATTACHED + LIVE 2026-06-30 (PRs #38/#39/#40):** `api.boatrvguardian.com`
+      is a Workers Custom Domain on this worker (Cloudflare-managed DNS + cert; verified `/api/health`
+      over HTTPS) and is config-managed in [worker/wrangler.toml](worker/wrangler.toml) `routes`. Done via
+      `wrangler deploy` (zone `boatrvguardian.com` is in the sc4tech CF account `9b75…`). Gotcha for next
+      time: the CI deploy token (`CLOUDFLARE_PAGES_EDIT` = the "Boat-RV-Guardian GitHub Actions - Deploy"
+      token) needed **Zone → Workers Routes:Edit** added (a route in config 401s CI otherwise); that perm
+      is now granted, CI deploy is green. Additive — `*.workers.dev` stays live.
+- [ ] **Flip `DEFAULT_WORKER_URL`** (configSync.ts) to `https://api.boatrvguardian.com` + keep the
+      `sh_webhook_url` per-vehicle override. ⚠️ HARDWARE-GATED ordering: do NOT flip before...
+- [ ] **Re-register Shelly webhooks** against the new URL after the flip (devices cache the old URL
+      until a successful poll re-registers — needs the devices on-LAN). These two are the cutover.
+- [ ] **`app.` (web app) + `admin.` (admin site)** subdomains — Cloudflare *Pages* custom domains
+      (different from the worker); attachable now that the deploy token has zone perms. Lower priority.
 
 ---
 
@@ -780,15 +791,22 @@ than continuing to bolt panels on. Produce a proposed layout/IA before refactori
       **valve treated as a peer sensor under Systems**, per owner). Owner approved building it all (bottom
       tab bar on mobile; Alerts includes push-channel mgmt). 6-step incremental, gate-green migration that
       re-parents the already-extracted panels.
-  - [x] **Migration steps 1–6 SHIPPED 2026-06-29 (PRs #25–#28):** global bar with vehicle switcher +
-        account button (#25); Systems shell consolidating the 4 sensor/valve tabs with the valve as a peer,
-        always-mounted to keep the Flooding Sentry running (#26); 4-item nav Overview/Systems/Alerts/Settings
-        (#26); Alerts v1 — merged event timeline + current-issues banner (#27); Account = identity + mode home
-        (sign-out + Cloud/Local mode + switch-to-cloud) (#28). All gate-green; ⚠️ native click-through pending.
-  - [ ] **Remaining (deferred, with reason):** (a) relocate the notification toggles + SMS prefs into Alerts
+  - [x] **Migration steps 1–6 SHIPPED 2026-06-29 (PRs #25–#28); VERIFIED LIVE in-browser 2026-06-30.**
+        global bar with vehicle switcher + account button (#25); Systems shell consolidating the 4
+        sensor/valve tabs with the valve as a peer, always-mounted to keep the Flooding Sentry running (#26);
+        4-item nav Overview/Systems/Alerts/Settings (#26); Alerts v1 — merged event timeline + current-issues
+        banner (#27); Account = identity + mode home (sign-out + Cloud/Local mode + switch-to-cloud) (#28).
+        Clicked through the whole shell in Chrome (signed in as sc4tech) — all render, no console errors;
+        vehicle switcher + display-name edit + section nav all work. **Found+fixed a real bug live:** the
+        mobile bottom tab bar sat below the fold (app shell `height:100%` vs `#root` only `min-height:100vh`)
+        → fixed with `height:100dvh` (#36), re-verified the bar pins at 380px.
+  - [~] **Remaining (deferred, with reason):** (a) relocate the notification toggles + SMS prefs into Alerts
         and remove the Settings→Account sign-in/sync duplication — these are wired into Settings' ~56-field
-        synced-settings state machine (the `useSettingsState` extraction AGENTS.md/Task 3 flag as
-        refactor-risky / needs a click-through); do with that hook + native verify. ~~(b) mobile bottom-tab-bar
+        synced-settings state machine. **The `useSettingsState` hook extraction was ATTEMPTED 2026-06-30 and
+        REVERTED:** the 56 synced `useState` are scattered/interleaved across the 800-line Settings.tsx, so
+        the surgery is high-risk for the just-stabilized sync layer and pure internal cleanup (the panel
+        "move" only removes a non-harmful duplication). Do it only as a dedicated, native-verified pass; the
+        Alerts page already links to notification prefs, so the user-facing need is met. ~~(b) mobile bottom-tab-bar
         styling~~ **DONE 2026-06-29 (PR #30)** — bottom tab bar ≤640px, top row on desktop (`useIsMobile`).
 
 ## 17. Vehicle ownership & type (2026-06-29)
