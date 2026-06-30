@@ -306,8 +306,8 @@ Tasks:
 - [x] **In-app plan indicator (2026-06-25):** compact `PlanBadge` in Settings → Vehicles shows the
       active vehicle's tier + an Upgrade link (to `UPGRADE_PORTAL_URL`) when not Premium. Replaced the
       verbose in-app feature panel (owner: keep the comparison on the website).
-- [ ] **Backend administrative site** to manage users, tiers/entitlements, and other admin tasks
-      (see Task 12).
+- [x] **Backend administrative site** to manage users, tiers/entitlements, and other admin tasks —
+      DONE, see Task 12 (brvg-admin-site, live at brvg-tools.sc4tech.com). Stale duplicate entry, removed.
 - [x] **MOCK billing (2026-06-25):** [utils/billing.ts](dashboard/src/utils/billing.ts) — coupon
       codes (`GUARDIANBASIC/PREMIUM/FREE`) set the active vehicle's `tier` via `setActiveVehicleTier`
       (the single seam Stripe will drive). In-app **/account portal**
