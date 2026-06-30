@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   canSmsAlertForTier, smsRecipientsForEvent, noopSmsSender, dispatchSmsForEvent, parseSmsPrefs,
+  smsSenderFromEnv, twilioSmsSender,
   type SmsSender, type SmsPrefs,
 } from './sms';
 
@@ -76,5 +77,52 @@ describe('dispatchSmsForEvent', () => {
     let n = 0;
     const sender: SmsSender = { async sendSms() { n++; if (n === 1) throw new Error('boom'); return { ok: true }; } };
     expect(await dispatchSmsForEvent(sender, 'premium', PREFS, 'flood', 'x')).toEqual({ attempted: 2, sent: 1 });
+  });
+});
+
+describe('smsSenderFromEnv', () => {
+  it('returns the noop sender unless all three Twilio secrets are present', async () => {
+    expect(smsSenderFromEnv({}) === noopSmsSender).toBe(true);
+    expect(smsSenderFromEnv({ accountSid: 'AC', authToken: 't' }) === noopSmsSender).toBe(true);
+    expect(smsSenderFromEnv({ accountSid: 'AC', authToken: 't', from: '+1' }) === noopSmsSender).toBe(false);
+  });
+});
+
+describe('twilioSmsSender', () => {
+  const origFetch = globalThis.fetch;
+  afterEach(() => { globalThis.fetch = origFetch; });
+
+  it('POSTs to the Twilio Messages API with From for a phone number and returns ok on 2xx', async () => {
+    let captured: any = null;
+    globalThis.fetch = (async (url: any, init: any) => {
+      captured = { url, body: init.body, auth: init.headers.Authorization };
+      return { ok: true, status: 201, text: async () => '' } as any;
+    }) as any;
+    const r = await twilioSmsSender({ accountSid: 'AC123', authToken: 'tok', from: '+15550001111' }).sendSms('+15552223333', 'hi');
+    expect(r.ok).toBe(true);
+    expect(captured.url).toContain('/Accounts/AC123/Messages.json');
+    expect(captured.body).toContain('To=%2B15552223333');
+    expect(captured.body).toContain('From=%2B15550001111');
+    expect(captured.auth.startsWith('Basic ')).toBe(true);
+  });
+
+  it('uses MessagingServiceSid when `from` is an MG SID', async () => {
+    let body = '';
+    globalThis.fetch = (async (_url: any, init: any) => { body = init.body; return { ok: true, status: 201, text: async () => '' } as any; }) as any;
+    await twilioSmsSender({ accountSid: 'AC', authToken: 't', from: 'MGabc' }).sendSms('+1', 'x');
+    expect(body).toContain('MessagingServiceSid=MGabc');
+    expect(body).not.toContain('From=');
+  });
+
+  it('surfaces a non-2xx response as ok:false without throwing', async () => {
+    globalThis.fetch = (async () => ({ ok: false, status: 401, text: async () => 'unauthorized' } as any)) as any;
+    const r = await twilioSmsSender({ accountSid: 'AC', authToken: 'bad', from: '+1' }).sendSms('+1', 'x');
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/401/);
+  });
+
+  it('reports not-configured when creds are missing', async () => {
+    const r = await twilioSmsSender({}).sendSms('+1', 'x');
+    expect(r.ok).toBe(false);
   });
 });
