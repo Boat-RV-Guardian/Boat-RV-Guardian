@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import Account from './Account';
 
 // Integration: redeeming a coupon changes the active vehicle's plan (mock billing → entitlements →
@@ -92,6 +92,29 @@ describe('Account', () => {
     expect(screen.getByText('Boat A')).toBeTruthy();
     expect(screen.getByText('Boat B')).toBeTruthy();
     expect(screen.getByText('active')).toBeTruthy();
+  });
+
+  it('switches the active vehicle in-portal from the per-vehicle plans list', async () => {
+    localStorage.setItem('lt_vehicles', JSON.stringify({
+      v1: { id: 'v1', config: { lt_vessel_name: 'Boat A', tier: 'basic' } },
+      v2: { id: 'v2', config: { lt_vessel_name: 'Boat B', tier: 'free' } },
+    }));
+    localStorage.setItem('lt_active_vehicle_id', 'v1');
+    // switchVehicle backs up *root* lt_*/tier keys into the outgoing vehicle's map entry before
+    // loading the new one — mirroring real usage, where the root keys always reflect the live active
+    // vehicle. Seed them to match v1 so that backup-on-switch doesn't clobber "Boat A" with defaults.
+    localStorage.setItem('lt_vessel_name', 'Boat A');
+    localStorage.setItem('tier', 'basic');
+    render(<Account />);
+    expect(screen.queryAllByRole('button', { name: /^switch$/i }).length).toBe(1); // only the inactive row offers Switch
+    fireEvent.click(screen.getByRole('button', { name: /^switch$/i }));
+    // switchVehicle runs behind a lazy import + dispatches settings_updated async — wait for the
+    // localStorage write rather than the pre-existing "active" badge text (which is already on screen
+    // for v1 before the click, so asserting on its mere presence would race the switch).
+    await waitFor(() => expect(localStorage.getItem('lt_active_vehicle_id')).toBe('v2'));
+    // Boat A (now inactive) offers Switch instead of Boat B.
+    expect(await screen.findByText('Boat A')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /^switch$/i }).length).toBe(1);
   });
 
   it('generates and revokes an integration API token (Premium)', () => {

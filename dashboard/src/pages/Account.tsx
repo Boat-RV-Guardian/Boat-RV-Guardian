@@ -86,6 +86,23 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
     if (r.ok) setCode('');
   };
 
+  // In-portal vehicle switcher (Task 14 remainder): lazy-import VehicleManager, same pattern already
+  // used by DeleteAccountButton/EditDisplayName for Firebase, so this view's static import surface
+  // stays free of VehicleManager's heavy transitive graph (see the readLocalJson comment above) — it's
+  // only pulled in if the user actually clicks Switch. `switchVehicle` writes `lt_active_vehicle_id` +
+  // rehydrates the synced settings keys, then dispatches `settings_updated`, which `useEntitlements`
+  // (and therefore this whole view) already re-renders on.
+  const [switchingVid, setSwitchingVid] = useState<string | null>(null);
+  const onSwitchVehicle = async (vid: string) => {
+    setSwitchingVid(vid);
+    try {
+      const { switchVehicle } = await import('../utils/VehicleManager');
+      switchVehicle(vid);
+    } finally {
+      setSwitchingVid(null);
+    }
+  };
+
   // Opt-in Basic free trial (owner decision: NOT auto-granted). The worker enforces the real
   // per-user/per-vehicle anti-abuse rule and writes tier='basic' + trialEndsAt; the resulting cloud
   // snapshot flows back via SyncModal → tier_updated, which re-renders this view with the new tier.
@@ -231,7 +248,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Your vehicles &amp; plans</h3>
           <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            Plans are per vehicle. Switch the active vehicle (Settings → Vehicles) to manage another one's plan here.
+            Plans are per vehicle. Switch below to manage another one's plan here (or via Settings → Vehicles).
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
             {planRows.map((r) => (
@@ -240,7 +257,19 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
                   {r.name}
                   {r.active && <span style={{ marginLeft: '8px', fontSize: '0.7rem', color: 'var(--accent-cyan)', border: '1px solid var(--accent-cyan)', borderRadius: '999px', padding: '1px 7px' }}>active</span>}
                 </span>
-                <span style={{ color: 'var(--text-secondary)' }}>{TIER_LABELS[r.tier]}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>{TIER_LABELS[r.tier]}</span>
+                  {!r.active && (
+                    <button
+                      className="btn-secondary"
+                      onClick={() => onSwitchVehicle(r.id)}
+                      disabled={switchingVid === r.id}
+                      style={{ fontSize: '0.75rem', padding: '3px 10px', opacity: switchingVid === r.id ? 0.6 : 1 }}
+                    >
+                      {switchingVid === r.id ? 'Switching…' : 'Switch'}
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>

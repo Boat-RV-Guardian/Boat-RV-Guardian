@@ -675,8 +675,12 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
 - [~] **Per-vehicle assignment** (billing is per-vehicle / "Plex"): choose which vehicle a
       subscription applies to; manage multiple vehicles; (future) fleet/multi-vehicle discount.
       **DONE 2026-06-28 (read-only, PR #14):** Account.tsx "Your vehicles & plans" lists every local
-      vehicle with its resolved tier + marks the active one (`vehiclePlanRows`, tested). Remaining:
-      in-portal *switching* of the active vehicle (needs VehicleManager) + real multi-vehicle billing.
+      vehicle with its resolved tier + marks the active one (`vehiclePlanRows`, tested).
+      **In-portal switching DONE (2026-06-30):** each non-active row gets a "Switch" button that
+      lazy-imports `VehicleManager.switchVehicle` (keeping Account.tsx's static import surface light,
+      same pattern as the Firebase lazy-imports elsewhere in this file) — `useEntitlements` already
+      re-renders on the `settings_updated` event `switchVehicle` dispatches, so the whole view reflects
+      the new active vehicle with no extra plumbing. Remaining: real multi-vehicle billing (Stripe).
 - [x] **Trial status + days left (2026-06-28).** Account.tsx shows trial days-left; server-side
       per-user+per-vehicle eligibility is enforced by the worker (`isTrialEligible` + `/api/trial`,
       Task 6) and the consumer auto-grant (#10) / admin guard (admin-site#1).
