@@ -2,11 +2,20 @@
 // Task 3 split. Sign-in CTA / signed-in email + sign-out, cloud-sync + cloud-history toggles (the
 // latter gated by the per-vehicle tier), and the startup-vehicle preference. Pure presentational:
 // state + handlers come in as props.
+//
+// Task 15 "migrate local account to the cloud": a local-only user with vehicles gets TWO local→cloud
+// options here — the pre-existing "Switch to a cloud account" (rebuild: wipes local, starts fresh) and
+// the new "Migrate my vehicles to the cloud" (stages the local vehicles via
+// utils/migrateLocalToCloud.ts BEFORE sign-in is triggered, so the forced wipe+reload that follows
+// sign-in doesn't lose them — see that module's header comment for the full hazard writeup). Both
+// funnel into the same inline Login; the only difference is whether a stash was written first.
 
+import { useState } from 'react';
 import Login from '../Login';
 import { auth, signOut } from '../../services/firebase';
 import type { Vehicle } from '../../utils/VehicleManager';
 import { cloudSwitchDiscardNote } from '../../utils/accountMode';
+import { stashPendingMigration, clearPendingMigration } from '../../utils/migrateLocalToCloud';
 
 interface UserConfigLike {
   startupMode?: 'default' | 'last';
@@ -32,6 +41,20 @@ interface Props {
 }
 
 export default function AccountPanel(p: Props) {
+  const [showMigrateConfirm, setShowMigrateConfirm] = useState(false);
+  const localVehicleCount = Object.keys(p.vehiclesMap).length;
+
+  // Rebuild: discard any staged migration (this is the "start fresh" path) then open the inline Login.
+  const startRebuildSwitch = () => { clearPendingMigration(localStorage); p.setShowLogin(true); };
+  // Migrate: stage every local vehicle BEFORE sign-in is triggered — see migrateLocalToCloud.ts for why
+  // this ordering matters (sign-in wipes lt_/sh_ storage + hard-reloads almost immediately after).
+  const startMigrate = () => {
+    stashPendingMigration(p.vehiclesMap, localStorage);
+    setShowMigrateConfirm(false);
+    p.setShowLogin(true);
+  };
+  const cancelLogin = () => { clearPendingMigration(localStorage); p.setShowLogin(false); };
+
   return (
     <div className="glass-card">
     <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', marginBottom: '16px' }}>Account Information</h3>
@@ -43,7 +66,7 @@ export default function AccountPanel(p: Props) {
               You’re in <strong>local-only mode</strong> — everything is stored on this device and nothing syncs to the cloud. Switch to a cloud account to enable remote monitoring, cross-device sync, vehicle sharing, and away push notifications.
             </p>
             <p style={{ color: '#f59e0b', fontSize: '0.85rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '8px', padding: '10px 12px', margin: '0 0 4px' }}>
-              ⚠️ {cloudSwitchDiscardNote(Object.keys(p.vehiclesMap).length)}
+              ⚠️ {cloudSwitchDiscardNote(localVehicleCount)}
             </p>
           </>
         ) : (
@@ -52,18 +75,42 @@ export default function AccountPanel(p: Props) {
           </p>
         )}
         {!p.showLogin ? (
-          <button
-            className="btn-primary"
-            onClick={() => p.setShowLogin(true)}
-            style={{ marginTop: '16px' }}
-          >
-            {p.localMode ? 'Switch to a cloud account' : 'Log into Boat-RV-Guardian.com'}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', alignItems: 'flex-start' }}>
+            <button className="btn-primary" onClick={startRebuildSwitch}>
+              {p.localMode ? 'Switch to a cloud account' : 'Log into Boat-RV-Guardian.com'}
+            </button>
+            {p.localMode && localVehicleCount > 0 && (
+              <button className="btn-secondary" onClick={() => setShowMigrateConfirm(true)}>
+                Migrate my vehicles to the cloud
+              </button>
+            )}
+          </div>
         ) : (
           <div style={{ marginTop: '20px', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
             <Login />
             <div style={{ textAlign: 'center', marginTop: '10px' }}>
-              <button className="btn-secondary" onClick={() => p.setShowLogin(false)} style={{ fontSize: '0.85rem' }}>Cancel</button>
+              <button className="btn-secondary" onClick={cancelLogin} style={{ fontSize: '0.85rem' }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {showMigrateConfirm && (
+          <div
+            role="dialog"
+            aria-label="Migrate my vehicles to the cloud"
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}
+          >
+            <div className="glass-card" style={{ maxWidth: '420px', width: '90%' }}>
+              <h3 style={{ marginTop: 0, color: 'var(--accent-cyan)' }}>Migrate to the cloud</h3>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                You're about to sign into (or create) a cloud account. Once signed in, your {localVehicleCount === 1 ? '1 vehicle' : `${localVehicleCount} vehicles`} stored on this device
+                {' '}will be uploaded to that account automatically — nothing is deleted from this device until each vehicle's upload is confirmed.
+                Afterward this device switches fully to cloud mode (no hybrid local + cloud vehicles).
+              </p>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+                <button className="btn-secondary" onClick={() => setShowMigrateConfirm(false)} style={{ flex: 1 }}>Cancel</button>
+                <button className="btn-primary" onClick={startMigrate} style={{ flex: 1 }}>Continue</button>
+              </div>
             </div>
           </div>
         )}

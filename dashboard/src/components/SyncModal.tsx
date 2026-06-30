@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { isLocalVehicleConfigDefault, isLocalProfileFresh, applyCloudVehicleConfig, getLocalVehicleConfig, cloudConfigDiffers } from '../utils/configSync';
-import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle, wasCreatedThisSession, getSessionCreatedIds } from '../utils/VehicleManager';
+import { getActiveVehicleId, getVehiclesMap, saveVehiclesMap, getDeletedVehicleIds, switchVehicle, wasCreatedThisSession, getSessionCreatedIds, markSessionCreated } from '../utils/VehicleManager';
 import { vehiclesToPrune } from '../utils/vehiclePrune';
 import { getMyRole, ensureOwnerAdmin } from '../utils/sharing';
+import { readPendingMigration, markMigrated } from '../utils/migrateLocalToCloud';
 import { auth } from '../services/firebase';
 
 export default function SyncModal() {
@@ -13,9 +14,74 @@ export default function SyncModal() {
   // Surfaces a cloud-write failure to the user instead of swallowing it in the console (Firestore
   // writes are otherwise fire-and-forget, so a permission/network error was invisible).
   const [syncError, setSyncError] = useState<string | null>(null);
+  // Task 15 migrate-local-to-cloud: surfaces a failed (and still-retryable) upload of a staged vehicle.
+  const [migrationError, setMigrationError] = useState<string | null>(null);
+  const migrationBusyRef = useRef(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Adoption (silent pull of the user's cloud vehicles) runs once per login session.
   const adoptedRef = useRef(false);
+
+  // Task 15 "migrate local account to the cloud" — the POST-sign-in half. The PRE-sign-in half (staging
+  // the stash before the sign-in wipe+reload) lives in AccountPanel.tsx / utils/migrateLocalToCloud.ts —
+  // read that module's header comment for the full wipe-ordering hazard writeup.
+  //
+  // This mirrors the EXACT pipeline a brand-new vehicle already uses (VehicleManager.createLocalVehicle
+  // → the create-on-cloud-miss branch further down in this file): write each staged vehicle into the
+  // local map + markSessionCreated for it FIRST, synchronously, before any network round trip — so the
+  // cloud-authoritative prune effect (below) can never mistake an in-flight migrated vehicle for one the
+  // cloud simply doesn't know about yet and delete it (the exact bug class PR #34 fixed for normal
+  // vehicle creation). Only once a vehicle's `updateVehicleConfig` + `ensureOwnerAdmin` are CONFIRMED do
+  // we drop it from the stash (markMigrated) — the stash is the only remaining copy of this data once
+  // the wipe has run, so it is never cleared speculatively. On failure, the failing vehicle (and any not
+  // yet attempted) stay staged and a retryable error is surfaced via the banner at the bottom of render.
+  const runPendingMigration = () => {
+    if (migrationBusyRef.current) return;
+    const pending = readPendingMigration(localStorage);
+    if (!pending) return;
+    const ids = Object.keys(pending.vehicles);
+    if (ids.length === 0) return;
+    migrationBusyRef.current = true;
+    setMigrationError(null);
+
+    const map = getVehiclesMap();
+    let mapChanged = false;
+    for (const vid of ids) {
+      if (!map[vid]) { map[vid] = pending.vehicles[vid]; mapChanged = true; }
+      markSessionCreated(vid); // protects it from the prune effect below, same as a freshly-created vehicle
+    }
+    if (mapChanged) saveVehiclesMap(map);
+    if (!getActiveVehicleId()) {
+      localStorage.setItem('lt_active_vehicle_id', ids[0]);
+      mapChanged = true;
+    }
+    if (mapChanged) {
+      (window as any).__is_syncing_cloud = true;
+      window.dispatchEvent(new Event('settings_updated')); // flips App's hasVehicle so onboarding clears
+      (window as any).__is_syncing_cloud = false;
+    }
+
+    (async () => {
+      for (const vid of ids) {
+        try {
+          await updateVehicleConfig(vid, pending.vehicles[vid].config);
+          await ensureOwnerAdmin(vid);
+          markMigrated(vid, localStorage); // confirmed uploaded — only now is it safe to drop the stash entry
+        } catch (e: any) {
+          const name = pending.vehicles[vid].config.lt_vessel_name || vid;
+          migrationBusyRef.current = false;
+          setMigrationError(`Couldn't finish migrating "${name}" to the cloud: ${e?.message || e}. It's still queued on this device — tap Retry once you're back online.`);
+          return; // stop here; this vehicle and any not yet attempted stay staged for retry
+        }
+      }
+      migrationBusyRef.current = false;
+    })();
+  };
+
+  useEffect(() => {
+    if (!auth.currentUser) return; // only a real cloud sign-in can run an upload
+    runPendingMigration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userConfig]);
 
   // Keep activeVid in sync with local storage if user switches vehicles
   useEffect(() => {
@@ -258,12 +324,16 @@ export default function SyncModal() {
 
   // Cloud-sync conflicts are resolved silently (cloud-wins, above) under the no-hybrid /
   // cloud-as-source-of-truth model — there is no longer a conflict modal. This component now only
-  // surfaces a cloud-write error banner if one occurred.
-  if (!syncError) return null;
+  // surfaces a cloud-write error banner (generic sync, or a migrate-local-to-cloud upload) if one occurred.
+  const bannerMessage = migrationError || syncError;
+  if (!bannerMessage) return null;
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, background: '#7f1d1d', color: '#fff', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.85rem', boxShadow: '0 2px 10px rgba(0,0,0,0.4)' }}>
-      <span style={{ flex: 1 }}>⚠️ {syncError}</span>
-      <button onClick={() => setSyncError(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Dismiss</button>
+      <span style={{ flex: 1 }}>⚠️ {bannerMessage}</span>
+      {migrationError && (
+        <button onClick={runPendingMigration} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Retry</button>
+      )}
+      <button onClick={() => { setSyncError(null); setMigrationError(null); }} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', borderRadius: '6px', padding: '4px 10px', cursor: 'pointer' }}>Dismiss</button>
     </div>
   );
 }

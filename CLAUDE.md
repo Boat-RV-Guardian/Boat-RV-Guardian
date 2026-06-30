@@ -115,10 +115,15 @@ cloud use; **fall back to open-source/self-host** when the user opts out.
 **A device (and its vehicles) is EITHER cloud OR local — never both. No hybrid accounts** (mixing the two
 caused real bugs). The mode is **device-wide**, not per-vehicle. You cannot have some local vehicles and
 some cloud vehicles on one device. Transitions between modes are explicit and total:
-- **Local → cloud:** either **rebuild** the vehicles in the cloud (the current behavior — signing into a
-  cloud account from local mode **wipes** the local session via `applyUserScope`, so you start clean in the
-  cloud) OR a future **"migrate local account to the cloud"** flow that uploads the local vehicles, then
-  switches the device to cloud mode. Never a merge that leaves a mix.
+- **Local → cloud:** either **rebuild** the vehicles in the cloud (signing into a cloud account from local
+  mode **wipes** the local session via `applyUserScope`, so you start clean in the cloud) OR **migrate**
+  (DONE 2026-06-30, Task 15) — `utils/migrateLocalToCloud.ts` stashes the local vehicles map under a
+  `brvg_pending_local_migration` key (deliberately outside the `lt_`/`sh_` namespace `applyUserScope` wipes)
+  *before* sign-in is triggered, then a `SyncModal.tsx` effect uploads them (same
+  `updateVehicleConfig`+`ensureOwnerAdmin` pipeline a new vehicle uses, `markSessionCreated`-protected from
+  the cloud-authoritative prune) once the app reboots signed in to the new account, clearing a vehicle from
+  the stash only once its upload is confirmed. AccountPanel offers both as separate confirm-gated buttons.
+  Never a merge that leaves a mix.
 - **Cloud → local:** sign out / enter local mode → the cloud data leaves this device (cloud remains the
   source of truth server-side); the local session is its own isolated thing.
 

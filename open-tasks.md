@@ -745,8 +745,22 @@ drop-in later (Stripe Checkout + Customer Portal; webhook → `setActiveVehicleT
           vehicles stay on this device, not uploaded") and a **"Switch to a cloud account"** button that opens
           the inline Login. Signing in drives the existing `applyUserScope` wipe+reload = the rebuild. RTL
           tests cover the branch. ⚠️ Native-verify the actual local→cloud sign-in/reload cycle.
-    - [ ] **Migrate path** (upload local vehicles, then switch) — still open; bigger, needs a careful
-          upload/dedup flow. Until then the in-app switch is rebuild-only (warned).
+    - [x] **Migrate path (upload local vehicles, then switch) — DONE (2026-06-30).** New pure
+          [utils/migrateLocalToCloud.ts](dashboard/src/utils/migrateLocalToCloud.ts) stashes the local
+          vehicles map under a `brvg_pending_local_migration` key (deliberately OUTSIDE the `lt_`/`sh_`
+          namespace `clearUserScopedData` wipes) BEFORE sign-in is triggered, since the sign-in wipe +
+          hard-reload happen almost immediately after. AccountPanel now offers a second, confirm-gated
+          "Migrate my vehicles to the cloud" button next to the rebuild one (`cloudSwitchDiscardNote`
+          copy updated to distinguish the two). After the forced reload, a new effect in
+          [SyncModal.tsx](dashboard/src/components/SyncModal.tsx) detects the stash once a real cloud
+          user is present and re-runs the same `updateVehicleConfig` + `ensureOwnerAdmin` pipeline a
+          brand-new vehicle uses, `markSessionCreated`-protecting each vehicle synchronously (before any
+          network round trip) so the PR #34 cloud-authoritative prune can't mistake an in-flight migrated
+          vehicle for a stale one and delete it. A vehicle is dropped from the stash only once its
+          upload is confirmed; a failure leaves it (and anything after it) staged and surfaces a
+          retryable error banner. 23 new tests (pure module fully covered; SyncModal's Firestore-coupled
+          wiring is deliberately untested, matching this repo's established pattern). ⚠️ Native-verify
+          with a throwaway account before the next release — this is a real account-data-affecting flow.
   - [x] **Private/self-host server does NOT sync config — VERIFIED 2026-06-29.** Audited every reader of
         `sh_webhook_url`/`sh_webhook_user`/`sh_webhook_key`: they appear only in the Shelly webhook relay
         ([ProvisionShellyModal.tsx](dashboard/src/components/ProvisionShellyModal.tsx)), the worker action
