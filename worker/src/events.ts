@@ -125,3 +125,40 @@ export const WORKER_SERVICE = 'boat-rv-guardian-webhooks';
 export function healthBody(nowMs: number): { ok: true; service: string; time: number } {
   return { ok: true, service: WORKER_SERVICE, time: nowMs };
 }
+
+// — Send-status persistence (open-tasks.md §6 "Still server-backed-only: FCM/SMS send-success
+// status") — the webhook computes FCM/SMS dispatch results for alert events but historically only
+// returned them in the HTTP response, leaving no durable/queryable record. `lastSend` is a small
+// map field merged onto the same `vehicles/{vid}/sensorState/{device}` doc the webhook already
+// writes, via a masked PATCH (see patchFirestoreFields in index.ts) so it never clobbers — or gets
+// clobbered by — the `event`/`at`/telemetry-extras write that happens earlier in the same request.
+
+/** Inputs needed to build the `lastSend` Firestore field-value for an alert event. */
+export interface LastSendInput {
+  event: string;
+  at: number;
+  fcmSent: number;
+  fcmFailed: number;
+  smsAttempted: number;
+  smsSent: number;
+}
+
+/**
+ * Build the Firestore (REST, value-wrapped) `mapValue` for a `lastSend` field summarizing the
+ * FCM/SMS dispatch outcome of one alert webhook. Pure — no I/O. The caller PATCHes this onto
+ * `vehicles/{vid}/sensorState/{device}` with `maskPaths: ['lastSend']` so it's a precise merge.
+ */
+export function buildLastSendField(input: LastSendInput): { mapValue: { fields: Record<string, { stringValue: string } | { integerValue: string }> } } {
+  return {
+    mapValue: {
+      fields: {
+        event: { stringValue: input.event },
+        at: { integerValue: String(input.at) },
+        fcmSent: { integerValue: String(input.fcmSent) },
+        fcmFailed: { integerValue: String(input.fcmFailed) },
+        smsAttempted: { integerValue: String(input.smsAttempted) },
+        smsSent: { integerValue: String(input.smsSent) },
+      },
+    },
+  };
+}

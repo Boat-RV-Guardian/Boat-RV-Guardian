@@ -10,6 +10,7 @@ import {
   healthBody,
   WORKER_SERVICE,
   smsEventKey,
+  buildLastSendField,
 } from './events';
 
 describe('smsEventKey', () => {
@@ -149,5 +150,30 @@ describe('sanitizeDevice', () => {
 describe('healthBody', () => {
   it('returns an ok liveness payload echoing the given time', () => {
     expect(healthBody(1719360000000)).toEqual({ ok: true, service: WORKER_SERVICE, time: 1719360000000 });
+  });
+});
+
+describe('buildLastSendField', () => {
+  it('value-wraps every input field into a Firestore mapValue', () => {
+    expect(buildLastSendField({
+      event: 'flood.alarm', at: 1719360000000, fcmSent: 2, fcmFailed: 1, smsAttempted: 1, smsSent: 1,
+    })).toEqual({
+      mapValue: {
+        fields: {
+          event: { stringValue: 'flood.alarm' },
+          at: { integerValue: '1719360000000' },
+          fcmSent: { integerValue: '2' },
+          fcmFailed: { integerValue: '1' },
+          smsAttempted: { integerValue: '1' },
+          smsSent: { integerValue: '1' },
+        },
+      },
+    });
+  });
+
+  it('represents all-zero / no-op-free counts as zero integerValues, not omitted', () => {
+    const out = buildLastSendField({ event: 'button.push', at: 0, fcmSent: 0, fcmFailed: 0, smsAttempted: 0, smsSent: 0 });
+    expect(out.mapValue.fields.fcmSent).toEqual({ integerValue: '0' });
+    expect(out.mapValue.fields.smsSent).toEqual({ integerValue: '0' });
   });
 });
