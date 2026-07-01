@@ -27,6 +27,7 @@ import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 import { readSettings, writeSettings, applyPersistedSettings } from '../utils/settingsStorage';
 import { isLocalMode } from '../utils/userScope';
+import { useAppUpdater } from '../hooks/useAppUpdater';
 
 const APP_VERSION = '1.0.46';
 
@@ -35,6 +36,10 @@ export default function Settings({ user }: { user: any }) {
   const [activeTab, setActiveTab] = useState<'general' | 'accounts' | 'devices' | 'friends' | 'updates'>('general');
   const [devicesTab, setDevicesTab] = useState<'add' | 'config' | 'advanced' | 'auth'>('config');
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  // Real signed-update path on Tauri desktop (Task 13 part 3); the GitHub-tag check above/below stays
+  // as the version-badge signal on every platform (web/Capacitor included) and as this hook's fallback
+  // when it reports 'unsupported' or 'error'.
+  const appUpdater = useAppUpdater();
 
   useEffect(() => {
     fetch('https://api.github.com/repos/Boat-RV-Guardian/Boat-RV-Guardian/releases/latest')
@@ -46,6 +51,8 @@ export default function Settings({ user }: { user: any }) {
         }
       })
       .catch(err => console.error("Failed to fetch latest version:", err));
+    appUpdater.checkForUpdate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Vehicle Management State
@@ -838,7 +845,7 @@ export default function Settings({ user }: { user: any }) {
       )}
 
       {activeTab === 'updates' && (
-        <SoftwareUpdatesPanel appVersion={APP_VERSION} latestVersion={latestVersion} />
+        <SoftwareUpdatesPanel appVersion={APP_VERSION} latestVersion={latestVersion} tauriUpdate={appUpdater} />
       )}
       
       <SettingsModals

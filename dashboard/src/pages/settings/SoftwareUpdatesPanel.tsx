@@ -1,13 +1,24 @@
 // Software Updates panel (Settings → Updates). Extracted from Settings.tsx as part of the Task 3
 // split. Pure presentational: the current app version + the latest GitHub release come in as props.
+//
+// Task 13 part 3: `tauriUpdate` (from useAppUpdater) carries the REAL signed-update flow on Tauri
+// desktop — when it has something actionable (an update found, downloading, installed, or errored),
+// this renders that instead of the plain GitHub-releases link. On every other platform (web,
+// Capacitor/Android) or before the check resolves, the original appVersion/latestVersion badge is
+// the only thing shown — unchanged from before this feature existed.
+import type { UseAppUpdater } from '../../hooks/useAppUpdater';
 
 interface Props {
   appVersion: string;
   latestVersion: string | null;
+  tauriUpdate?: UseAppUpdater;
 }
 
-export default function SoftwareUpdatesPanel({ appVersion, latestVersion }: Props) {
+export default function SoftwareUpdatesPanel({ appVersion, latestVersion, tauriUpdate }: Props) {
   const updateAvailable = !!latestVersion && latestVersion !== appVersion;
+  const t = tauriUpdate;
+  const tauriActionable = !!t && (t.status === 'available' || t.status === 'downloading' || t.status === 'ready' || t.status === 'error');
+
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Software Updates</h3>
@@ -25,11 +36,30 @@ export default function SoftwareUpdatesPanel({ appVersion, latestVersion }: Prop
         </div>
       )}
 
-      <a href="https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/releases" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-        <button className="btn-secondary" style={{ width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.9rem', background: updateAvailable ? 'var(--accent-emerald)' : '', color: updateAvailable ? '#fff' : '', borderColor: updateAvailable ? 'var(--accent-emerald)' : '' }}>
-          {updateAvailable ? '⬇️ Download Update' : '🔄 Check for Updates on GitHub'}
-        </button>
-      </a>
+      {tauriActionable && t ? (
+        <>
+          {t.status === 'available' && (
+            <button className="btn-secondary" onClick={t.installUpdate} style={{ width: '100%', padding: '12px', fontSize: '0.9rem', background: 'var(--accent-emerald)', color: '#fff', borderColor: 'var(--accent-emerald)' }}>
+              ⬇️ Download &amp; Install v{t.version}
+            </button>
+          )}
+          {t.status === 'downloading' && (
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '12px' }}>{t.progressText}</div>
+          )}
+          {t.status === 'ready' && (
+            <div style={{ fontSize: '0.85rem', color: 'var(--accent-emerald)', textAlign: 'center', padding: '12px' }}>{t.progressText}</div>
+          )}
+          {t.status === 'error' && (
+            <div style={{ fontSize: '0.8rem', color: '#ef4444', textAlign: 'center' }}>Update check failed: {t.error}</div>
+          )}
+        </>
+      ) : (
+        <a href="https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/releases" target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+          <button className="btn-secondary" style={{ width: '100%', padding: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '0.9rem', background: updateAvailable ? 'var(--accent-emerald)' : '', color: updateAvailable ? '#fff' : '', borderColor: updateAvailable ? 'var(--accent-emerald)' : '' }}>
+            {updateAvailable ? '⬇️ Download Update' : '🔄 Check for Updates on GitHub'}
+          </button>
+        </a>
+      )}
     </div>
   );
 }
