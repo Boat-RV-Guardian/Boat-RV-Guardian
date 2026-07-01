@@ -37,5 +37,14 @@
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDczMUZDMTkyQTNEREM1RTkKUldUcHhkMmprc0VmYzNZaERJRmtLbHJzS0c0NzNhS1lxMjdna1pmVSt5elVmeGdlVUkzRDdoQm4K"
+    }
   }
 }
