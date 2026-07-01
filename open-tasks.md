@@ -479,10 +479,13 @@ Tasks:
       CNAME and `brvg-tools.sc4tech.com` was added to Firebase Auth authorized domains (via
       `gcloud auth print-access-token` + Identity Toolkit `admin/v2/config`, header
       `x-goog-user-project: boat-rv-guardian-9f8a4`). **Google sign-in works → console usable.**
-- [ ] **Owner (Operators tab only):** set the 2 Pages Function secrets `FIREBASE_CLIENT_EMAIL` +
-      `FIREBASE_PRIVATE_KEY` on the `brvg-admin-site` project (need the Firebase SA key — Cloudflare
-      secrets are write-only so they can't be copied from the old project). Other 3 tabs work without
-      them. Admins can also be granted via `scripts/grant-admin.mjs`. Delete/rotate the SA key after.
+- [x] **Owner (Operators tab only) — DONE 2026-07-01.** Set the 2 Pages Function secrets
+      `FIREBASE_CLIENT_EMAIL` + `FIREBASE_PRIVATE_KEY` on the `brvg-admin-site` project (generated a
+      fresh Firebase SA key, set both via `wrangler pages secret put`, redeployed — Pages Functions
+      needed a fresh deploy to bind the new secrets, setting them alone wasn't enough). Verified live:
+      the Operators tab loads cleanly (was `Cannot read properties of undefined (reading 'replace')`
+      from `saToken()` in [functions/api/operators.ts](functions/api/operators.ts) hitting an unset
+      `FIREBASE_PRIVATE_KEY`). Downloaded SA key file deleted after use.
 
 ---
 
