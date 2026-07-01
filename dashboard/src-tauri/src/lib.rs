@@ -330,6 +330,15 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            // Desktop-only (Task 13): registered in setup(), not the builder chain above, so this is
+            // skipped entirely on mobile without needing a second cfg-gated builder chain. Android
+            // updates go through Play instead — see the Cargo.toml target-dependency comment.
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
+                app.handle().plugin(tauri_plugin_process::init())?;
+            }
+
             let app_handle = app.handle().clone();
             start_webhook_server(app_handle);
 
