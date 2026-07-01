@@ -36,6 +36,11 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Task 13 (in-app auto-update): signs the desktop bundles + publishes latest.json to this
+          # release. tauri.conf.json's bundle.createUpdaterArtifacts + plugins.updater.pubkey (the
+          # matching public key) tell the bundler to produce the .sig files this signs against.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: ./dashboard
           tagName: ${{ github.ref_name }}
@@ -43,6 +48,11 @@ jobs:
           releaseBody: 'See the assets below to download the app for Android, macOS, or Windows.'
           releaseDraft: false
           prerelease: false
+          # Merges each matrix platform's signed-bundle info into ONE latest.json on the release
+          # (tauri-action fetches the existing manifest from a sibling platform's run and appends,
+          # rather than each OS's job clobbering the other's entry) — matches the updater endpoint
+          # already configured in tauri.conf.json (releases/latest/download/latest.json).
+          includeUpdaterJson: true
 
       - name: Upload macOS DMG to Cloudflare R2
         # Best-effort CDN mirror; the GitHub release already holds the binaries.
