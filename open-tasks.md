@@ -581,7 +581,10 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
       [vitest.config.ts](dashboard/vitest.config.ts) (lines/stmts 55, branches/funcs 50 — a few points
       below the current ~59% baseline) enforced by switching the CI dashboard step to
       `npm run test:coverage`. Raise / add per-module thresholds as the untested IO modules gain tests.
-- [ ] Make the CI checks **required** via branch protection (repo setting — owner action).
+- [x] **Make the CI checks required via branch protection — DONE 2026-07-01.** `main` now requires
+      the `dashboard`/`worker`/`build` status checks to pass before merge (`required_status_checks`,
+      non-strict). No required PR-review approval (preserves the established merge-your-own-PR-once-
+      green workflow); admins not exempted from the check; force-push/delete on `main` blocked.
 - [ ] Add the Docker image build to CI once Task 7 lands.
 
 ---
