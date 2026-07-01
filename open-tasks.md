@@ -582,9 +582,14 @@ design rule: downsample telemetry** (raw recent window, hourly aggregates long-t
       below the current ~59% baseline) enforced by switching the CI dashboard step to
       `npm run test:coverage`. Raise / add per-module thresholds as the untested IO modules gain tests.
 - [x] **Make the CI checks required via branch protection — DONE 2026-07-01.** `main` now requires
-      the `dashboard`/`worker`/`build` status checks to pass before merge (`required_status_checks`,
-      non-strict). No required PR-review approval (preserves the established merge-your-own-PR-once-
-      green workflow); admins not exempted from the check; force-push/delete on `main` blocked.
+      the `dashboard`/`worker` status checks (ci.yml — the two that run on every PR) to pass before
+      merge (`required_status_checks`, non-strict). No required PR-review approval (preserves the
+      established merge-your-own-PR-once-green workflow); admins not exempted; force-push/delete on
+      `main` blocked. **Deliberately excludes** the `build` check from android.yml — that job is
+      path-filtered to `dashboard/**` pushes, so requiring it would permanently block any PR that
+      doesn't touch `dashboard/` (docs-only changes, worker-only changes, etc.) since it would never
+      run and report a status for those commits. Caught this via a live test (a docs-only PR got stuck
+      as "waiting for status" until the required-checks list was corrected).
 - [ ] Add the Docker image build to CI once Task 7 lands.
 
 ---
