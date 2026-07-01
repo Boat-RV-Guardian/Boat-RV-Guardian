@@ -639,18 +639,25 @@ auto-update — users re-download. Add the Tauri updater so the native app check
 updates in-app. (The app already surfaces a "latestVersion" in Settings → Updates; this wires the
 real updater behind it.)
 
-- [ ] **Owner action:** generate the updater signing keypair (`npm run tauri signer generate` /
-      `tauri signer generate`) and store the **private key + password as CI secrets**
-      (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`); put the **public key** in
-      `tauri.conf.json` `plugins.updater.pubkey`.
-- [ ] Add `@tauri-apps/plugin-updater` (+ `plugin-process` for relaunch); configure
-      `plugins.updater` with the endpoint(s) and pubkey.
+- [x] **Owner action — DONE 2026-07-01:** generated the updater signing keypair
+      (`tauri signer generate`), stored the **private key + password as CI secrets**
+      (`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) on
+      Boat-RV-Guardian/Boat-RV-Guardian, and put the **public key** in `tauri.conf.json`
+      `plugins.updater.pubkey`. Private key also backed up to the owner's machine (outside git) —
+      GitHub secrets are write-only, so that backup is the only recovery path if it's ever needed again.
+- [x] **DONE 2026-07-01 (PR #48):** added `@tauri-apps/plugin-updater` (+ `plugin-process` for
+      relaunch); configured `plugins.updater` with a placeholder GitHub-releases endpoint + the pubkey.
+      Desktop-only per the last bullet below — target-cfg'd Cargo dependency + `#[cfg(desktop)]` guard
+      in `setup()`, verified via `cargo check` + a real `npm run tauri dev` launch (no errors). The
+      placeholder endpoint doesn't resolve to a real manifest yet (see next item), so the updater's
+      background check currently just fails silently — no user-facing behavior change.
 - [ ] Publish an **update manifest** (`latest.json`) + the signed bundles from `release.yml` (the
       updater action can generate these), served from a stable URL (a `boatrvguardian.com` subdomain
       or the GitHub release assets) — ties into Task 11.
 - [ ] Wire the in-app check/prompt/install flow (reuse the Settings → Updates surface); test the
       full update across a version bump. Keep the 7-file version-bump rule in sync.
-- [ ] Android updates go through Play, not the Tauri updater — scope this to desktop (Mac/Win).
+- [x] Android updates go through Play, not the Tauri updater — scoped to desktop (Mac/Win) in PR #48
+      (target-cfg'd dependency + `#[cfg(desktop)]`, so mobile builds skip it entirely).
 
 ---
 
