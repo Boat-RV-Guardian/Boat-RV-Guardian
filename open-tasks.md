@@ -795,10 +795,14 @@ native-verified. See the CLAUDE.md "Session handoff — 2026-06-29 (late)" for t
 - [~] **Admin deletes didn't stick / resurrection (#34):** logging in re-pushed stale local config,
       re-creating admin-deleted vehicles. Fixed: only push session-created vehicles + cloud-authoritative
       prune of stale local entries.
-- [ ] **Deleted account can still LOG IN (owner-gated):** admin delete removes the Firestore docs but not
-      the Firebase Auth account — needs the brvg-admin-site Operators-tab SA secrets
-      (`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`). Until set, a "deleted" user signs in to onboarding
-      (no boats; no longer resurrects them).
+- [x] **Deleted account can still LOG IN — FIXED 2026-07-01.** Was: admin delete removed the Firestore
+      docs but not the Firebase Auth account. Unblocked by the Operators-tab SA secrets landing
+      (`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`); shipped a new `functions/api/users.ts` Pages
+      Function (brvg-admin-site) that deletes the Auth account via Identity Toolkit, wired into the
+      Users-tab delete flow AFTER the existing Firestore cleanup (data first, Auth login removed last —
+      mirrors the consumer app's own account-deletion ordering). Verified live end-to-end against a
+      disposable throwaway account: deleted via the console, confirmed sign-in afterward returns
+      "No account found for that email."
 
 ## 16. Interface / layout rethink (requested 2026-06-28)
 
