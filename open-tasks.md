@@ -665,8 +665,21 @@ real updater behind it.)
       endpoint already configured. Verified the signing mechanism locally (disposable throwaway keypair,
       `tauri build --bundles app` → valid `.sig` produced); **not yet verified against a real tagged
       release** (didn't want to cut one just to test) — confirm this end-to-end on the next real release.
-- [ ] Wire the in-app check/prompt/install flow (reuse the Settings → Updates surface); test the
-      full update across a version bump. Keep the 7-file version-bump rule in sync.
+- [x] **DONE 2026-07-01 (PR #54):** wired the in-app check/prompt/install flow —
+      [hooks/useAppUpdater.ts](dashboard/src/hooks/useAppUpdater.ts) (lazy-imports the plugin, `check()`
+      on mount, `downloadAndInstall()` with progress, `relaunch()` after) feeds
+      [SoftwareUpdatesPanel](dashboard/src/pages/settings/SoftwareUpdatesPanel.tsx), which shows the real
+      install button/progress/error states when actionable and otherwise falls back to the pre-existing
+      GitHub-releases-tag badge (web/Capacitor/error cases — no regression there). 9 new tests (283
+      total): the pure `formatUpdateProgress` helper + full RTL branch coverage via a mocked hook.
+      **Native-verify gap (honest, not glossed over):** could NOT get a real desktop click-through —
+      `npm run tauri dev`'s debug binary has no stable Launch Services identity, so computer-use
+      automation only ever resolves to the OLD installed release build (hit this dead end twice this
+      session). The signing mechanism itself was proven locally (#52, throwaway key → valid `.sig`), and
+      all code gates are green, but the actual in-app check/download/install against a real published
+      release is **still unverified** — do this alongside/before the next tagged release. Keep the
+      7-file version-bump rule in sync when that happens.
+      **Task 13 is now feature-complete pending that native-verify pass.**
 - [x] Android updates go through Play, not the Tauri updater — scoped to desktop (Mac/Win) in PR #48
       (target-cfg'd dependency + `#[cfg(desktop)]`, so mobile builds skip it entirely).
 
