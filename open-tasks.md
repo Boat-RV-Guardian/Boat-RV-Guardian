@@ -659,9 +659,12 @@ real updater behind it.)
       in `setup()`, verified via `cargo check` + a real `npm run tauri dev` launch (no errors). The
       placeholder endpoint doesn't resolve to a real manifest yet (see next item), so the updater's
       background check currently just fails silently — no user-facing behavior change.
-- [ ] Publish an **update manifest** (`latest.json`) + the signed bundles from `release.yml` (the
-      updater action can generate these), served from a stable URL (a `boatrvguardian.com` subdomain
-      or the GitHub release assets) — ties into Task 11.
+- [x] **DONE 2026-07-01 (PR #52):** `tauri.conf.json` `bundle.createUpdaterArtifacts: true` + `release.yml`
+      now passes the signing secrets to `tauri-action` and sets `includeUpdaterJson: true`, so a tagged
+      release publishes signed bundles + a merged `latest.json` to GitHub release assets — matching the
+      endpoint already configured. Verified the signing mechanism locally (disposable throwaway keypair,
+      `tauri build --bundles app` → valid `.sig` produced); **not yet verified against a real tagged
+      release** (didn't want to cut one just to test) — confirm this end-to-end on the next real release.
 - [ ] Wire the in-app check/prompt/install flow (reuse the Settings → Updates surface); test the
       full update across a version bump. Keep the 7-file version-bump rule in sync.
 - [x] Android updates go through Play, not the Tauri updater — scoped to desktop (Mac/Win) in PR #48
