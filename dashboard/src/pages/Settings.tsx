@@ -29,7 +29,7 @@ import { readSettings, writeSettings, applyPersistedSettings } from '../utils/se
 import { isLocalMode } from '../utils/userScope';
 import { useAppUpdater } from '../hooks/useAppUpdater';
 
-const APP_VERSION = '1.0.47';
+const APP_VERSION = '1.0.48';
 
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
