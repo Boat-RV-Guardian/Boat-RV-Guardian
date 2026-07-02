@@ -672,14 +672,23 @@ real updater behind it.)
       install button/progress/error states when actionable and otherwise falls back to the pre-existing
       GitHub-releases-tag badge (web/Capacitor/error cases — no regression there). 9 new tests (283
       total): the pure `formatUpdateProgress` helper + full RTL branch coverage via a mocked hook.
-      **Native-verify gap (honest, not glossed over):** could NOT get a real desktop click-through —
-      `npm run tauri dev`'s debug binary has no stable Launch Services identity, so computer-use
-      automation only ever resolves to the OLD installed release build (hit this dead end twice this
-      session). The signing mechanism itself was proven locally (#52, throwaway key → valid `.sig`), and
-      all code gates are green, but the actual in-app check/download/install against a real published
-      release is **still unverified** — do this alongside/before the next tagged release. Keep the
-      7-file version-bump rule in sync when that happens.
-      **Task 13 is now feature-complete pending that native-verify pass.**
+      **Native-verify DONE 2026-07-01:** `npm run tauri build --bundles app` (release profile, skips the
+      installer/DMG step) + installed straight to `/Applications`, replacing the stale ancient v1.0.26
+      build that had been confusing computer-use automation all session (that binary had no stable
+      Launch Services identity — `tauri dev`'s ephemeral debug build still doesn't, but a real installed
+      `.app` does). Signed in as the real account, confirmed the whole 4-tab shell renders, then checked
+      Settings → Updates specifically. **Found + fixed a real bug live** (PR #56): the failed background
+      `check()` — expected right now since no tagged release has ever published a `latest.json` manifest
+      via #52's wiring — was rendering as a confusing, duplicated "Update check failed: Update check
+      failed" error. Split the status into a silent `error` (check failure, logged not shown) vs a shown
+      `install-error` (failure AFTER the user clicks Download & Install, where staying silent would look
+      like a hang). Re-verified live post-fix: panel now cleanly shows only "You are up to date!" with no
+      error line. **What's still genuinely unverified:** the actual download → signature-verify →
+      install → relaunch path against a REAL published release, since no tagged release with the new
+      manifest wiring exists yet — do this alongside/before the next tagged release. Keep the 7-file
+      version-bump rule in sync when that happens.
+      **Task 13 is feature-complete and locally native-verified; the one remaining unknown is
+      real-release-manifest behavior, which by definition needs an actual tag to exist.**
 - [x] Android updates go through Play, not the Tauri updater — scoped to desktop (Mac/Win) in PR #48
       (target-cfg'd dependency + `#[cfg(desktop)]`, so mobile builds skip it entirely).
 
