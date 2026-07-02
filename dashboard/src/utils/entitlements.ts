@@ -84,6 +84,10 @@ export interface Entitlements {
 
   // — Support —
   prioritySupport: boolean;
+
+  // — Limits —
+  /** Max monitored devices (LinkTap + Shelly) allowed on this vehicle for this tier. */
+  maxDevices: number;
 }
 
 /** Feature matrix per tier. The single source of truth for what each plan unlocks. */
@@ -105,6 +109,7 @@ export const TIER_FEATURES: Record<Tier, Entitlements> = {
     canCloudSync: true,
     canShare: true,
     prioritySupport: false,
+    maxDevices: 3,
   },
   basic: {
     tier: 'basic',
@@ -123,6 +128,7 @@ export const TIER_FEATURES: Record<Tier, Entitlements> = {
     canCloudSync: true,
     canShare: true,
     prioritySupport: false,
+    maxDevices: 6,
   },
   premium: {
     tier: 'premium',
@@ -141,6 +147,7 @@ export const TIER_FEATURES: Record<Tier, Entitlements> = {
     canCloudSync: true,
     canShare: true,
     prioritySupport: true,
+    maxDevices: 20,
   },
 };
 
@@ -165,6 +172,20 @@ export function getVehicleTier(vehicleData: any): Tier {
 /** Resolve the full entitlement set for a vehicle. */
 export function getEntitlements(vehicleData: any): Entitlements {
   return TIER_FEATURES[getVehicleTier(vehicleData)];
+}
+
+/** Max monitored devices a vehicle on `tier` may have. */
+export function deviceLimitFor(tier: Tier): number {
+  return TIER_FEATURES[tier].maxDevices;
+}
+
+/**
+ * Whether another device may be added to a vehicle on `tier` that currently has `currentDeviceCount`
+ * devices. Pure — the UI passes `getDevices().length`. Client-side gating is advisory UX; the hosted
+ * limit is (re)checked server-side where it protects a paid boundary.
+ */
+export function canAddDevice(tier: Tier, currentDeviceCount: number): boolean {
+  return currentDeviceCount < deviceLimitFor(tier);
 }
 
 /** True if `tier` is at least `min` in the free→basic→premium ordering. */
@@ -203,6 +224,7 @@ export function formatRetention(days: number): string {
 export function entitlementSummary(e: Entitlements): EntitlementLine[] {
   return [
     { label: 'Remote monitoring', value: e.canRemoteView ? (e.remoteViewManualOnly ? 'Manual refresh' : 'Automatic') : 'Local only', on: e.canRemoteView },
+    { label: 'Devices', value: `Up to ${e.maxDevices}`, on: true },
     { label: 'Remote control', value: e.canRemoteControl ? 'Included' : 'Local only', on: e.canRemoteControl },
     { label: 'Away push alerts', value: e.canAwayPush ? 'Included' : '—', on: e.canAwayPush },
     { label: 'Cloud flood-shutoff', value: e.canCloudFloodShutoff ? 'Included' : '—', on: e.canCloudFloodShutoff },
