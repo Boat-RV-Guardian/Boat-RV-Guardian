@@ -298,7 +298,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
       </div>
 
       {/* Alert channels — SMS/voice escalation (Task 6/14). Premium-gated (canSmsAlert). No live
-          provider yet: prefs are stored + synced; the worker send path (worker/src/sms.ts) is a stub. */}
+          provider yet: prefs are stored + synced; the worker send path (in brvg-cloud-server) is a stub. */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
           SMS &amp; voice alerts{!ent.canSmsAlert && ' (Premium)'}

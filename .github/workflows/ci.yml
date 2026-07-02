@@ -1,8 +1,8 @@
 name: CI
 
-# Quality gate for pull requests and pushes to main. Runs the dashboard unit tests + typecheck and
-# the worker typecheck. Deploy workflows (deploy-dashboard.yml / worker-deploy.yml) stay separate so
-# this can fail a PR without blocking or triggering a deploy.
+# Quality gate for pull requests and pushes to main. Runs the dashboard unit tests + typecheck.
+# The deploy workflow (deploy-dashboard.yml) stays separate so this can fail a PR without triggering
+# a deploy. (The webhook worker was retired from this repo — it now lives in brvg-cloud-server.)
 on:
   pull_request:
   push:
@@ -35,27 +35,10 @@ jobs:
         working-directory: ./dashboard
         run: npm run test:coverage
 
+  # The webhook worker was retired from this repo (it now lives in brvg-cloud-server, verified by that
+  # repo's CI). This is a no-op placeholder so the branch-protection required "worker" status check stays
+  # satisfiable. Once the owner drops "worker" from main's required checks, delete this job.
   worker:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: worker/package-lock.json
-
-      - name: Install Dependencies
-        working-directory: ./worker
-        run: npm ci
-
-      # CLAUDE.md: the worker's real type gate is `wrangler deploy --dry-run` (raw tsc mis-flags it).
-      - name: Typecheck (wrangler dry-run)
-        working-directory: ./worker
-        run: npx wrangler deploy --dry-run
-
-      - name: Unit Tests
-        working-directory: ./worker
-        run: npm test
+      - run: echo "worker retired from this repo — see brvg-cloud-server (verified in its CI)"
