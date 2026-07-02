@@ -10,85 +10,48 @@ Legend: `[ ]` not started · `[~]` in progress / partially done.
 
 ## 🛡️ Security & correctness review (2026-07-02) — multi-repo audit
 
-Findings from a full read-only review of all four repos (dashboard, worker, cloud-server, admin-site,
-website). Ordered security-first, then docs. Prod-deploy items (worker `**`, Firestore rules deploy,
-Pages sites) are PR-only until the owner OKs the deploy/merge.
+Findings from a full read-only review of all four repos, then remediated in focused PRs. **Merged**
+items landed to `main` (non-prod: dashboard app, cloud-server, admin-site docs, main-repo docs).
+**HELD** items are opened as PRs but need the owner's explicit OK because merging deploys to prod
+(worker `**`, Pages sites) or the change deploys Firestore rules. **Deferred** items are documented
+below with why.
 
-### 🔴 High
-- [ ] **SEC-1 — Firestore `vehicles` update rule enforces no roles.** [firestore.rules](firestore.rules)
-      `allow update: if request.auth.uid in resource.data.allowedUsers` has no field allow-list, so any
-      member (incl. `monitor`) can rewrite `members[uid].role`→admin, take `owner`, set `tier=premium`,
-      or overwrite LinkTap creds — client-side. This ALSO defeats the worker's server-side authz
-      (`/api/control`, `/api/trial` both read role/tier from the same fields). Surgical fix: block a
-      member update that changes `tier`/`trialEndsAt`/`owner`/`members`(role)/`allowedUsers` (those go
-      through the admin or `isValidClaim` path). MUST not break normal config sync / sharing / trial
-      writes — verify against `utils/sharing.ts`, `utils/configSync.ts`, `utils/trial.ts`. **PROD deploy —
-      owner OK required.**
-- [ ] **SEC-2 — Max-flow-rate auto-shutoff is dead code.**
-      [LinkTapWidget.tsx:400](dashboard/src/components/LinkTapWidget.tsx) — the `displaySpeed > maxFlowRate`
-      branch sets `cause` but never `triggered = true`, so the shutoff never fires. `lt_maxflow` does
-      nothing. One-line fix + regression test. (Damage still bounded by the volume/duration open-limit.)
-- [ ] **SEC-3 — cloud-server webhook auth fails open when no API key is set.**
-      [brvg-cloud-server core.ts](../brvg-cloud-server/src/core.ts) — default install accepts unauthenticated
-      `/api/shelly` + `/api/history` (valve close, FCM spam, history read). Compounded by non-atomic
-      `FileStorage.persist()` that resets to an empty DB (dropping the apiKey) on corrupt JSON. Fix:
-      fail closed by default (explicit opt-out env), atomic temp-file+rename write, timing-safe compares.
+### ✅ Merged
+- [x] **SEC-2 — Max-flow-rate auto-shutoff was dead code** + **SEC-8 — stale `targetVolume` in the volume
+      cutoff.** Fixed via a tested pure `utils/valveSafety.ts`. [#67](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/67).
+      ⚠️ Still wants a hardware smoke test on a live gateway.
+- [x] **SEC-6 — Firebase ID token POSTed to a member-settable URL.** `requestTrial` pinned to
+      `DEFAULT_WORKER_URL`. [#69](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/69).
+- [x] **SEC-14 — FCM token/payloads logged** + **SEC-15 — cleartext nav range.** [#72](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/72).
+- [x] **SEC-3 (auth) — cloud-server fail-open webhook auth** + **SEC-10 — timing-unsafe compares.**
+      Fail-closed `keyAuthorized` + `safeEqual`. [cloud-server #4](https://github.com/Boat-RV-Guardian/brvg-cloud-server/pull/4).
+- [x] **SEC-3 (durability) — non-atomic file write / corrupt-db wipe** + **SEC-11 — unbounded device keys**
+      + **SEC-12 — Docker root / `npm install`.** [cloud-server #5](https://github.com/Boat-RV-Guardian/brvg-cloud-server/pull/5).
+- [x] **SEC-9 — admin console docs understated blast radius.** [admin-site #5](https://github.com/Boat-RV-Guardian/brvg-admin-site/pull/5).
+- [x] **DOC-1..4** (README/ARCHITECTURE/PUSH_NOTIFICATIONS/.agents/DOMAIN_MIGRATION). [#73](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/73).
+- [x] **DOC-5 (cloud-server README)**. [cloud-server #6](https://github.com/Boat-RV-Guardian/brvg-cloud-server/pull/6). (admin-site README folded into #5.)
 
-### 🟠 Medium
-- [ ] **SEC-4 — Unauthenticated hosted webhook `/api/shelly?vid=`.** [worker/src/index.ts](worker/src/index.ts) —
-      no token/signature/rate-limit; guessable `vid` → forced valve close, FCM/SMS fan-out (cost attack,
-      only capped by the Twilio trial), arbitrary `sensorState` writes. Can't make auth *mandatory*
-      without re-provisioning every deployed Shelly device (breaks the live flood path) — needs a
-      migration plan (optional per-vid HMAC/secret, then flip to required). **Design + owner decision.**
-- [ ] **SEC-5 — `vid` not URL-encoded into Firestore REST paths (worker).**
-      [worker/src/index.ts](worker/src/index.ts) (115/199/399/544/557/632) — `device` is sanitized, `vid`
-      is not; a `vid` with `/` is a path-injection primitive using the admin (rules-bypassing) token.
-      Fix: `encodeURIComponent(vid)` at every REST path build + a test. **PROD worker — owner OK to merge.**
-- [ ] **SEC-6 — Firebase ID token POSTed to a member-settable URL.**
-      [dashboard/src/utils/trial.ts:36](dashboard/src/utils/trial.ts) — `requestTrial` resolves its base
-      from `sh_webhook_url` (synced per-vehicle config an admin can set) and sends `Bearer <idToken>`. A
-      malicious custom-server URL harvests other members' identity tokens. Pin `/api/trial` (and future
-      `/api/control`) to `DEFAULT_WORKER_URL`.
-- [ ] **SEC-7 — Tauri CSP disabled.** [tauri.conf.json](dashboard/src-tauri/tauri.conf.json) `"csp": null`.
-      App renders device-supplied strings. Needs a real CSP — but adding one risks breaking Firebase/asset
-      loads, so it needs a native (`npm run tauri dev`) verification pass. **Needs native verify.**
-- [ ] **SEC-8 — Stale `targetVolume` in the client volume cutoff.**
-      [LinkTapWidget.tsx:640](dashboard/src/components/LinkTapWidget.tsx) reads `targetVolume` from the render
-      closure but the poll effect deps (709) omit it → a mid-cycle-discovered limit isn't enforced. Use
-      `stateRef.current.targetVolume` (as lines 605/613 already do).
-- [ ] **SEC-9 — Admin console outgrew its documented security model.**
-      [brvg-admin-site docs/ADMIN.md](../brvg-admin-site/docs/ADMIN.md) still describes a tier-fields-only
-      admin; the deployed rules + console actually delete vehicles/users + rewrite membership. Reconcile
-      the doc to the real (broad) admin blast radius.
+### ⏸️ HELD — needs owner OK (prod deploy)
+- [~] **SEC-1 + SEC-13 — Firestore role enforcement + `trialsUsed` protection.** Role-aware vehicle-update
+      rule (a plain member can't escalate role / seize owner / forge tier / grant access) + `trialsUsed`
+      made worker-only. Ships with an emulator rules-unit-testing harness (`firestore-tests/`) that was
+      **authored but NOT executed here** (review box had only JDK 18; emulator needs 21+).
+      [#70](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/70). **Before deploy:** run
+      `cd firestore-tests && npm i && npm test`, confirm green, then deploy the rules.
+- [~] **SEC-5 — worker `vid` path-injection.** `sanitizeVid` at all four ingress points + tests.
+      [#71](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/71). Merging auto-deploys the worker.
+- [~] **SEC-16 + DOC-5 (website) — stale pricing/platform copy + stock README.**
+      [website #8](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/8). Merging auto-deploys Pages.
 
-### 🟡 Low / hardening
-- [ ] **SEC-10 — cloud-server: timing-unsafe secret compares** (API key `!==`, admin password `===`) →
-      `crypto.timingSafeEqual`. **SEC-11 — unbounded distinct `device` keys per vid** (cloud-server + worker
-      cap samples per key, not key count) → cap keys/vehicle. **SEC-12 — Docker runs as root, `npm install`
-      not `npm ci`, worker adapter re-inits schema per request.**
-- [ ] **SEC-13 — `users/{uid}` + `trialEndsAt` client-writable** ([firestore.rules](firestore.rules)) lets a
-      user reset their own trial markers (defeats anti-abuse). Same root as SEC-1. **PROD deploy — owner OK.**
-- [ ] **SEC-14 — dashboard logs FCM token + raw push payloads to console**
-      ([usePushNotifications.ts:43](dashboard/src/hooks/usePushNotifications.ts)).
-- [ ] **SEC-15 — Capacitor allows cleartext HTTP app-wide + `allowNavigation` misses 172.17–172.30**
-      ([capacitor.config.ts](dashboard/capacitor.config.ts)). Cleartext is needed for LAN RPC; widen the
-      RFC1918 nav ranges at least.
-- [ ] **SEC-16 — website copy drift**: `support.astro` FAQ says paid plans are "future" while `/pricing`
-      sells them live; `features.astro` claims iOS push but there's no iOS build yet. **Pages auto-deploy —
-      owner OK to merge.**
-
-### 📄 Documentation drift (low-stakes, fix after security)
-- [ ] **DOC-1 — [README.md](README.md) + [ARCHITECTURE.md](ARCHITECTURE.md)** still describe a monorepo with
-      `/website` + `/cloudflare` dirs that don't exist; dev-setup `cd website` steps fail; "must log in to
-      view dashboard" ignores local-only mode.
-- [ ] **DOC-2 — [PUSH_NOTIFICATIONS_SETUP.md](PUSH_NOTIFICATIONS_SETUP.md)** entirely stale (nonexistent
-      `cloudflare/` dir, `FCM_TOKENS` KV, `/webhook` route). Rewrite for `worker/` + Firestore-token model.
-- [ ] **DOC-3 — [.agents/AGENTS.md](.agents/AGENTS.md)** mandates Firestore-only config storage, contradicting
-      the local-cache / local-only-mode design. Correct it.
-- [ ] **DOC-4 — [docs/DOMAIN_MIGRATION.md](docs/DOMAIN_MIGRATION.md)** says `DEFAULT_WORKER_URL` is still the
-      `workers.dev` host; the `api.boatrvguardian.com` cutover already shipped.
-- [ ] **DOC-5 — cloud-server + admin-site + website READMEs**: version/backend-count drift; website README is
-      still the stock Astro starter. (Website = Pages auto-deploy — owner OK to merge.)
+### 🧊 Deferred (documented — not a quick fix)
+- [ ] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`.** Guessable vid → forced valve close,
+      FCM/SMS fan-out (cost attack, only capped by the Twilio trial), arbitrary `sensorState` writes.
+      Can't make auth mandatory without re-provisioning every deployed Shelly device (breaks the live
+      flood path). Needs a migration plan: optional per-vid HMAC/secret first, then flip to required.
+      **Owner decision.** (SEC-5, the path-injection subset, is fixed in #71.)
+- [ ] **SEC-7 — Tauri CSP disabled** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json) `"csp": null`).
+      Adding a CSP risks breaking Firebase/asset loads, so it needs a native (`npm run tauri dev`)
+      verification pass rather than a blind change. **Needs native verify.**
 
 ---
 
