@@ -11,6 +11,8 @@ import {
   BASIC_TRIAL_DAYS,
   formatRetention,
   entitlementSummary,
+  deviceLimitFor,
+  canAddDevice,
 } from './entitlements';
 
 describe('getVehicleTier', () => {
@@ -157,5 +159,28 @@ describe('entitlementSummary', () => {
   it('returns the same row set for every tier (stable table shape)', () => {
     const labels = (t: typeof TIER_FEATURES.free) => entitlementSummary(t).map(r => r.label);
     expect(labels(TIER_FEATURES.free)).toEqual(labels(TIER_FEATURES.premium));
+  });
+});
+
+describe('device limits (per tier)', () => {
+  it('has the agreed per-tier maximums', () => {
+    expect(deviceLimitFor('free')).toBe(3);
+    expect(deviceLimitFor('basic')).toBe(6);
+    expect(deviceLimitFor('premium')).toBe(20);
+  });
+
+  it('allows adding below the limit and blocks at/over it', () => {
+    expect(canAddDevice('free', 0)).toBe(true);
+    expect(canAddDevice('free', 2)).toBe(true);   // 3rd device ok
+    expect(canAddDevice('free', 3)).toBe(false);  // 4th blocked
+    expect(canAddDevice('basic', 5)).toBe(true);
+    expect(canAddDevice('basic', 6)).toBe(false);
+    expect(canAddDevice('premium', 19)).toBe(true);
+    expect(canAddDevice('premium', 20)).toBe(false);
+  });
+
+  it('limits increase monotonically with tier', () => {
+    expect(deviceLimitFor('free')).toBeLessThan(deviceLimitFor('basic'));
+    expect(deviceLimitFor('basic')).toBeLessThan(deviceLimitFor('premium'));
   });
 });

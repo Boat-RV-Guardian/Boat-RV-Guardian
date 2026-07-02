@@ -757,8 +757,10 @@ export default function Settings({ user }: { user: any }) {
 
           {devicesTab === 'add' && (
             <AddDevicePanel
-              onAddLinkTap={() => setIsProvisionLinkTapModalOpen(true)}
-              onAddShelly={() => setIsProvisionModalOpen(true)}
+              deviceCount={devices.length}
+              maxDevices={entitlements.maxDevices}
+              onAddLinkTap={() => { if (devices.length < entitlements.maxDevices) setIsProvisionLinkTapModalOpen(true); }}
+              onAddShelly={() => { if (devices.length < entitlements.maxDevices) setIsProvisionModalOpen(true); }}
             />
           )}
 
