@@ -4,7 +4,9 @@
 // presentational: all state + handlers come in as props; the password-change confirm dialog itself
 // lives in SettingsModals and is triggered via onRequestSaveShellyPw.
 
+import { useState } from 'react';
 import PlanBadge from './PlanBadge';
+import { DEFAULT_WORKER_URL } from '../../utils/configSync';
 import type { Vehicle } from '../../utils/VehicleManager';
 
 type Msg = { text: string; type: 'success' | 'error' } | null;
@@ -52,6 +54,13 @@ interface Props {
 }
 
 export default function VehiclesPanel(p: Props) {
+  // "Use default hosted server" checkbox: blank sh_webhook_url always means "follow whatever
+  // DEFAULT_WORKER_URL currently is" (so it silently keeps working across future domain migrations —
+  // see Task 11). Checking the box doesn't WRITE that URL into storage (that would freeze it to
+  // today's default); it just switches the field to a disabled, read-only display of the resolved
+  // default so it's not an invisible blank. Local UI-only state: starts in custom mode only if this
+  // vehicle already has a non-default value saved (an existing self-hoster).
+  const [customServer, setCustomServer] = useState(() => !!p.webhookUrl);
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
@@ -187,9 +196,29 @@ export default function VehiclesPanel(p: Props) {
               <label className="form-label" style={{ fontWeight: 600 }}>Custom Cloud Server URL</label>
               <label className="form-label">Cloud Alert Worker URL</label>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
-                For users running their own cloud server (the self-hostable Guardian cloud server, or a Cloudflare worker). Required for Shelly devices to push away-from-home alerts. Leave all three blank to use the default hosted server. Set this before adding devices.
+                For users running their own cloud server (the self-hostable Guardian cloud server, or a Cloudflare worker). Required for Shelly devices to push away-from-home alerts. Set this before adding devices.
               </p>
-              <input className="form-input" type="url" value={p.webhookUrl} onChange={(e) => p.setWebhookUrl(e.target.value)} placeholder="https://your-server.example.com (blank = default server)" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', margin: '0 0 8px 0', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!customServer}
+                  onChange={(e) => {
+                    const useDefault = e.target.checked;
+                    setCustomServer(!useDefault);
+                    if (useDefault) p.setWebhookUrl('');
+                  }}
+                />
+                Use default hosted server ({DEFAULT_WORKER_URL.replace(/^https:\/\//, '')})
+              </label>
+              <input
+                className="form-input" type="url"
+                value={customServer ? p.webhookUrl : DEFAULT_WORKER_URL}
+                onChange={(e) => p.setWebhookUrl(e.target.value)}
+                disabled={!customServer}
+                placeholder="https://your-server.example.com"
+                autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                style={!customServer ? { opacity: 0.6 } : undefined}
+              />
               <label className="form-label" style={{ marginTop: '12px' }}>Username</label>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0' }}>
                 The username created in your server's admin page. Leave blank if your server doesn't require auth.
