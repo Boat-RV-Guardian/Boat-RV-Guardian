@@ -1,9 +1,11 @@
 # Self-hostable webhooks/actions server — architecture & plan
 
-Created 2026-06-25 (open-tasks Task 7). **Design only — not yet implemented.** The worker is the
-**live, safety-critical** flood-shutoff path and **auto-deploys to production on push to `worker/**`**
-(`worker-deploy.yml`), so the refactor below should be executed when it can be **hardware
-smoke-tested** (see docs/TESTING.md), not blind.
+Created 2026-06-25 (open-tasks Task 7). **Status update: this design has since been implemented and
+shipped** as [brvg-cloud-server](https://github.com/Boat-RV-Guardian/brvg-cloud-server) — a
+Docker/Node server built on the shared core. The document below is kept as the original design
+rationale. The worker remains the **live, safety-critical** flood-shutoff path and **auto-deploys to
+production on push to `worker/**`** (`worker-deploy.yml`), so changes to it still require the
+**hardware smoke test** (see docs/TESTING.md).
 
 ## Goal
 
