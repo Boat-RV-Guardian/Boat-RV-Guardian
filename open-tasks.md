@@ -47,8 +47,9 @@ below with why.
 - [ ] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`.** Guessable vid → forced valve close,
       FCM/SMS fan-out (cost attack, only capped by the Twilio trial), arbitrary `sensorState` writes.
       Can't make auth mandatory without re-provisioning every deployed Shelly device (breaks the live
-      flood path). Needs a migration plan: optional per-vid HMAC/secret first, then flip to required.
-      **Owner decision.** (SEC-5, the path-injection subset, is fixed in #71.)
+      flood path). **Phased migration design written: [docs/SEC4_WEBHOOK_AUTH.md](docs/SEC4_WEBHOOK_AUTH.md)**
+      (per-vehicle URL secret `&k=`, accept-or-none Phase 1 → required Phase 2). **Owner: approve the plan,
+      then it's ~1 worker PR + ~1 app PR + a hardware pass.** (SEC-5, the path-injection subset, is fixed.)
 - [ ] **SEC-7 — Tauri CSP disabled** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json) `"csp": null`).
       Adding a CSP risks breaking Firebase/asset loads, so it needs a native (`npm run tauri dev`)
       verification pass rather than a blind change. **Needs native verify.**
