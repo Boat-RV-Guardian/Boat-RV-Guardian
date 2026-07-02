@@ -27,13 +27,21 @@ export interface RequestTrialDeps {
   fetchFn?: typeof fetch;
   /** Returns the caller's Firebase ID token, or null if not signed in. */
   getIdToken?: () => Promise<string | null>;
-  /** Worker base URL override; defaults to the per-vehicle custom URL or DEFAULT_WORKER_URL. */
+  /** Worker base URL override — TEST-ONLY. Production always pins to DEFAULT_WORKER_URL (see below). */
   workerBase?: string;
 }
 
-/** Resolve the worker base URL the same way the rest of the app does (custom per-vehicle ⇒ default). */
+/**
+ * Resolve the worker base URL for the trial call.
+ *
+ * SECURITY: this request carries the user's Firebase ID token in an Authorization header, so it must
+ * go ONLY to the trusted first-party worker. It deliberately does NOT read `sh_webhook_url` (the
+ * per-vehicle "custom cloud server URL" any vehicle admin can set) — pointing it at an attacker's
+ * server would leak members' ID tokens (full identity impersonation against Firestore/worker). Pinned
+ * to DEFAULT_WORKER_URL; the `override` is honored only for unit tests.
+ */
 function resolveWorkerBase(override?: string): string {
-  const base = override ?? (localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL);
+  const base = override ?? DEFAULT_WORKER_URL;
   return base.replace(/\/+$/, '');
 }
 
