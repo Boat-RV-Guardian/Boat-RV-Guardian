@@ -148,7 +148,9 @@ describe('Account', () => {
   it('opens the SMS + integrations inputs on a Premium plan', () => {
     localStorage.setItem('lt_vehicle_tier', 'premium');
     render(<Account />);
-    expect(screen.getByPlaceholderText(/555 123 4567/)).toBeTruthy();
+    // SMS + WhatsApp both use the phone placeholder; Telegram + integrations add their own inputs.
+    expect(screen.getAllByPlaceholderText(/555 123 4567/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByPlaceholderText(/@username or chat id/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /generate/i })).toBeTruthy();
   });
 

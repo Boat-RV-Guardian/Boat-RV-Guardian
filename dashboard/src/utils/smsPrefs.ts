@@ -73,6 +73,17 @@ export function removePhone(prefs: SmsPrefs, phone: string): SmsPrefs {
   return { ...prefs, phones: prefs.phones.filter((p) => p !== phone) };
 }
 
+/**
+ * Add a freeform destination "handle" (no phone normalization) — for channels like Telegram whose
+ * destination is a chat id or `@username`, not an E.164 number. Trims; no-op on empty/duplicate.
+ * The `phones` array is reused as the generic address list (the cloud-server maps it to `addresses`).
+ */
+export function addHandle(prefs: SmsPrefs, input: string): SmsPrefs {
+  const h = String(input).trim();
+  if (!h || prefs.phones.includes(h)) return prefs;
+  return { ...prefs, phones: [...prefs.phones, h] };
+}
+
 /** Opt an event in/out of SMS escalation. */
 export function setEventEnabled(prefs: SmsPrefs, event: string, on: boolean): SmsPrefs {
   const has = prefs.events.includes(event);

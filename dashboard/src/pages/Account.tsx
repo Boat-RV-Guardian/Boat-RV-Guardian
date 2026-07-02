@@ -4,10 +4,8 @@ import { entitlementSummary, TIER_LABELS, TIER_PRICING } from '../utils/entitlem
 import { redeemCoupon, MOCK_COUPONS } from '../utils/billing';
 import { trialStatus, usageRows, vehiclePlanRows } from '../utils/accountSummary';
 import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
-import {
-  parseSmsPrefs, serializeSmsPrefs, normalizePhone, addPhone, removePhone, setEventEnabled,
-  SMS_EVENT_CATALOG, type SmsPrefs,
-} from '../utils/smsPrefs';
+import { parseSmsPrefs, serializeSmsPrefs, type SmsPrefs } from '../utils/smsPrefs';
+import MessagingChannelPrefs from './settings/MessagingChannelPrefs';
 import {
   parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
   type ApiToken,
@@ -25,6 +23,18 @@ function readLocalJson<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; }
 }
 
+// Per-vehicle messaging-channel prefs, one synced `sh_*_prefs` field per channel. Persisting fires
+// settings_updated so SyncModal pushes it to the cloud like any other config.
+function useChannelPrefs(field: string) {
+  const [prefs, setPrefs] = useState<SmsPrefs>(() => parseSmsPrefs(localStorage.getItem(field)));
+  const persist = (next: SmsPrefs) => {
+    setPrefs(next);
+    localStorage.setItem(field, serializeSmsPrefs(next));
+    window.dispatchEvent(new Event('settings_updated'));
+  };
+  return { prefs, persist };
+}
+
 // In-app subscription portal (open-tasks Task 14). MOCK billing for now: a coupon code "purchases" a
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
 // in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
@@ -36,22 +46,10 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // SMS / voice alert channels (Premium, per-vehicle). Persisted to the synced `sh_sms_prefs` field;
-  // dispatching settings_updated lets SyncModal push it to the cloud like any other config.
-  const [smsPrefs, setSmsPrefs] = useState<SmsPrefs>(() => parseSmsPrefs(localStorage.getItem('sh_sms_prefs')));
-  const [phoneInput, setPhoneInput] = useState('');
-  const [phoneErr, setPhoneErr] = useState('');
-  const persistSms = (next: SmsPrefs) => {
-    setSmsPrefs(next);
-    localStorage.setItem('sh_sms_prefs', serializeSmsPrefs(next));
-    window.dispatchEvent(new Event('settings_updated'));
-  };
-  const onAddPhone = () => {
-    if (!normalizePhone(phoneInput)) { setPhoneErr('Enter a valid phone (7–15 digits, optional +).'); return; }
-    setPhoneErr('');
-    persistSms(addPhone(smsPrefs, phoneInput));
-    setPhoneInput('');
-  };
+  // Messaging alert channels (Premium, per-vehicle) — SMS, WhatsApp, Telegram, each its own synced field.
+  const sms = useChannelPrefs('sh_sms_prefs');
+  const whatsapp = useChannelPrefs('sh_whatsapp_prefs');
+  const telegram = useChannelPrefs('sh_telegram_prefs');
 
   // Integration API tokens (Premium, per-vehicle). Persisted to the synced `sh_api_tokens` field.
   const [apiTokens, setApiTokens] = useState<ApiToken[]>(() => parseApiTokens(localStorage.getItem('sh_api_tokens')));
@@ -297,63 +295,42 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         )}
       </div>
 
-      {/* Alert channels — SMS/voice escalation (Task 6/14). Premium-gated (canSmsAlert). No live
-          provider yet: prefs are stored + synced; the worker send path (in brvg-cloud-server) is a stub. */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
-          SMS &amp; voice alerts{!ent.canSmsAlert && ' (Premium)'}
-        </h3>
-        {!ent.canSmsAlert ? (
-          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: 0 }}>
-            Escalate critical alerts (flood, low battery, shore power, offline) to a text message.
-            Upgrade to Premium to add phone numbers and choose which alerts text you.
-          </p>
-        ) : (
-          <>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0 }}>
-              Add the numbers that should receive a text for the alerts you pick below. (Delivery goes
-              live once an SMS provider is connected.)
-            </p>
-            {/* Phone numbers */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {smsPrefs.phones.map((p) => (
-                <span key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '14px', padding: '4px 10px', fontSize: '0.82rem' }}>
-                  {p}
-                  <button onClick={() => persistSms(removePhone(smsPrefs, p))} aria-label={`Remove ${p}`} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: 0 }}>×</button>
-                </span>
-              ))}
-              {smsPrefs.phones.length === 0 && (
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>No numbers yet.</span>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                type="tel"
-                value={phoneInput}
-                onChange={(e) => { setPhoneInput(e.target.value); setPhoneErr(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') onAddPhone(); }}
-                placeholder="+1 555 123 4567"
-                style={{ flex: '1 1 180px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
-              />
-              <button className="btn-primary" onClick={onAddPhone} style={{ padding: '8px 18px' }}>Add</button>
-            </div>
-            {phoneErr && <span style={{ fontSize: '0.78rem', color: 'var(--accent-red, #ff6b6b)' }}>{phoneErr}</span>}
-            {/* Per-event opt-in */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-              {SMS_EVENT_CATALOG.map((ev) => (
-                <label key={ev.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  <input
-                    type="checkbox"
-                    checked={smsPrefs.events.includes(ev.key)}
-                    onChange={(e) => persistSms(setEventEnabled(smsPrefs, ev.key, e.target.checked))}
-                  />
-                  {ev.label}
-                </label>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      {/* Alert channels — SMS / WhatsApp / Telegram escalation (Task 6/14). Premium-gated (canSmsAlert).
+          Prefs are stored + synced per channel; the worker send path lives in brvg-cloud-server (SMS is
+          hosted-only; WhatsApp + Telegram are available on self-host too). */}
+      <MessagingChannelPrefs
+        title="SMS & voice alerts"
+        unlocked={ent.canSmsAlert}
+        lockedNote="Escalate critical alerts (flood, low battery, shore power, offline) to a text message. Upgrade to Premium to add phone numbers and choose which alerts text you."
+        description="Add the numbers that should receive a text for the alerts you pick below. (Delivery goes live once an SMS provider is connected.)"
+        prefs={sms.prefs}
+        onChange={sms.persist}
+        variant="phone"
+        inputPlaceholder="+1 555 123 4567"
+        emptyLabel="No numbers yet."
+      />
+      <MessagingChannelPrefs
+        title="WhatsApp alerts"
+        unlocked={ent.canSmsAlert}
+        lockedNote="Escalate critical alerts to WhatsApp. Upgrade to Premium to add WhatsApp numbers and choose which alerts notify you."
+        description="Add the WhatsApp numbers that should receive the alerts you pick below."
+        prefs={whatsapp.prefs}
+        onChange={whatsapp.persist}
+        variant="phone"
+        inputPlaceholder="+1 555 123 4567"
+        emptyLabel="No numbers yet."
+      />
+      <MessagingChannelPrefs
+        title="Telegram alerts"
+        unlocked={ent.canSmsAlert}
+        lockedNote="Escalate critical alerts to Telegram. Upgrade to Premium to add Telegram chats and choose which alerts notify you."
+        description="Add the Telegram chat IDs (or @usernames) that should receive the alerts you pick below. Start a chat with the bot first so it can message you."
+        prefs={telegram.prefs}
+        onChange={telegram.persist}
+        variant="handle"
+        inputPlaceholder="@username or chat id"
+        emptyLabel="No chats yet."
+      />
 
       {/* Integrations / API tokens (Task 14) — Premium (canIntegrations). Scaffold: tokens are issued
           + stored + synced; no server validates them yet (lands with the integration endpoints). */}
