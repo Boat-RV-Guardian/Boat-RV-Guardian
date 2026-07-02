@@ -102,6 +102,7 @@ export async function registerShellyWebhooks(
   vid: string,
   deviceId = '',
   key = '',
+  secret = '',
 ): Promise<string[]> {
   let supported: string[] = [];
   try {
@@ -113,15 +114,17 @@ export async function registerShellyWebhooks(
   const events = (alertish.length ? alertish : supported).slice(0, 10);
   const root = baseUrl.replace(/\/$/, '');
   const dev = deviceId ? `&device=${encodeURIComponent(deviceId)}` : '';
-  // Auth key for a self-hosted cloud server (the default hosted worker doesn't use one).
+  // Instance API key for a self-hosted cloud server (?key=), and the per-vehicle webhook bearer secret
+  // (?k=, SEC-4) the hosted worker verifies. Both optional; a device may carry either/both.
   const auth = key ? `&key=${encodeURIComponent(key)}` : '';
+  const perVehicle = secret ? `&k=${encodeURIComponent(secret)}` : '';
 
   let cidMap: Record<string, number> = {};
   try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
 
   const created: string[] = [];
   for (const event of events) {
-    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}`;
+    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}${perVehicle}`;
     try {
       await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, urls: [url] });
       created.push(event);

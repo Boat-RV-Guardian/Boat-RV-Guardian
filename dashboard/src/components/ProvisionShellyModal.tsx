@@ -181,7 +181,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
           const vid = (await import('../utils/VehicleManager')).getActiveVehicleId();
           // Send the API key only for a CUSTOM (self-hosted) server — the default hosted worker has none.
           const webhookKey = localStorage.getItem('sh_webhook_url') ? (localStorage.getItem('sh_webhook_key') || '') : '';
-          await registerShellyWebhooks((m, p) => shellyRpc('192.168.33.1', m, p), webhookBase, vid, shellyDeviceId, webhookKey);
+          const webhookSecret = (await import('../utils/webhookSecret')).ensureWebhookSecret();
+          await registerShellyWebhooks((m, p) => shellyRpc('192.168.33.1', m, p), webhookBase, vid, shellyDeviceId, webhookKey, webhookSecret);
         } catch { /* best-effort */ }
       }
 
@@ -288,7 +289,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
           const { registerShellyWebhooks } = await import('../utils/shellyRpc');
           const vid = (await import('../utils/VehicleManager')).getActiveVehicleId();
           const webhookKey = localStorage.getItem('sh_webhook_url') ? (localStorage.getItem('sh_webhook_key') || '') : '';
-          await registerShellyWebhooks((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined), webhookBase, vid, shellyDeviceId, webhookKey);
+          const webhookSecret = (await import('../utils/webhookSecret')).ensureWebhookSecret();
+          await registerShellyWebhooks((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined), webhookBase, vid, shellyDeviceId, webhookKey, webhookSecret);
         } catch { /* best-effort */ }
       }
 
