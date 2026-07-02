@@ -687,8 +687,22 @@ real updater behind it.)
       install → relaunch path against a REAL published release, since no tagged release with the new
       manifest wiring exists yet — do this alongside/before the next tagged release. Keep the 7-file
       version-bump rule in sync when that happens.
-      **Task 13 is feature-complete and locally native-verified; the one remaining unknown is
-      real-release-manifest behavior, which by definition needs an actual tag to exist.**
+      **v1.0.47 shipped 2026-07-01 (first tagged release with the manifest wiring) — real end-to-end
+      test-upgrade FOUND A SHOWSTOPPER (PR #59):** every `check()` failed with "Command
+      plugin:updater|check not allowed by ACL" — registering the plugin in the Rust builder chain isn't
+      enough in Tauri v2; the frontend also needs an explicit capability grant, which
+      `capabilities/default.json` never had. **The entire feature had never worked**, in any of PRs
+      #48/#52/#54/#56 — the silent-error design (this same entry, above) had been masking a permission
+      failure the whole time, not "no update yet." Fixed by adding `updater:default` + `process:default`
+      to the default capability set, shipped as **v1.0.48 (2026-07-02)**.
+      **Fully verified live, twice, with zero simulation:** (1) installed a local v1.0.40 build, used the
+      in-app updater to check/download/verify/install/relaunch the real v1.0.47 GitHub release —
+      confirmed the ACL bug via the actual failure, then re-confirmed the fix the same way. (2) The
+      real v1.0.47 binary (which predates the fix and can never self-check) correctly fell back to the
+      GitHub-link UI as designed; manually bridged to the real v1.0.48 release asset, and **that
+      binary's own in-app updater then correctly reported "You are up to date!" with no errors** —
+      proving the fixed pipeline is healthy from a genuine, unmodified, CI-built release artifact, not
+      just a local dev build. **Task 13 is done and fully proven end-to-end as of v1.0.48.**
 - [x] Android updates go through Play, not the Tauri updater — scoped to desktop (Mac/Win) in PR #48
       (target-cfg'd dependency + `#[cfg(desktop)]`, so mobile builds skip it entirely).
 
