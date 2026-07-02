@@ -84,6 +84,16 @@ export function sanitizeDevice(device: string | null | undefined): string {
   return (device || 'unknown').replace(/[\/#?]/g, '_');
 }
 
+/**
+ * Sanitize a vehicle id (attacker-controlled query/body param) before it is interpolated into a
+ * Firestore REST document path built with the privileged Admin token. Strips path/URL-significant
+ * chars so a `vid` like `../x` or `a/b` can't redirect the write/read to another document path.
+ * Unlike sanitizeDevice, an empty vid stays empty so the caller's `!vid` → 404 guard still fires.
+ */
+export function sanitizeVid(vid: string | null | undefined): string {
+  return (vid || '').replace(/[\/#?]/g, '_');
+}
+
 // — Tier-aware telemetry persistence throttle (open-tasks Task 6 / cost lever, COST_ANALYSIS §5) —
 //
 // Telemetry (voltmeter etc.) pushes ~every 60s and is the dominant write cost. Lower tiers persist
