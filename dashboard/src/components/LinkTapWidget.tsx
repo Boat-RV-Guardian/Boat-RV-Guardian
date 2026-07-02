@@ -5,6 +5,7 @@ import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerce
 import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
+import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 
 const APP_VERSION = '1.0.49';
 
@@ -387,25 +388,19 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
   // --- Local Safety Guard Auto-Monitoring ---
   useEffect(() => {
-    let triggered = false;
-    let cause = '';
+    const { shutOff, cause } = evaluateSafetyGuard({
+      autoGuardEnabled,
+      isBroken,
+      isLeak,
+      isWatering,
+      displaySpeed,
+      maxFlowRate,
+      speedUnit,
+    });
 
-    if (autoGuardEnabled) {
-      if (isBroken) {
-        triggered = true;
-        cause = 'Gateway reported a broken pipe alarm!';
-      } else if (isLeak) {
-        triggered = true;
-        cause = 'Gateway reported a leak alarm!';
-      } else if (displaySpeed > maxFlowRate) {
-        // AutoGuard triggers a stop command
-        cause = `Flow rate (${displaySpeed.toFixed(1)} ${speedUnit}) exceeded safety limit of ${maxFlowRate} ${speedUnit}!`;
-      }
-      
-      if (triggered && isWatering) {
-        if (notifyAutoGuard) triggerAlert('Safety Sentry Triggered', `${cause} Shutting down valve...`);
-        executeStopCommand('limit');
-      }
+    if (shutOff) {
+      if (notifyAutoGuard) triggerAlert('Safety Sentry Triggered', `${cause} Shutting down valve...`);
+      executeStopCommand('limit');
     }
   }, [speed, isBroken, isLeak, isWatering, autoGuardEnabled, maxFlowRate, displaySpeed, speedUnit]);
 
@@ -637,14 +632,14 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
         // Software-enforced volume cutoff
         // LinkTap hardware often ignores volume limits passed to cmd: 6, so we must enforce it here!
-        if (newIsWatering && targetVolume > 0 && currentVolume > 0) {
-           if (currentVolume >= targetVolume) {
-              if (commandersRef.current.stop && expectedWateringStateRef.current !== false) {
-                 addLog('success', `Target volume limit reached. Sending software-enforced stop command.`);
-                 commandersRef.current.stop('limit');
-                 expectedWateringStateRef.current = false;
-                 setIsCommandLoading('stop');
-              }
+        // Read targetVolume from the ref (not the render closure) so a limit discovered mid-cycle
+        // via setTargetVolume above is honored on the same poll.
+        if (shouldEnforceVolumeCutoff(newIsWatering, stateRef.current.targetVolume, currentVolume)) {
+           if (commandersRef.current.stop && expectedWateringStateRef.current !== false) {
+              addLog('success', `Target volume limit reached. Sending software-enforced stop command.`);
+              commandersRef.current.stop('limit');
+              expectedWateringStateRef.current = false;
+              setIsCommandLoading('stop');
            }
         }
 
