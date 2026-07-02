@@ -1,6 +1,6 @@
 import { SignJWT, importPKCS8, jwtVerify, importX509, decodeProtectedHeader } from 'jose';
 import {
-  isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice,
+  isFloodShutoff, isTelemetry, extractSensorStateExtras, sanitizeDevice, sanitizeVid,
   telemetryResolutionSecForTier, shouldPersistTelemetry, TELEMETRY_RESOLUTION_SEC,
   healthBody, smsEventKey, buildLastSendField,
 } from './events';
@@ -391,7 +391,7 @@ async function handleControl(env: Env, request: Request): Promise<Response> {
 
   let body: any;
   try { body = await request.json(); } catch { return reply({ error: 'invalid JSON body' }, 400); }
-  const vid = String(body?.vid || '');
+  const vid = sanitizeVid(String(body?.vid || ''));
   const action = body?.action as ControlAction;
   if (!vid) return reply({ error: 'missing vid' }, 400);
 
@@ -460,7 +460,7 @@ async function handleTrial(env: Env, request: Request, now = Date.now()): Promis
 
   let body: any;
   try { body = await request.json(); } catch { return reply({ error: 'invalid JSON body' }, 400); }
-  const vid = String(body?.vid || '');
+  const vid = sanitizeVid(String(body?.vid || ''));
   if (!vid) return reply({ error: 'missing vid' }, 400);
 
   const token = await getFirebaseAccessToken(env);
@@ -505,7 +505,7 @@ async function handleTrial(env: Env, request: Request, now = Date.now()): Promis
  * (Event classification + param extraction live in ./events for reuse + unit testing.)
  */
 async function handleShellyWebhook(env: Env, url: URL): Promise<Response> {
-  const vid = url.searchParams.get('vid');
+  const vid = sanitizeVid(url.searchParams.get('vid'));
   const event = url.searchParams.get('event') || 'sensor alert';
   const device = sanitizeDevice(url.searchParams.get('device'));
   if (!vid) return new Response('Missing vid', { status: 400 });
@@ -757,7 +757,7 @@ export default {
         return new Response('Method Not Allowed', { status: 405 });
       }
 
-      const vid = url.searchParams.get('vid');
+      const vid = sanitizeVid(url.searchParams.get('vid'));
       if (!vid) {
         return new Response('Missing vid parameter', { status: 400 });
       }

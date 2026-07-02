@@ -5,6 +5,7 @@ import {
   isAlarmCleared,
   extractSensorStateExtras,
   sanitizeDevice,
+  sanitizeVid,
   telemetryResolutionSecForTier,
   shouldPersistTelemetry,
   healthBody,
@@ -144,6 +145,23 @@ describe('sanitizeDevice', () => {
   it('replaces path-significant characters', () => {
     expect(sanitizeDevice('a/b#c?d')).toBe('a_b_c_d');
     expect(sanitizeDevice('shellyfloodg4-d885acea3914')).toBe('shellyfloodg4-d885acea3914');
+  });
+});
+
+describe('sanitizeVid', () => {
+  it('stays empty when missing (so the caller 404s instead of hitting a doc path)', () => {
+    expect(sanitizeVid(null)).toBe('');
+    expect(sanitizeVid(undefined)).toBe('');
+    expect(sanitizeVid('')).toBe('');
+  });
+
+  it('passes real vehicle ids through unchanged', () => {
+    expect(sanitizeVid('v_uusajkm88')).toBe('v_uusajkm88');
+  });
+
+  it('neutralizes path/URL-significant characters (path-injection guard)', () => {
+    expect(sanitizeVid('../users/victim')).toBe('.._users_victim');
+    expect(sanitizeVid('a/b#c?d')).toBe('a_b_c_d');
   });
 });
 
