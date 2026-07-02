@@ -36,6 +36,7 @@ const VEHICLE = {
     [MONITOR.uid]: { role: 'monitor', email: MONITOR.email },
   },
   tier: 'free',
+  trialEndsAt: 4102444800000, // seeded so the "clear trialEndsAt" test exercises a real field deletion
   lt_pollInterval: 8,
 };
 
