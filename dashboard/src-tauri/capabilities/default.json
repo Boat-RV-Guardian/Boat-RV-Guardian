@@ -12,6 +12,8 @@
     "notification:allow-is-permission-granted",
     "oauth:allow-start",
     "oauth:allow-cancel",
+    "updater:default",
+    "process:default",
     {
       "identifier": "http:default",
       "allow": [{ "url": "http://*/*" }, { "url": "https://*/*" }]
