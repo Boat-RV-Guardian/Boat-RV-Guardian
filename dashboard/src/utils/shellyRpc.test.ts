@@ -64,6 +64,22 @@ describe('registerShellyWebhooks', () => {
     const events = await registerShellyWebhooks(sh.call, 'https://w.example.com', 'veh1');
     expect(events).toEqual(['flood.alarm']); // only the alert-ish one is kept
   });
+
+  it('appends the self-host key (&key=) and the per-vehicle secret (&k=) when provided (SEC-4)', async () => {
+    const sh = fakeShelly({ supported: ['flood.alarm'], status: { 'flood:0': {} } });
+    await registerShellyWebhooks(sh.call, 'https://w.example.com', 'veh1', 'dev1', 'INSTKEY', 'VEHSECRET');
+    const url = sh.created[0].urls[0];
+    expect(url).toContain('&key=INSTKEY');
+    expect(url).toContain('&k=VEHSECRET');
+  });
+
+  it('omits both auth params when neither is provided', async () => {
+    const sh = fakeShelly({ supported: ['flood.alarm'], status: { 'flood:0': {} } });
+    await registerShellyWebhooks(sh.call, 'https://w.example.com', 'veh1');
+    const url = sh.created[0].urls[0];
+    expect(url).not.toContain('&key=');
+    expect(url).not.toContain('&k=');
+  });
 });
 
 describe('refreshLocalShellyWebhooks merge semantics', () => {

@@ -125,7 +125,8 @@ export async function bleProvision(
       opts.onProgress?.('Setting up cloud alerts…');
       try {
         const { registerShellyWebhooks } = await import('./shellyRpc');
-        const made = await registerShellyWebhooks((m, p) => rpcOnConnected(BleClient, deviceId, m, p), opts.webhookBase, opts.vid, info?.id || info?.mac || '');
+        const webhookSecret = (await import('./webhookSecret')).ensureWebhookSecret();
+        const made = await registerShellyWebhooks((m, p) => rpcOnConnected(BleClient, deviceId, m, p), opts.webhookBase, opts.vid, info?.id || info?.mac || '', '', webhookSecret);
         console.log('[shellyBle] registered webhooks:', made.join(', '));
       } catch (e) { console.log('[shellyBle] webhook setup failed (non-fatal)', e); }
     }
