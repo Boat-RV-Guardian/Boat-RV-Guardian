@@ -20,14 +20,58 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.admin == true;
     }
 
+    // --- Role-aware vehicle-update helpers (SEC-1) --------------------------------------------------
+    // Previously ANY member (incl. a `monitor`) could write EVERY field of the vehicle doc, so a member
+    // could rewrite their own `members` role to admin, seize `owner`, forge `tier`, or add other users to
+    // `allowedUsers` — client-side, and thereby also defeat the worker's server-side role/tier checks
+    // (which read those same fields). These helpers restrict a plain member to config-only writes while
+    // leaving every legitimate flow working (see firestore-tests/ for the exhaustive allow/deny suite).
+
+    // The caller is a member of THIS vehicle (in allowedUsers).
+    function isMember() {
+      return request.auth != null && request.auth.uid in resource.data.allowedUsers;
+    }
+
+    // The caller is this vehicle's admin/owner: the `owner` uid, OR an `admin`-role member, OR a legacy
+    // vehicle that predates the `members` map (getMyRole treats those members as admin). Admins/owners
+    // keep full write access (transfer ownership, add/remove members, set tier via coupon, etc.).
+    function isVehicleAdmin() {
+      return isMember()
+        && ( resource.data.owner == request.auth.uid
+          || !('members' in resource.data)
+          || ( request.auth.uid in resource.data.members
+               && resource.data.members[request.auth.uid].role == 'admin' ) );
+    }
+
+    // Privileged fields a plain (non-admin) member must never change: role/ownership/entitlement and the
+    // access-grant list. A normal config sync write does NOT hit these — updateVehicleConfig appends
+    // `allowedUsers: arrayUnion(self)`, which is a no-op for an existing member and so is absent from
+    // affectedKeys(). `tier` stays admin/coupon-owner-only (mock billing); the worker writes tier/trial
+    // via the Admin SDK, which bypasses rules entirely.
+    function changesPrivilegedFields() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['owner', 'members', 'tier', 'trialEndsAt', 'allowedUsers']);
+    }
+
+    // A member removing ONLY themselves (leaveVehicle): drops self from allowedUsers + their own members
+    // entry and touches nothing else. Always allowed for the departing member.
+    function isSelfLeave() {
+      return isMember()
+        && !(request.auth.uid in request.resource.data.allowedUsers)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['allowedUsers', 'members']);
+    }
+    // -----------------------------------------------------------------------------------------------
+
     match /vehicles/{vid} {
       // `resource == null` allows reading a not-yet-created doc (returns exists:false) instead of
       // denying it — without this, a brand-new vehicle's onSnapshot errors and the create path never runs.
       allow read:   if (request.auth != null && (resource == null || request.auth.uid in resource.data.allowedUsers))
                     || isAdmin();
       allow create: if request.auth != null && request.auth.uid in request.resource.data.allowedUsers;
-      allow update: if (request.auth != null && request.auth.uid in resource.data.allowedUsers)
-                    || isValidClaim(vid)
+      allow update: if isValidClaim(vid)
+                    // A member may write config freely, an admin/owner may write anything, and any member
+                    // may remove themselves — but a non-admin member may NOT touch privileged fields.
+                    || (isMember() && (isVehicleAdmin() || isSelfLeave() || !changesPrivilegedFields()))
                     // Operators may set tier/trial AND remove a member (members/allowedUsers) — the
                     // latter backs the admin console's "delete user" (drop them from shared vehicles).
                     || (isAdmin()
@@ -70,7 +114,14 @@ service cloud.firestore {
       // Operators (Task 12) may READ user docs for the admin console's Users view (trial history +
       // FCM-token presence). Writes stay self-only.
       allow read:   if (request.auth != null && request.auth.uid == uid) || isAdmin();
-      allow create, update: if request.auth != null && request.auth.uid == uid;
+      // Self-writes only, and the client may NOT write `trialsUsed` (SEC-13): it is the trial
+      // anti-abuse ledger, written ONLY by the worker via the Admin SDK. Letting a user clear their own
+      // `trialsUsed` would let them re-farm the free Basic trial. No client flow writes it (config,
+      // fcmToken, and displayName are the only self-writes).
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && !('trialsUsed' in request.resource.data);
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trialsUsed']);
       // Operators may delete a user's doc (admin console "delete user"). NOTE: this removes the
       // Firestore profile only — deleting the Firebase Auth account needs the privileged backend.
       allow delete: if (request.auth != null && request.auth.uid == uid) || isAdmin();
