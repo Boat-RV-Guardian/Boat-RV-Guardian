@@ -1,6 +1,6 @@
 // Client trigger for the server-authoritative Basic-trial grant (open-tasks Task 6). The real
 // per-user / per-vehicle anti-abuse rule + the tier/trialEndsAt writes live in the worker
-// (`POST /api/trial`, see worker/src/index.ts); this just calls it with the signed-in user's ID
+// (`POST /api/trial`, in the webhook worker — brvg-cloud-server); this just calls it with the ID
 // token. We deliberately keep NO local tier state here — on a grant the worker writes the vehicle's
 // cloud doc, and the existing onSnapshot → SyncModal stash reflects the new tier/expiry back into the
 // app. So a failed/blocked call simply leaves the vehicle on its current tier; nothing to roll back.

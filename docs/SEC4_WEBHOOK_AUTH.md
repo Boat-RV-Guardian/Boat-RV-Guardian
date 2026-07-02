@@ -2,11 +2,18 @@
 
 **Status: proposal, owner decision required. Not yet implemented.** From the 2026-07-02 security review.
 
+> **Note (worker relocated):** the `worker/` directory was retired from this repo; the webhook worker
+> now lives in **brvg-cloud-server** (its Cloudflare Worker adapter, `src/worker.ts`, sharing the same
+> core as the self-host Node server). So SEC-4 rides the Task 7 cutover: implement the per-vehicle auth
+> below in **brvg-cloud-server** as part of making its adapter the live `api.boatrvguardian.com` worker.
+> The cloud-server already has fail-closed **single-instance** `?key=` auth (SEC-3); this adds the
+> **per-vehicle** secret the multi-tenant hosted deployment needs.
+
 ## Problem
 
 `GET|POST https://api.boatrvguardian.com/api/shelly?vid=<vid>&event=<event>&device=<device>` has **no
-authentication** — it is keyed only by `vid` ([worker/src/index.ts](../worker/src/index.ts)
-`handleShellyWebhook`). Anyone who knows or guesses a registered `vid` can, per request:
+authentication** — it is keyed only by `vid` (`handleShellyWebhook` in the webhook worker). Anyone who
+knows or guesses a registered `vid` can, per request:
 
 - trigger a real **LinkTap valve close** on a `flood` event (with retry/backoff),
 - fan out **FCM push** to every `allowedUsers` member, and (Premium) **Twilio SMS** — a cost-amplification
@@ -68,7 +75,8 @@ actually send — and it defeats the real threat here: **anonymous internet vid-
 - Keep the `sensorState` extras write bounded (cap field count/length) — a small, separate hardening.
 
 ## Rollout checklist
-1. Worker Phase 1 (accept `k` or none) + constant-time verify. `worker/**` auto-deploys — **owner OK.**
+1. Worker Phase 1 (accept `k` or none) + constant-time verify — in **brvg-cloud-server**'s worker adapter
+   (the worker's new home), landed alongside the Task 7 cutover. **owner OK** for the deploy.
 2. App: generate `webhookSecret` on vehicle create + backfill; emit `&k=` on webhook registration; ship.
 3. On the boat/home LAN: open the app near each device so it re-registers with `&k=`. Confirm
    `Webhook.List` shows the secret and the worker's unauthenticated-hit count for that vid goes to 0.

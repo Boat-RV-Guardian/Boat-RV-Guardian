@@ -1,6 +1,6 @@
 // Per-vehicle SMS/voice alert preferences (open-tasks Task 6/14). Decided storage model: prefs are a
 // SYNCED PER-VEHICLE config field (`sh_sms_prefs`, JSON-as-string in VEHICLE_DEFAULT_CONFIG) — this
-// matches the per-vehicle `tier` entitlement and the worker's `SmsPrefs` shape (worker/src/sms.ts),
+// matches the per-vehicle `tier` entitlement and the worker's `SmsPrefs` shape (in brvg-cloud-server),
 // so the worker can read the same numbers/events off the vehicle doc when a provider is wired. (The
 // account portal hosts the UI per Task 14; the data is per-vehicle because the entitlement is.)
 //
