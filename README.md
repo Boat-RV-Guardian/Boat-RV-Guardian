@@ -74,21 +74,19 @@ A typical full build runs **~$265–290**. Estimates only — prices vary by reg
 
 ## For developers
 
-Guardian is a monorepo with four domains:
+This repository holds two domains — the app and its webhook backend:
 
 | Path | What it is |
 | --- | --- |
-| [`/website`](website) | Marketing & docs site (Astro), hosted on Cloudflare Pages. |
 | [`/dashboard`](dashboard) | The core app (React + Vite), packaged for Web, Desktop (Tauri), and Mobile (Capacitor). |
 | [`/worker`](worker) | Cloudflare Worker that receives Shelly webhooks and triggers LinkTap shutoffs + push alerts. |
-| [`/cloudflare`](cloudflare) | Supporting Cloudflare configuration. |
 
-**Stack:** React · Vite · TypeScript · Tauri · Capacitor · Firebase (Auth + Firestore) · Cloudflare Workers · Astro.
+The **marketing website** and the **operator admin console** live in separate repositories
+(`website-boatrvguardian` and `brvg-admin-site`), each auto-deployed to Cloudflare Pages.
+
+**Stack:** React · Vite · TypeScript · Tauri · Capacitor · Firebase (Auth + Firestore) · Cloudflare Workers.
 
 ```bash
-# Marketing website
-cd website && npm install && npm run dev
-
 # Dashboard app (web)
 cd dashboard && npm install && npm run dev
 

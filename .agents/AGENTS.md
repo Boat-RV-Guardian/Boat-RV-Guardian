@@ -9,9 +9,16 @@ This repository holds the application and its backend. The marketing website now
 - `/worker`: A **Cloudflare Worker** designed to receive webhooks from remote Shelly sensors and route them to the dashboard or LinkTap API.
 
 ## 2. Backend Services
-- We use **Firebase** for backend services (Authentication and Firestore).
-- The `dashboard` must authenticate users via Firebase.
-- Device Configurations (like Shelly IPs, LinkTap API keys) must be stored securely in **Firestore**, NOT in local storage or hardcoded files.
+- We use **Firebase** for backend services (Authentication and Firestore) in **hosted cloud mode**.
+- In cloud mode the `dashboard` authenticates users via Firebase, and Firestore is the **source of
+  truth** for per-vehicle configuration (Shelly IPs, LinkTap API keys, etc.).
+- **Local storage is a per-user offline cache, not a violation of this.** Config + secrets live in
+  `lt_*`/`sh_*` localStorage keys stamped with the owning uid (see `utils/userScope.ts`), mirrored
+  from Firestore in cloud mode and wiped on identity change. **Local-only mode** (no account) and
+  self-hosted mode keep configuration **device-local by design** — there is no cloud copy in those
+  modes. So: never hardcode secrets, and in cloud mode Firestore stays authoritative — but do NOT
+  treat "config in localStorage" as a bug; that is the documented cache/local-only model (see the
+  root [CLAUDE.md](../CLAUDE.md) "Per-user local data" and "Configuration sync model" sections).
 
 ## 3. Tool Selection Guidelines
 - ALWAYS prioritize using the most specific tool for the task at hand.

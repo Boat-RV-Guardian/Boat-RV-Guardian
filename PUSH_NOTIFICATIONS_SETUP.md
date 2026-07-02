@@ -25,41 +25,46 @@ Our Cloudflare worker needs permission to send push notifications on behalf of y
 
 ## Step 3: Deploy the Cloudflare Worker
 
-1. Open your terminal and navigate to the `cloudflare/` folder in this project:
-   ```bash
-   cd cloudflare
-   ```
-2. Create a KV Namespace to store the device tokens:
-   ```bash
-   npx wrangler kv:namespace create FCM_TOKENS
-   ```
-   *Wrangler will output an ID. Copy that ID.*
-3. Open `cloudflare/wrangler.toml` and replace `REPLACE_WITH_YOUR_KV_NAMESPACE_ID` with the ID you just copied. Also, replace `FIREBASE_PROJECT_ID` with your actual Firebase Project ID.
-4. Deploy the worker:
-   ```bash
-   npx wrangler deploy
-   ```
-5. Set the secret credentials you got from Step 2:
-   ```bash
-   npx wrangler secret put FIREBASE_CLIENT_EMAIL
-   # Paste the client_email from the json file
-   
-   npx wrangler secret put FIREBASE_PRIVATE_KEY
-   # Paste the EXACT private_key from the json file (including the -----BEGIN and END lines)
-   ```
+The worker lives in the **`worker/`** folder of this repo (deployed as `boat-rv-guardian-webhooks`,
+serving `https://api.boatrvguardian.com`). For the hosted project, pushes to `worker/**` auto-deploy
+via CI — you only need these manual steps for a **self-hosted** worker or first-time setup.
 
-## Step 4: Link the App to the Worker
+1. From the repo root:
+   ```bash
+   cd worker
+   npm install
+   ```
+2. In `worker/wrangler.toml`, confirm the `FIREBASE_PROJECT_ID` var matches your Firebase project id.
+   (Push tokens are stored in **Firestore** at `users/{uid}.fcmToken` — the app writes them on login,
+   so there is **no** KV namespace to create and no manual token registration.)
+3. Deploy:
+   ```bash
+   npx wrangler deploy      # or `npx wrangler deploy --dry-run` to validate without shipping
+   ```
+4. Set the service-account secrets from Step 2:
+   ```bash
+   npx wrangler secret put FIREBASE_CLIENT_EMAIL   # paste client_email from the json
+   npx wrangler secret put FIREBASE_PRIVATE_KEY    # paste the EXACT private_key (incl. BEGIN/END lines)
+   ```
+5. In Google Cloud, make sure the **Firebase Cloud Messaging API** is enabled and the service account
+   has the **Firebase Cloud Messaging Admin** role (otherwise FCM sends return 403).
 
-1. After deploying the worker, Cloudflare will give you a URL (e.g., `https://boat-rv-guardian-notifications.YOUR_USERNAME.workers.dev`).
-2. Open `src/hooks/usePushNotifications.ts` in the React project.
-3. Update the `WORKER_URL` variable with your actual Cloudflare Worker `/register` URL.
+## Step 4: The app is already linked
+
+The app targets `DEFAULT_WORKER_URL` (`https://api.boatrvguardian.com`) out of the box — there is **no
+`WORKER_URL` to edit**. To point a device at a self-hosted worker instead, set a per-vehicle **Custom
+Cloud Server URL** in **Settings → Vehicles** (stored as `sh_webhook_url`). The app writes the phone's
+FCM token to `users/{uid}.fcmToken` automatically after you sign in and grant notification permission.
 
 ## Step 5: Configure your Sensors (Shelly)
 
-1. Go to your Shelly Flood Gen4's local web interface.
-2. Go to **Actions** or **Webhooks**.
-3. Add an action for **Water Detected**.
-4. Set the URL to your Cloudflare Worker Webhook: `https://boat-rv-guardian-notifications.YOUR_USERNAME.workers.dev/webhook`
-5. Save.
+The app **registers these webhooks for you** during Shelly provisioning (it discovers each device's
+real events via `Webhook.ListSupported`). If you ever set one by hand, the URL format is:
 
-**You're done!** When the Shelly detects water, it will ping your Cloudflare Worker, which will fetch your phone's token and send a high-priority push notification via Firebase.
+```
+https://api.boatrvguardian.com/api/shelly?vid=<your-vehicle-id>&event=<event-name>
+```
+
+(For a self-hosted worker, swap the host for your own.) When the Shelly detects water it pings the
+worker, which reads the vehicle's `allowedUsers` + their FCM tokens from Firestore, closes the LinkTap
+valve, and sends a high-priority push via Firebase.

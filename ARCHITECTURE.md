@@ -2,15 +2,11 @@
 
 This document outlines the software architecture and hardware integration strategy for the Boat & RV Guardian application.
 
-## 1. Monorepo Architecture
+## 1. Repository Architecture
 
-The repository is structured into three main domains to ensure scalability, ease of development, and clear separation of concerns:
-
-### `/website` (Marketing & Documentation)
-- **Framework:** Astro
-- **Purpose:** A fast, SEO-friendly static site for marketing, pricing, and support documentation.
-- **Editing:** Content can be easily added by creating Markdown (`.md`) or Astro (`.astro`) files in `website/src/pages/`.
-- **Hosting:** Cloudflare Pages.
+This repository holds **two** domains — the app and its webhook backend. The marketing website and
+the operator admin console live in **separate repositories** (`website-boatrvguardian` and
+`brvg-admin-site`), each auto-deployed to Cloudflare Pages.
 
 ### `/dashboard` (The Guardian App)
 - **Framework:** React + Vite + Tauri
@@ -23,10 +19,13 @@ The repository is structured into three main domains to ensure scalability, ease
 - **Purpose:** A serverless function that acts as a public endpoint to receive incoming webhooks from remote Shelly sensors (e.g., when water is detected while the user is away). It processes the alert, securely looks up the user's LinkTap API keys, and triggers a remote shutoff command while sending a push notification.
 
 ## 2. Backend & Authentication (Firebase)
-We utilize **Firebase** to handle all user accounts and data synchronization.
-- **Firebase Auth:** Secures the dashboard. Users must log in to view their dashboard.
-- **Firestore:** A NoSQL database storing user profiles and device configurations. 
-  - *Example:* Instead of hardcoding LinkTap API keys into the app, they are securely stored in Firestore and fetched upon login.
+We utilize **Firebase** to handle user accounts and data synchronization in **hosted cloud mode**.
+- **Firebase Auth:** Secures cloud mode. The app also offers a **local-only mode** (no account) and a
+  **self-hosted** mode, so signing in is encouraged but not required to use the app.
+- **Firestore:** A NoSQL database storing user profiles and per-vehicle device configurations in cloud
+  mode (the source of truth; the app keeps a per-user localStorage cache mirrored from it).
+  - *Example:* Instead of hardcoding LinkTap API keys into the app, in cloud mode they sync through
+    Firestore. In local-only / self-hosted mode, configuration stays device-local.
 
 ## 3. Hardware Setup & Integrations
 The system aggregates data and controls from two primary hardware ecosystems:

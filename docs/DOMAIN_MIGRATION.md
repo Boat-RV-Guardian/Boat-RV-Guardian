@@ -1,7 +1,14 @@
 # Domain migration → `boatrvguardian.com` subdomains
 
-Created 2026-06-25 (open-tasks Task 11). **Prep only — no code flipped.** User-facing URLs should
-live on `boatrvguardian.com`, not vendor hosts (`*.workers.dev`, `*.firebaseapp.com`, `*.pages.dev`).
+Created 2026-06-25 (open-tasks Task 11). User-facing URLs should live on `boatrvguardian.com`, not
+vendor hosts (`*.workers.dev`, `*.firebaseapp.com`, `*.pages.dev`).
+
+> **Status (2026-07-02): the code-side flip has SHIPPED.** `DEFAULT_WORKER_URL` is now
+> `https://api.boatrvguardian.com` ([configSync.ts:84](../dashboard/src/utils/configSync.ts)), the
+> worker serves that custom domain, and `/api/health` is verified over HTTPS. The remaining work is
+> **hardware-only**: already-provisioned Shelly devices still cache the old `*.workers.dev` URL until a
+> successful local poll re-registers their webhooks (open-tasks "Task 11 cutover"). The inventory below
+> is kept for history; item 1 is done in code.
 
 **Scheme (decided 2026-06-25; domain is on Cloudflare):**
 
