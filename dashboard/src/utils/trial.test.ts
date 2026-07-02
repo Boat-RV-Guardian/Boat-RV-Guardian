@@ -43,11 +43,12 @@ describe('requestTrial', () => {
     expect(JSON.parse(calls[0].init.body)).toEqual({ vid: 'v_abc' });
   });
 
-  it('uses the per-vehicle custom worker URL when set, trimming a trailing slash', async () => {
+  // SECURITY regression: the ID token must never be sent to a member-settable custom server URL.
+  it('IGNORES sh_webhook_url and always posts to the trusted default worker', async () => {
     localStorage.setItem('sh_webhook_url', 'https://my.server.test/');
     const { fetchFn, calls } = fetchStub(200, { granted: true });
     await requestTrial('v1', { fetchFn, getIdToken: token });
-    expect(calls[0].url).toBe('https://my.server.test/api/trial');
+    expect(calls[0].url).toBe(`${DEFAULT_WORKER_URL}/api/trial`);
   });
 
   it('returns granted with normalized tier + trialEndsAt', async () => {
