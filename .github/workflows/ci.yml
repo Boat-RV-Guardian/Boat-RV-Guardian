@@ -34,3 +34,11 @@ jobs:
       - name: Unit Tests (with coverage floor)
         working-directory: ./dashboard
         run: npm run test:coverage
+
+  # The webhook worker was retired from this repo (it now lives in brvg-cloud-server, verified by that
+  # repo's CI). This is a no-op placeholder so the branch-protection required "worker" status check stays
+  # satisfiable. Once the owner drops "worker" from main's required checks, delete this job.
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "worker retired from this repo — see brvg-cloud-server (verified in its CI)"
