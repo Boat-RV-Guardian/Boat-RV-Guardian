@@ -7,7 +7,15 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: 'http',
-    allowNavigation: ['192.168.*', '10.*', '172.16.*', '172.31.*'],
+    // Cleartext HTTP is required for direct LAN device RPC (LinkTap gateway / Shelly at http://<ip>).
+    // Scope allowNavigation to the RFC1918 private ranges: 10/8, 192.168/16, and the FULL 172.16/12
+    // (172.16–172.31 — the old list only had .16 and .31, missing .17–.30, e.g. many Docker/router LANs).
+    allowNavigation: [
+      '192.168.*',
+      '10.*',
+      '172.16.*', '172.17.*', '172.18.*', '172.19.*', '172.20.*', '172.21.*', '172.22.*', '172.23.*',
+      '172.24.*', '172.25.*', '172.26.*', '172.27.*', '172.28.*', '172.29.*', '172.30.*', '172.31.*',
+    ],
     cleartext: true
   },
   plugins: {

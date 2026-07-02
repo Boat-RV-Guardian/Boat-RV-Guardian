@@ -40,7 +40,9 @@ export function usePushNotifications() {
 
         PushNotifications.addListener('registration', async (token) => {
           if (!isMounted) return;
-          console.log('Push registration success, token: ' + token.value);
+          // Don't log token.value — the FCM registration token is a capability handle for targeting
+          // pushes to this device; keep it out of console/log sinks.
+          console.log('Push registration success');
           tokenRef.current = token.value;
           setFcmToken(token.value);
           saveToken(token.value); // store on the user's Firestore doc for the worker to read
@@ -51,12 +53,13 @@ export function usePushNotifications() {
         });
 
         PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          console.log('Push received: ' + JSON.stringify(notification));
+          // Don't log the full payload (may carry alert content) — just note that one arrived.
+          console.log('Push received: ' + (notification?.title || '(no title)'));
           // Local alarms or modals can be triggered here if app is open
         });
 
-        PushNotifications.addListener('pushNotificationActionPerformed', (notification) => {
-          console.log('Push action performed: ' + JSON.stringify(notification));
+        PushNotifications.addListener('pushNotificationActionPerformed', () => {
+          console.log('Push action performed');
         });
       } catch (e) {
         console.error('Push notification setup failed:', e);
