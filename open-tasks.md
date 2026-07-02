@@ -31,17 +31,17 @@ below with why.
 - [x] **DOC-1..4** (README/ARCHITECTURE/PUSH_NOTIFICATIONS/.agents/DOMAIN_MIGRATION). [#73](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/73).
 - [x] **DOC-5 (cloud-server README)**. [cloud-server #6](https://github.com/Boat-RV-Guardian/brvg-cloud-server/pull/6). (admin-site README folded into #5.)
 
-### ⏸️ HELD — needs owner OK (prod deploy)
-- [~] **SEC-1 + SEC-13 — Firestore role enforcement + `trialsUsed` protection.** Role-aware vehicle-update
+### ✅ Merged + DEPLOYED to prod (2026-07-02)
+- [x] **SEC-1 + SEC-13 — Firestore role enforcement + `trialsUsed` protection.** Role-aware vehicle-update
       rule (a plain member can't escalate role / seize owner / forge tier / grant access) + `trialsUsed`
-      made worker-only. Ships with an emulator rules-unit-testing harness (`firestore-tests/`) that was
-      **authored but NOT executed here** (review box had only JDK 18; emulator needs 21+).
-      [#70](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/70). **Before deploy:** run
-      `cd firestore-tests && npm i && npm test`, confirm green, then deploy the rules.
-- [~] **SEC-5 — worker `vid` path-injection.** `sanitizeVid` at all four ingress points + tests.
-      [#71](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/71). Merging auto-deploys the worker.
-- [~] **SEC-16 + DOC-5 (website) — stale pricing/platform copy + stock README.**
-      [website #8](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/8). Merging auto-deploys Pages.
+      made worker-only. Verified against the Firestore emulator (JDK 21) — the `firestore-tests/` suite is
+      17/17 green (the run surfaced + fixed a vacuous fixture in the trialEndsAt test).
+      [#70](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/70). **Rules DEPLOYED** via the
+      Firebase Rules REST API → live release `cloud.firestore` = ruleset `014945d5-c363-4a2c-b7ab-a2cb313d745e`.
+- [x] **SEC-5 — worker `vid` path-injection.** `sanitizeVid` at all four ingress points + tests.
+      [#71](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/71). Worker auto-deploy succeeded.
+- [x] **SEC-16 + DOC-5 (website) — stale pricing/platform copy + stock README.**
+      [website #8](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/8). Pages auto-deploy succeeded.
 
 ### 🧊 Deferred (documented — not a quick fix)
 - [ ] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`.** Guessable vid → forced valve close,
