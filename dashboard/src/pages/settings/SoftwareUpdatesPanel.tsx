@@ -2,10 +2,17 @@
 // split. Pure presentational: the current app version + the latest GitHub release come in as props.
 //
 // Task 13 part 3: `tauriUpdate` (from useAppUpdater) carries the REAL signed-update flow on Tauri
-// desktop — when it has something actionable (an update found, downloading, installed, or errored),
-// this renders that instead of the plain GitHub-releases link. On every other platform (web,
-// Capacitor/Android) or before the check resolves, the original appVersion/latestVersion badge is
-// the only thing shown — unchanged from before this feature existed.
+// desktop — when it has something actionable (an update found, downloading, installed, or a failed
+// INSTALL attempt), this renders that instead of the plain GitHub-releases link. A failed background
+// *check* ('error') is deliberately NOT shown here: until the release pipeline has published its first
+// real update manifest (#52), every check fails by definition (no latest.json exists yet), so an
+// alarming red error would be noise, not information — confirmed live via a native install where "up
+// to date" (the real signal, from the pre-existing GitHub-tag check) rendered correctly alongside a
+// since-removed "Update check failed" line that added nothing. A failed *install* ('install-error') IS
+// shown — the user just clicked a button, so silently doing nothing would look like a hang. On every
+// other platform (web, Capacitor/Android) or before the check resolves, the original
+// appVersion/latestVersion badge + GitHub link is the only thing shown — unchanged from before this
+// feature existed.
 import type { UseAppUpdater } from '../../hooks/useAppUpdater';
 
 interface Props {
@@ -17,7 +24,7 @@ interface Props {
 export default function SoftwareUpdatesPanel({ appVersion, latestVersion, tauriUpdate }: Props) {
   const updateAvailable = !!latestVersion && latestVersion !== appVersion;
   const t = tauriUpdate;
-  const tauriActionable = !!t && (t.status === 'available' || t.status === 'downloading' || t.status === 'ready' || t.status === 'error');
+  const tauriActionable = !!t && (t.status === 'available' || t.status === 'downloading' || t.status === 'ready' || t.status === 'install-error');
 
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -49,8 +56,8 @@ export default function SoftwareUpdatesPanel({ appVersion, latestVersion, tauriU
           {t.status === 'ready' && (
             <div style={{ fontSize: '0.85rem', color: 'var(--accent-emerald)', textAlign: 'center', padding: '12px' }}>{t.progressText}</div>
           )}
-          {t.status === 'error' && (
-            <div style={{ fontSize: '0.8rem', color: '#ef4444', textAlign: 'center' }}>Update check failed: {t.error}</div>
+          {t.status === 'install-error' && (
+            <div style={{ fontSize: '0.8rem', color: '#ef4444', textAlign: 'center' }}>Update install failed: {t.error}</div>
           )}
         </>
       ) : (

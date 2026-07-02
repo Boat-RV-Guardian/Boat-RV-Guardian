@@ -9,7 +9,12 @@ import { useCallback, useState } from 'react';
 import { isTauriEnv } from '../utils/linktapHttp';
 import { formatUpdateProgress } from '../utils/appUpdate';
 
-export type UpdaterStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported';
+// 'error' = the background check() failed (no network, no manifest published yet, etc.) — common and
+// expected until the release pipeline has shipped its first real update, so the panel deliberately
+// does NOT surface this to the user; the pre-existing GitHub-tag badge still gives them a real signal.
+// 'install-error' = the user clicked Download & Install and THAT failed mid-flight — always shown,
+// since silently doing nothing after a user-initiated action would look like a hang.
+export type UpdaterStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error' | 'install-error' | 'unsupported';
 
 export interface AppUpdaterState {
   status: UpdaterStatus;
@@ -46,8 +51,12 @@ export function useAppUpdater(): UseAppUpdater {
       }
     } catch (e: any) {
       // A real desktop build with no network / GitHub unreachable / no release published yet all land
-      // here — not fatal, Settings.tsx's GitHub-tag check still gives the user *something*.
-      setState({ status: 'error', version: null, progressText: null, error: e?.message || 'Update check failed' });
+      // here — not fatal (Settings.tsx's GitHub-tag check still gives the user *something*), and NOT
+      // shown in the UI (see the UpdaterStatus comment) — just logged for whoever's actually debugging
+      // the updater plugin itself.
+      const message = e?.message || 'Update check failed';
+      console.warn('[useAppUpdater] check() failed:', message);
+      setState({ status: 'error', version: null, progressText: null, error: message });
     }
   }, [pendingUpdate]);
 
@@ -69,7 +78,7 @@ export function useAppUpdater(): UseAppUpdater {
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
     } catch (e: any) {
-      setState((s) => ({ ...s, status: 'error', error: e?.message || 'Update install failed' }));
+      setState((s) => ({ ...s, status: 'install-error', error: e?.message || 'Update install failed' }));
     }
   }, [pendingUpdate]);
 

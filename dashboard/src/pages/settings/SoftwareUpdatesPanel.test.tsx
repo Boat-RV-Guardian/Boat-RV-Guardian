@@ -59,8 +59,15 @@ describe('SoftwareUpdatesPanel', () => {
     expect(screen.getByText(/restart to finish/i)).toBeTruthy();
   });
 
-  it('surfaces an update error without hiding the rest of the panel', () => {
-    render(<SoftwareUpdatesPanel appVersion="1.0.45" latestVersion={null} tauriUpdate={tauriState({ status: 'error', error: 'network unreachable' })} />);
-    expect(screen.getByText(/network unreachable/i)).toBeTruthy();
+  it('does NOT surface a failed background check as user-facing text (expected/common until a real manifest is published) — falls back to the GitHub link instead', () => {
+    render(<SoftwareUpdatesPanel appVersion="1.0.45" latestVersion="1.0.45" tauriUpdate={tauriState({ status: 'error', error: 'network unreachable' })} />);
+    expect(screen.queryByText(/network unreachable/i)).toBeNull();
+    expect(screen.getByText(/up to date/i)).toBeTruthy(); // the real (pre-existing) signal still shows
+    expect(screen.getByRole('button', { name: /check for updates/i })).toBeTruthy();
+  });
+
+  it('DOES surface a failed install — the user just clicked a button, so silence would look like a hang', () => {
+    render(<SoftwareUpdatesPanel appVersion="1.0.45" latestVersion={null} tauriUpdate={tauriState({ status: 'install-error', error: 'signature verification failed' })} />);
+    expect(screen.getByText(/signature verification failed/i)).toBeTruthy();
   });
 });
