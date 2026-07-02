@@ -142,6 +142,8 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
       owner-driven cutover ports the live worker onto it (kills the duplicated logic). Requires a hardware
       smoke of the real LinkTap/FCM calls since `worker/**` is the live flood-shutoff path.
 - [ ] **Task 9 — add the Docker image build to CI** once the cloud-server unify lands.
+- [ ] **Create device limits in plans.** Enforce monitoring limits based on tier: free can monitor 3 devices, basic can do 6, premium can do 20.
+- [ ] **Self-hosted feature limitations & new connectors.** Remove Twilio SMS integration from the self-hosted option. Add WhatsApp and Telegram connectors as alert options across all versions.
 
 ---
 

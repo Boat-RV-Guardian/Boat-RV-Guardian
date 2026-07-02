@@ -6,7 +6,7 @@ owner's words: **as rapid development accelerates, don't break anything that wor
 
 This app actuates **physical water valves on unattended vehicles**, so be conservative and verifiable.
 But know the actual safety model (owner, 2026-06-25): **the LinkTap valve is the primary safeguard —
-it only ever opens with a volume/duration limit, so it physically can't run long enough to sink the
+it should only be sent commands that open the valve with a volume/duration limit, so it physically can't run long enough to sink the
 boat.** The flood→shutoff automation closes it *sooner* than that limit; it's a convenience, not the
 last line of defense. So: don't introduce spurious valve behavior, but don't over-dramatize the
 flood-automation stakes either — a missed cloud shutoff means a bounded amount of water, not a sunk
