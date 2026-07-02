@@ -71,13 +71,13 @@ export default function AccountPanel(p: Props) {
           </>
         ) : (
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            Sign in to Boat-RV-Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
+            Sign in to Boat & RV Guardian to enable remote monitoring, cloud synchronization of your settings, and push notifications when you are away from the local network.
           </p>
         )}
         {!p.showLogin ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '16px', alignItems: 'flex-start' }}>
             <button className="btn-primary" onClick={startRebuildSwitch}>
-              {p.localMode ? 'Switch to a cloud account' : 'Log into Boat-RV-Guardian.com'}
+              {p.localMode ? 'Switch to a cloud account' : 'Log into your account'}
             </button>
             {p.localMode && localVehicleCount > 0 && (
               <button className="btn-secondary" onClick={() => setShowMigrateConfirm(true)}>

@@ -35,7 +35,7 @@ Browsers require the gateway to send `Access-Control-Allow-Origin` headers. Sinc
 
 Even with the CORS extension on, Chrome will block the connection because it is a "Mixed Content" violation (HTTPS trying to fetch from HTTP).
 
-1. Open the Boat & Rv Guardian web dashboard (`https://app.boatrvguardian.com/`).
+1. Open the Boat & RV Guardian web dashboard (`https://app.boatrvguardian.com/`).
 2. Click the **Padlock** or **Settings icon** located in your browser's address bar, directly to the left of the URL.
 3. Click on **Site Settings**. This will open a new Chrome settings tab.
 4. Scroll down the list of permissions until you find **Insecure content**.

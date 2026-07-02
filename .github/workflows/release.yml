@@ -44,7 +44,7 @@ jobs:
         with:
           projectPath: ./dashboard
           tagName: ${{ github.ref_name }}
-          releaseName: 'Boat & Rv Guardian ${{ github.ref_name }}'
+          releaseName: 'Boat & RV Guardian ${{ github.ref_name }}'
           releaseBody: 'See the assets below to download the app for Android, macOS, or Windows.'
           releaseDraft: false
           prerelease: false

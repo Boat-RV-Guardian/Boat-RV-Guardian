@@ -630,10 +630,11 @@ a `boatrvguardian.com` subdomain, not `*.workers.dev` / `*.web.app` / `*.github.
       time: the CI deploy token (`CLOUDFLARE_PAGES_EDIT` = the "Boat-RV-Guardian GitHub Actions - Deploy"
       token) needed **Zone → Workers Routes:Edit** added (a route in config 401s CI otherwise); that perm
       is now granted, CI deploy is green. Additive — `*.workers.dev` stays live.
-- [ ] **Flip `DEFAULT_WORKER_URL`** (configSync.ts) to `https://api.boatrvguardian.com` + keep the
-      `sh_webhook_url` per-vehicle override. ⚠️ HARDWARE-GATED ordering: do NOT flip before...
+- [x] **Flip `DEFAULT_WORKER_URL`** (configSync.ts) to `https://api.boatrvguardian.com` — DONE
+      2026-07-02 (PR #62). `sh_webhook_url` per-vehicle override preserved; `*.workers.dev` stays live.
 - [ ] **Re-register Shelly webhooks** against the new URL after the flip (devices cache the old URL
-      until a successful poll re-registers — needs the devices on-LAN). These two are the cutover.
+      until a successful poll re-registers — needs the devices on-LAN). Flood sensor still pending
+      re-registration; Uni pending relocation to the boat (Task 1).
 - [ ] **`app.` (web app) + `admin.` (admin site)** subdomains — Cloudflare *Pages* custom domains
       (different from the worker); attachable now that the deploy token has zone perms. Lower priority.
 
