@@ -1,6 +1,6 @@
-# Boat & Rv Guardian - Architecture
+# Boat & RV Guardian - Architecture
 
-This document outlines the software architecture and hardware integration strategy for the Boat & Rv Guardian application.
+This document outlines the software architecture and hardware integration strategy for the Boat & RV Guardian application.
 
 ## 1. Monorepo Architecture
 

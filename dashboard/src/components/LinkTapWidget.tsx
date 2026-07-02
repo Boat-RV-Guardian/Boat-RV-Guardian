@@ -48,7 +48,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Local Safety  // Auto-Guard settings
   const autoGuardEnabled = device.autoGuardEnabled !== false;
 
-  const handleTestAlert = () => triggerAlert('Test Alert', 'This is a test of the Boat & Rv Guardian alert system.');
+  const handleTestAlert = () => triggerAlert('Test Alert', 'This is a test of the Boat & RV Guardian alert system.');
   
   useEffect(() => {
     window.addEventListener('test_alert', handleTestAlert);
@@ -1008,7 +1008,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
             <div className="install-banner">
               <div>
                 <h3 style={{ fontSize: '0.95rem', fontWeight: 'bold', marginBottom: '4px' }}>Install PWA App</h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Add Boat Guardian to your home screen for quick offline boat monitoring.</p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Add Boat & RV Guardian to your home screen for quick offline boat monitoring.</p>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button onClick={handleInstallClick} className="btn-primary" style={{ padding: '8px 16px', fontSize: '0.8rem' }}>Install</button>

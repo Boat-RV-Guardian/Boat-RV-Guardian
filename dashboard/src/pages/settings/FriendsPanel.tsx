@@ -44,7 +44,7 @@ export default function FriendsPanel(p: Props) {
         <h3 style={{ margin: 0, color: 'var(--accent-cyan)' }}>Friends & Family Access</h3>
         <p style={{ color: 'var(--text-secondary)', maxWidth: '400px' }}>Sign in to share vehicle access with trusted friends or family.</p>
         {!p.showLogin ? (
-          <button className="btn-primary" onClick={() => p.onShowLogin(true)}>Log into Boat-RV-Guardian.com</button>
+          <button className="btn-primary" onClick={() => p.onShowLogin(true)}>Log into your account</button>
         ) : (
           <div style={{ marginTop: '12px', width: '100%', background: 'rgba(0,0,0,0.2)', padding: '15px', borderRadius: '12px' }}>
             <Login />

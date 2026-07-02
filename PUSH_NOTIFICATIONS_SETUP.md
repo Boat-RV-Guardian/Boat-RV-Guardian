@@ -1,6 +1,6 @@
 # Push Notifications Setup Guide (Firebase + Cloudflare)
 
-This guide walks you through the steps to get push notifications working even when the Boat-RV-Guardian app is closed. We use a **Cloudflare Worker** to listen for events (like a Shelly water detector) and **Firebase Cloud Messaging (FCM)** to send the alert to your phone.
+This guide walks you through the steps to get push notifications working even when the Boat & RV Guardian app is closed. We use a **Cloudflare Worker** to listen for events (like a Shelly water detector) and **Firebase Cloud Messaging (FCM)** to send the alert to your phone.
 
 ## Step 1: Set up a Firebase Project (Free)
 

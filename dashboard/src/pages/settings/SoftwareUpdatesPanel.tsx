@@ -38,7 +38,7 @@ export default function SoftwareUpdatesPanel({ appVersion, latestVersion, tauriU
         </div>
       ) : (
         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center', padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px' }}>
-          Current Version: Boat &amp; RV Guardian v{appVersion}
+          Current Version: Boat & RV Guardian v{appVersion}
           {latestVersion === appVersion && <div style={{ color: 'var(--accent-cyan)', marginTop: '8px' }}>You are up to date!</div>}
         </div>
       )}
