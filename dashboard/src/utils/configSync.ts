@@ -77,8 +77,11 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
 export const VEHICLE_KEYS = Object.keys(VEHICLE_DEFAULT_CONFIG);
 
 // Deployed Cloudflare worker that relays Shelly sensor alerts → FCM push. Used as the default
-// when the user hasn't overridden it in Settings.
-export const DEFAULT_WORKER_URL = 'https://boat-rv-guardian-webhooks.jgearinger.workers.dev';
+// when the user hasn't overridden it in Settings. Task 11 cutover (2026-07-02): flipped to the
+// branded custom domain — the *.workers.dev route stays live indefinitely (see wrangler.toml), so
+// already-provisioned devices that haven't re-registered yet keep working. Devices pick up this new
+// URL the next time the app successfully re-registers their webhooks (a local poll / re-provision).
+export const DEFAULT_WORKER_URL = 'https://api.boatrvguardian.com';
 
 // --- One-time threshold migration (marine/RV default refresh) ---------------------------------
 // Vehicles created before the default refresh still hold the OLD shipped threshold values. Replace
