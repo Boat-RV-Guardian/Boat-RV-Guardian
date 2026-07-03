@@ -291,7 +291,33 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         if (fw.updateVersion) setFwUpdateVersion(fw.updateVersion);
       } catch { /* best-effort */ }
 
-      // Cloud-alert webhooks: only when signed in and a worker URL is configured.
+      // Plus Uni's 0-30 V voltmeter isn't enabled by default — link it as a peripheral FIRST, because
+      // enabling it REBOOTS the device (~15 s offline). Doing it before the webhook + secure steps means
+      // (a) voltmeter.measurement/.change exist when we register webhooks (so telemetry hooks actually
+      // get created), and (b) the reboot doesn't land in the middle of the later steps. Previously the
+      // reboot ran between webhook-registration and securing, so the voltmeter hooks were missing AND the
+      // password was set against a rebooting device and silently failed (device left unsecured). We wait
+      // for the device to come back before continuing.
+      if (detected === 'Low Power Sensor') {
+        try {
+          setStatusMessage('Enabling voltmeter…');
+          const { enableShellyVoltmeter } = await import('../utils/shellyRpc');
+          const { rebooted } = await enableShellyVoltmeter((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined));
+          if (rebooted) {
+            setStatusMessage('Waiting for the device to restart…');
+            const deadline = Date.now() + 30000;
+            let back = false;
+            while (Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 2000));
+              try { await shellyRpc(localIp, 'Shelly.GetDeviceInfo', {}, shellyPassword || undefined); back = true; break; } catch { /* still rebooting */ }
+            }
+            if (!back) setStatusMessage('Device is slow to restart — continuing…');
+          }
+        } catch { /* best-effort */ }
+      }
+
+      // Cloud-alert + telemetry webhooks: only when signed in and a worker URL is configured. Runs
+      // AFTER the voltmeter is live so voltmeter.measurement/.change get registered.
       const webhookBase = auth.currentUser ? (localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL) : '';
       if (webhookBase) {
         setStatusMessage('Setting up cloud alerts…');
@@ -304,18 +330,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         } catch { /* best-effort */ }
       }
 
-      // Plus Uni's 0-30 V voltmeter isn't enabled by default — link it as a peripheral while reachable.
-      if (detected === 'Low Power Sensor') {
-        try {
-          setStatusMessage('Enabling voltmeter…');
-          const { enableShellyVoltmeter } = await import('../utils/shellyRpc');
-          await enableShellyVoltmeter((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined));
-        } catch { /* best-effort */ }
-      }
-
       // Secure the device with this vehicle's local password (best-effort; never block onboarding).
-      // Done LAST so the preceding unauthenticated calls aren't affected. shellyChangePassword works
-      // whether the device is currently open or already secured (auth with whatever was entered).
+      // Done LAST, AFTER any voltmeter reboot has settled, so it isn't run against a rebooting device.
       try {
         const vehiclePw = localStorage.getItem('sh_local_password') || '';
         if (vehiclePw && vehiclePw !== (shellyPassword || '')) {
