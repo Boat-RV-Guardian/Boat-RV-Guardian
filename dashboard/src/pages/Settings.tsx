@@ -230,7 +230,6 @@ export default function Settings({ user }: { user: any }) {
   const [alarmRepeatInterval, setAlarmRepeatInterval] = useState<'once'|'5'|'15'|'30'|'60'>(() => (localStorage.getItem('lt_alarm_repeat') as any) || '30');
 
   // Safety Limits
-  const [maxFlowRate, setMaxFlowRate] = useState(() => Number(localStorage.getItem('lt_max_flow') || '15'));
   const [maxDuration, setMaxDuration] = useState(() => Number(localStorage.getItem('lt_max_dur') || '30'));
   const [autoGuardEnabled, setAutoGuardEnabled] = useState(() => localStorage.getItem('lt_auto_guard') !== 'false');
 
@@ -297,7 +296,6 @@ export default function Settings({ user }: { user: any }) {
         alarmSound: setAlarmSound,
         alarmVolume: setAlarmVolume,
         alarmRepeatInterval: setAlarmRepeatInterval,
-        maxFlowRate: setMaxFlowRate,
         maxDuration: setMaxDuration,
         autoGuardEnabled: setAutoGuardEnabled,
         battType: setBattType,
@@ -353,7 +351,7 @@ export default function Settings({ user }: { user: any }) {
       notificationsEnabled, notifyAutoGuard, alertOffline, notifyLowBattery, notifyWatering,
       notifyFlood, notifyHouseBatt, notifyEngineBatt, notifyShorePower,
       alarmSound, alarmVolume, alarmRepeatInterval,
-      maxFlowRate, maxDuration, autoGuardEnabled,
+      maxDuration, autoGuardEnabled,
       battType, battSystemV,
       battLowVoltage, battCritVoltage, battNormalVoltage, battOverVoltage, battChargeVoltage,
       shoreCritLowV, shoreLowV, shoreNormalV, shoreHighV, shoreCritHighV,
@@ -371,7 +369,7 @@ export default function Settings({ user }: { user: any }) {
     notificationsEnabled, notifyAutoGuard, alertOffline,
     notifyLowBattery, notifyWatering, notifyFlood, notifyHouseBatt, notifyEngineBatt, notifyShorePower,
     alarmSound, alarmVolume, alarmRepeatInterval,
-    maxFlowRate, maxDuration, autoGuardEnabled,
+    maxDuration, autoGuardEnabled,
     battType, battSystemV,
     battLowVoltage, battCritVoltage, battNormalVoltage, battOverVoltage, battChargeVoltage,
     shoreCritLowV, shoreLowV, shoreNormalV, shoreHighV, shoreCritHighV
@@ -799,7 +797,7 @@ export default function Settings({ user }: { user: any }) {
               devNormalDaily={devNormalDaily} setDevNormalDaily={setDevNormalDaily}
               devNormalVol={devNormalVol} setDevNormalVol={setDevNormalVol}
               devAutoRestart={devAutoRestart} setDevAutoRestart={setDevAutoRestart}
-              saveDeviceNormalRun={saveDeviceNormalRun} volUnit={volUnit} unitSystem={unitSystem}
+              saveDeviceNormalRun={saveDeviceNormalRun} volUnit={volUnit}
               devicePanelBusy={devicePanelBusy} setDevicePanelBusy={setDevicePanelBusy}
               devicePanelMsg={devicePanelMsg} setDevicePanelMsg={setDevicePanelMsg}
               deviceLocalHost={deviceLocalHost}

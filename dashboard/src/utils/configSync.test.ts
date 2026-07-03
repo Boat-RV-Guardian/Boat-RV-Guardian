@@ -85,14 +85,14 @@ describe('profile freshness checks', () => {
 describe('getLocalVehicleConfig / applyCloudVehicleConfig round-trip', () => {
   it('getLocalVehicleConfig fills unset keys with their defaults', () => {
     const cfg = getLocalVehicleConfig();
-    expect(cfg.lt_maxflow).toBe(VEHICLE_DEFAULT_CONFIG.lt_maxflow);
+    expect(cfg.lt_maxdur).toBe(VEHICLE_DEFAULT_CONFIG.lt_maxdur);
     expect(Object.keys(cfg).length).toBe(Object.keys(VEHICLE_DEFAULT_CONFIG).length);
   });
 
   it('applyCloudVehicleConfig writes provided values and defaults the rest', () => {
-    applyCloudVehicleConfig({ lt_vessel_name: 'Wanderer', lt_maxflow: '20' });
+    applyCloudVehicleConfig({ lt_vessel_name: 'Wanderer', lt_maxdur: '20' });
     expect(localStorage.getItem('lt_vessel_name')).toBe('Wanderer');
-    expect(localStorage.getItem('lt_maxflow')).toBe('20');
+    expect(localStorage.getItem('lt_maxdur')).toBe('20');
     // a key not in the cloud payload falls back to its default
     expect(localStorage.getItem('lt_auto_guard')).toBe(VEHICLE_DEFAULT_CONFIG.lt_auto_guard);
   });

@@ -33,7 +33,6 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
   lt_nr_daily: 'false',
   lt_nr_vol: '10',
   lt_nr_auto: 'false',
-  lt_maxflow: '15',
   lt_maxdur: '30',
   lt_reset_time: '12:00',
   lt_enable_history: 'true',

@@ -55,7 +55,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     window.addEventListener('test_alert', handleTestAlert);
     return () => window.removeEventListener('test_alert', handleTestAlert);
   }, []);
-  const maxFlowRate = device.maxFlowRate || 15;
   // --- User Preferences ---
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
 
@@ -393,16 +392,13 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       isBroken,
       isLeak,
       isWatering,
-      displaySpeed,
-      maxFlowRate,
-      speedUnit,
     });
 
     if (shutOff) {
       if (notifyAutoGuard) triggerAlert('Safety Sentry Triggered', `${cause} Shutting down valve...`);
       executeStopCommand('limit');
     }
-  }, [speed, isBroken, isLeak, isWatering, autoGuardEnabled, maxFlowRate, displaySpeed, speedUnit]);
+  }, [isBroken, isLeak, isWatering, autoGuardEnabled]);
 
   useEffect(() => {
     if (alertOffline && !isRfLinked && autoGuardEnabled) {
@@ -1013,7 +1009,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
           )}
 
           {/* Alarm Banner if leak/burst is active */}
-          {(isBroken || isLeak || displaySpeed > maxFlowRate) && (
+          {(isBroken || isLeak) && (
             <div className="glass-card danger" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
@@ -1032,7 +1028,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                   <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ff8b8b' }}>CRITICAL WATER ANOMALY</h2>
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     {isBroken && '🚨 PIPE BREAK ALARM: Critical rupture flagged by flow sensor.'}
-                    {!isBroken && displaySpeed > maxFlowRate && `🚨 EXPENDITURE LIMIT: Flow rate (${displaySpeed.toFixed(1)} ${speedUnit}) exceeds local safety threshold (${maxFlowRate} ${speedUnit}).`}
                     {isLeak && !isBroken && '⚠️ LEAK ALERT: Small trickle flow detected without schedule.'}
 
                   </p>
@@ -1072,7 +1067,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                   {/* Flow Rate */}
                   <div>
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Speed</span>
-                    <div style={{ fontSize: '2.5rem', fontWeight: 800, color: displaySpeed > maxFlowRate ? 'var(--accent-red)' : 'var(--accent-cyan)', margin: '4px 0', textShadow: displaySpeed > maxFlowRate ? '0 0 15px rgba(239,68,68,0.3)' : '0 0 15px rgba(0,242,254,0.3)' }}>
+                    <div style={{ fontSize: '2.5rem', fontWeight: 800, color: 'var(--accent-cyan)', margin: '4px 0', textShadow: '0 0 15px rgba(0,242,254,0.3)' }}>
                       {displaySpeed.toFixed(1)}
                       <span style={{ fontSize: '0.9rem', fontWeight: 500, color: 'var(--text-secondary)', marginLeft: '4px' }}>{speedUnit}</span>
                     </div>

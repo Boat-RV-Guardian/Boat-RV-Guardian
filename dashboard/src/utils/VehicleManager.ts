@@ -28,7 +28,6 @@ export interface DeviceConfig {
   voltCalOffset?: number;
 
   // Device-specific settings
-  maxFlowRate?: number;
   maxDuration?: number;
   autoGuardEnabled?: boolean;
 
