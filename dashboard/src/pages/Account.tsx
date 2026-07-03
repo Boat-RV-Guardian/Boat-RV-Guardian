@@ -14,6 +14,8 @@ import { requestTrial } from '../utils/trial';
 import DeleteAccountButton from '../components/DeleteAccountButton';
 import EditDisplayName from '../components/EditDisplayName';
 import AccountActions from '../components/AccountActions';
+import ChangePassword from '../components/ChangePassword';
+import { needsEmailVerification } from '../utils/emailVerification';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
@@ -39,7 +41,9 @@ function useChannelPrefs(field: string) {
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
 // in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
 // CSV export of on-device usage history.
-export default function Account({ user }: { user?: { uid?: string; email?: string | null; displayName?: string | null } | null }) {
+export default function Account({ user }: { user?: { uid?: string; email?: string | null; displayName?: string | null; emailVerified?: boolean; providerData?: { providerId: string }[] } | null }) {
+  const hasPassword = !!user?.providerData?.some((p) => p.providerId === 'password');
+  const emailUnverified = needsEmailVerification(user ? { email: user.email ?? null, emailVerified: !!user.emailVerified, providerData: user.providerData ?? [] } : null);
   const ent = useEntitlements();
   const price = TIER_PRICING[ent.tier];
   const rows = entitlementSummary(ent);
@@ -158,7 +162,14 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Email</span>
-              <span>{user.email || '—'}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                {user.email || '—'}
+                {user.emailVerified
+                  ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#22c55e', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '999px', padding: '1px 7px' }}>Verified</span>
+                  : emailUnverified
+                    ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '999px', padding: '1px 7px' }}>Unverified</span>
+                    : null}
+              </span>
             </div>
             {ent.canSmsAlert && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0' }}>
@@ -170,6 +181,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         ) : (
           <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sign in to manage your account details.</p>
         )}
+        {user && hasPassword && <ChangePassword email={user.email} />}
         <AccountActions user={user} />
       </div>
 
