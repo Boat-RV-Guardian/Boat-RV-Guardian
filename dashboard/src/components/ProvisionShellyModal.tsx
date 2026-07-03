@@ -30,7 +30,7 @@ const detectRole = (info: any): string | null => {
 };
 
 export default function ProvisionShellyModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<'selection' | 'ble_scanning' | 'credentials' | 'ip_entry' | 'provisioning' | 'confirm_type' | 'completion'>('selection');
+  const [step, setStep] = useState<'selection' | 'ble_scanning' | 'ap_connect' | 'credentials' | 'ip_entry' | 'provisioning' | 'confirm_type' | 'completion'>('selection');
   const [method, setMethod] = useState<'wifi' | 'manual_ip' | 'bluetooth' | null>(null);
 
   const [ssid, setSsid] = useState('');
@@ -61,6 +61,13 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   // creates duplicate device clones.
   const [isFinalizing, setIsFinalizing] = useState(false);
 
+  // Wi-Fi AP setup: confirm the computer has actually joined the Shelly's setup hotspot (we can reach
+  // 192.168.33.1) before asking for the vehicle Wi-Fi — the #1 reason Wi-Fi provisioning "fails" is the
+  // computer never left its normal network for the shelly-xxxx AP.
+  const [apChecking, setApChecking] = useState(false);
+  const [apReachable, setApReachable] = useState<boolean | null>(null);
+  const [apMsg, setApMsg] = useState('');
+
   // Wi-Fi scan (asks the Shelly to list networks it can see, via its Gen2 Wifi.Scan RPC)
   const [isScanningWifi, setIsScanningWifi] = useState(false);
   const [wifiScanResults, setWifiScanResults] = useState<{ ssid: string; rssi: number }[]>([]);
@@ -71,9 +78,28 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   const bleSupported = Capacitor.isNativePlatform() && (plat === 'android' || plat === 'ios');
   const isMobile = bleSupported;
 
+  // Confirm the computer/phone is actually on the Shelly setup AP by reaching the device at its fixed
+  // AP gateway (192.168.33.1). Gates the "Connect to vehicle Wi-Fi" step so we don't send Wi-Fi creds
+  // into the void when the user is still on their normal network.
+  const checkApConnection = async () => {
+    setApChecking(true); setApReachable(null); setApMsg('');
+    try {
+      const infoRes = await unifiedFetch('http://192.168.33.1/rpc/Shelly.GetDeviceInfo');
+      const info = await infoRes.json();
+      const model = info?.model || info?.app || info?.id || 'Shelly device';
+      setApReachable(true);
+      setApMsg(`✓ Connected to ${model}.`);
+    } catch {
+      setApReachable(false);
+      setApMsg("Not connected yet — join the “shelly…” Wi-Fi network above, then check again.");
+    } finally {
+      setApChecking(false);
+    }
+  };
+
   const handleSelectMethod = (selected: 'wifi' | 'manual_ip' | 'bluetooth') => {
     setMethod(selected);
-    if (selected === 'wifi') setStep('credentials');
+    if (selected === 'wifi') { setApReachable(null); setApMsg(''); setStep('ap_connect'); }
     if (selected === 'manual_ip') setStep('ip_entry');
     if (selected === 'bluetooth') {
       setStep('ble_scanning');
@@ -191,8 +217,11 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       }
 
       setStatusMessage('Sending Wi-Fi Credentials (3/3)...');
-      // 2. Setup Wi-Fi and reboot
-      await unifiedFetch(`http://192.168.33.1/rpc/Wifi.SetConfig`, {
+      // 2. Setup Wi-Fi and reboot. Check the RPC response so an outright rejection (bad shape / device
+      // busy) surfaces instead of silently "succeeding" — a wrong Wi-Fi PASSWORD isn't caught here
+      // (the device accepts the config, then fails to join and keeps its AP up), which is why we warn
+      // about the password up front and in the completion note.
+      const scRes = await unifiedFetch(`http://192.168.33.1/rpc/Wifi.SetConfig`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -201,7 +230,10 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
           }
         })
       });
-      
+      let sc: any = null;
+      try { sc = await scRes.json(); } catch { /* non-JSON response — assume the device accepted it */ }
+      if (sc?.error) throw new Error(sc.error.message || 'Device rejected the Wi-Fi settings');
+
       // Confirm/override the (auto-detected) device type before adding it
       setStep('confirm_type');
     } catch (e: any) {
@@ -463,16 +495,51 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
           </div>
         )}
 
+        {step === 'ap_connect' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <h3 style={{ margin: 0, color: '#fff' }}>Step 1 — join the device's Wi-Fi hotspot</h3>
+            <p style={{ color: 'var(--text-secondary)', margin: 0, fontSize: '0.9rem' }}>
+              A new Shelly broadcasts its own setup Wi-Fi. Connect this {isMobile ? 'phone' : 'computer'} to
+              it first — then we'll hand it your Boat/RV Wi-Fi.
+            </p>
+            <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', padding: '12px', borderRadius: '8px' }}>
+              <ol style={{ margin: 0, paddingLeft: '18px', color: '#fff', fontSize: '0.88rem', lineHeight: 1.6 }}>
+                <li>Make sure the Shelly is powered on.</li>
+                <li>Open your {isMobile ? 'phone' : 'computer'}'s <strong>Wi-Fi menu</strong>.</li>
+                <li>Join the open network named like <code>ShellyPlus…-XXXXXX</code> (no password).</li>
+                {isMobile && <li><strong>Turn off mobile data</strong> so this can reach the device.</li>}
+                <li>Your internet may drop while on that network — that's expected. Come back here.</li>
+              </ol>
+            </div>
+            <button className="btn-secondary" onClick={checkApConnection} disabled={apChecking}
+              style={{ alignSelf: 'flex-start', padding: '8px 14px' }}>
+              {apChecking ? 'Checking…' : '🔌 Check connection'}
+            </button>
+            {apMsg && (
+              <div style={{ fontSize: '0.85rem', color: apReachable ? '#22c55e' : '#fde68a' }}>{apMsg}</div>
+            )}
+            <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <button className="btn-secondary" onClick={() => setStep('selection')}>Back</button>
+              <button className="btn-primary" onClick={() => { setStatusMessage(''); setStep('credentials'); }} disabled={!apReachable}>
+                Connect to vehicle Wi-Fi →
+              </button>
+            </div>
+            {apReachable === false && (
+              <button onClick={() => { setStatusMessage(''); setStep('credentials'); }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-cyan)', fontSize: '0.78rem', cursor: 'pointer', alignSelf: 'flex-end', padding: 0 }}>
+                Skip check and continue anyway
+              </button>
+            )}
+          </div>
+        )}
+
         {step === 'credentials' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             {method === 'wifi' && (
-              <div style={{ background: 'rgba(245, 158, 11, 0.1)', border: '1px solid #f59e0b', padding: '12px', borderRadius: '8px' }}>
-                <strong style={{ color: '#f59e0b', display: 'block', marginBottom: '6px' }}>First, join the Shelly's Wi-Fi</strong>
-                <ol style={{ margin: 0, paddingLeft: '18px', color: '#fff', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                  <li>Open your phone/computer Wi-Fi settings and connect to the Shelly hotspot (e.g. <code>shellyplus...-xxxx</code>).</li>
-                  {isMobile && <li><strong>Turn off mobile data</strong> so this can reach the device, then come back.</li>}
-                  <li>Then <strong>Scan</strong> below (or type your home network) and tap <strong>Connect &amp; Arm</strong>.</li>
-                </ol>
+              <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.35)', padding: '10px 12px', borderRadius: '8px', fontSize: '0.85rem', color: '#fff' }}>
+                ✓ Connected to the Shelly hotspot. Now enter your Boat/RV Wi-Fi — the device will join it and
+                leave its setup hotspot. <strong>Double-check the password</strong>; a wrong one is why a device
+                keeps broadcasting its <code>shelly…</code> network.
               </div>
             )}
             <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
@@ -522,7 +589,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
             </div>
             {statusMessage && <div style={{ color: statusMessage.toLowerCase().includes('fail') || statusMessage.includes('Error') ? '#ef4444' : 'var(--accent-cyan)', fontSize: '0.85rem', textAlign: 'center' }}>{statusMessage}</div>}
             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
-              <button className="btn-secondary" onClick={() => setStep(method === 'bluetooth' ? 'ble_scanning' : 'selection')} disabled={isProcessing}>Back</button>
+              <button className="btn-secondary" onClick={() => setStep(method === 'bluetooth' ? 'ble_scanning' : 'ap_connect')} disabled={isProcessing}>Back</button>
               {method === 'bluetooth' ? (
                 <button className="btn-primary" onClick={executeBluetoothProvisioning} disabled={!ssid || isProcessing}>
                   {isProcessing ? 'Sending…' : '📱 Send over Bluetooth'}
@@ -648,9 +715,16 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
             <div style={{ fontSize: '4rem', marginBottom: '10px' }}>✅</div>
             <h3 style={{ color: '#10b981', margin: '0 0 10px 0' }}>Device Armed!</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Your device has been successfully configured to send critical alerts. 
-              {method === 'wifi' && " Don't forget to reconnect your computer/phone back to your normal Boat/RV Wi-Fi."}
+              Your device has been successfully configured to send critical alerts.
+              {method === 'wifi' && ` Reconnect this ${isMobile ? 'phone' : 'computer'} to your normal Boat/RV Wi-Fi.`}
             </p>
+            {method === 'wifi' && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '20px' }}>
+                Give the device a minute to join. If it's <strong>still broadcasting its <code>shelly…</code>
+                network</strong>, the Wi-Fi password was almost certainly wrong — remove the device and add
+                it again, double-checking the password (tap 👁️ to verify it).
+              </p>
+            )}
             <button className="btn-primary" onClick={onClose} style={{ width: '100%', padding: '12px' }}>Done</button>
           </div>
         )}
