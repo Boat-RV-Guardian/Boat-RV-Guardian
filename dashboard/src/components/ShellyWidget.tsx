@@ -100,7 +100,12 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       if (Date.now() - lastLocalAtRef.current < 20000) return;
       const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
       const remote: any = {};
-      if (d.v != null || d.vraw != null) remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+      if (d.v != null || d.vraw != null) {
+        // Same `v` field, mapped to the shape each role's display reads: shore power → pm1:0.voltage,
+        // DC battery/voltmeter → voltmeter:100.
+        if (device.role === 'High Power Sensor') remote['pm1:0'] = { voltage: n(d.v) ?? n(d.vraw) };
+        else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+      }
       if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
       if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
       const ev = String(d.event || '');

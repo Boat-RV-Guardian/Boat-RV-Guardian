@@ -66,13 +66,16 @@ export async function shellyRpc(ip: string, method: string, params: any = {}, pa
 
 // Events we push to the worker: alerts AND periodic telemetry (voltmeter/temperature/humidity
 // .measurement + .change), so the worker can cache live readings for remote display — not just alarms.
-const WEBHOOK_EVENT_RE = /flood|alarm|leak|smoke|over|under|sensor|temperature|humidity|motion|opened|closed|btn|voltmeter/i;
+const WEBHOOK_EVENT_RE = /flood|alarm|leak|smoke|over|under|sensor|temperature|humidity|motion|opened|closed|btn|voltmeter|voltage/i;
 
 // Extra URL params that embed the event's value(s) so the worker caches real readings. SINGLE-QUOTED
 // on purpose: the ${...} are literal Shelly webhook tokens (evaluated on the device at fire time),
 // NOT JS template interpolation. ev.xvoltage is the on-device calibrated voltage (null if uncalibrated).
 function webhookValueParams(event: string): string {
   if (/^voltmeter\./i.test(event)) return '&v=${ev.xvoltage}&vraw=${ev.voltage}';
+  // Shore-power PM (e.g. PM Mini G3): pm1.voltage_change carries the AC line voltage. Send it as v so
+  // the worker caches it and the High Power widget shows it off-LAN. (No xvoltage on pm1 — raw only.)
+  if (/^pm1\.voltage/i.test(event)) return '&v=${ev.voltage}';
   if (/^temperature\./i.test(event)) return '&tC=${ev.tC}';
   if (/^humidity\./i.test(event)) return '&rh=${ev.rh}';
   if (/^devicepower\./i.test(event)) return '&batt=${ev.percent}';
@@ -181,14 +184,17 @@ async function mergeShellyWebhooks(
   for (const event of events) {
     const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}${perVehicle}`;
     // Match our own prior entry for this event by HOST (query params like &k= rotate), so we update
-    // in place instead of piling up duplicates.
-    const existing = hooks.find((h) => h.event === event);
+    // in place instead of piling up duplicates. If earlier runs created duplicate hooks for the same
+    // event (seen on a PM Mini), collapse them: update the first, delete the rest.
+    const matches = hooks.filter((h) => h.event === event);
+    const existing = matches[0];
     try {
       if (existing) {
         // Keep other listeners; drop our own (current + prior) host; add our current url. Cap at 5.
         const others = (existing.urls || []).filter((u: string) => { const h = hostOf(u); return h && h !== myHost && h !== priorHost; });
         const merged = Array.from(new Set([...others, myUrl])).slice(0, 5);
         await call('Webhook.Update', { id: existing.id, enable: true, event, name: existing.name || 'brvg-local', urls: merged });
+        for (const dup of matches.slice(1)) { try { await call('Webhook.Delete', { id: dup.id }); } catch { /* leave it */ } }
       } else {
         await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, name: 'brvg-local', urls: [myUrl] });
       }

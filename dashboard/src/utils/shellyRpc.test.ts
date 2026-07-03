@@ -8,6 +8,7 @@ import { registerShellyWebhooks, refreshLocalShellyWebhooks, refreshCloudShellyW
 function fakeShelly(opts: { supported: string[]; status: Record<string, unknown>; existingHooks?: any[] }) {
   const created: any[] = [];
   const updated: any[] = [];
+  const deleted: any[] = [];
   const call = vi.fn(async (method: string, params: any) => {
     switch (method) {
       case 'Webhook.ListSupported': return { hook_types: opts.supported };
@@ -15,10 +16,11 @@ function fakeShelly(opts: { supported: string[]; status: Record<string, unknown>
       case 'Webhook.List': return { hooks: opts.existingHooks || [] };
       case 'Webhook.Create': created.push(params); return { id: created.length };
       case 'Webhook.Update': updated.push(params); return {};
+      case 'Webhook.Delete': deleted.push(params); return {};
       default: return {};
     }
   });
-  return { call, created, updated };
+  return { call, created, updated, deleted };
 }
 
 describe('registerShellyWebhooks', () => {
@@ -149,5 +151,32 @@ describe('refreshCloudShellyWebhooks (voltmeter self-heal + SEC-4 secret)', () =
     const urls: string[] = sh.updated[0].urls;
     expect(urls.some((u) => u.includes('192.168.1.50:3030'))).toBe(true);         // local listener kept
     expect(urls.some((u) => u.includes('api.boatrvguardian.com'))).toBe(true);    // worker url added
+  });
+
+  it('registers a shore-power pm1 voltage hook carrying the voltage value', async () => {
+    const sh = fakeShelly({
+      supported: ['pm1.voltage_change', 'pm1.current_change', 'pm1.apower_change'],
+      status: { 'pm1:0': { id: 0, voltage: 118 } },
+      existingHooks: [],
+    });
+    await refreshCloudShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'v1', 'pm1', undefined, '', 'S');
+    const volt = sh.created.find((c) => c.event === 'pm1.voltage_change');
+    expect(volt).toBeTruthy();
+    expect(volt.urls[0]).toContain('v=${ev.voltage}'); // value embedded so the worker caches it
+  });
+
+  it('collapses duplicate hooks for the same event (updates the first, deletes the rest)', async () => {
+    const sh = fakeShelly({
+      supported: ['pm1.voltage_change'],
+      status: { 'pm1:0': { id: 0 } },
+      existingHooks: [
+        { id: 1, event: 'pm1.voltage_change', urls: ['https://api.boatrvguardian.com/api/shelly?vid=v1&event=pm1.voltage_change'] },
+        { id: 4, event: 'pm1.voltage_change', urls: ['https://api.boatrvguardian.com/api/shelly?vid=v1&event=pm1.voltage_change'] }, // duplicate
+      ],
+    });
+    await refreshCloudShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'v1', 'pm1');
+    expect(sh.updated).toHaveLength(1);
+    expect(sh.updated[0].id).toBe(1);          // first kept + updated
+    expect(sh.deleted.map((d) => d.id)).toEqual([4]); // duplicate removed
   });
 });
