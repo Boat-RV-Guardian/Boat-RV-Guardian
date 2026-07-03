@@ -84,21 +84,34 @@ below with why.
 These touch live Shelly / LinkTap hardware and the safety-critical poll/command path — do them when
 the devices are reachable and the app can be smoke-tested against them, not unattended.
 
-- [ ] **Task 1 — Verify Shelly Plus Uni remote telemetry end-to-end.** On the device's LAN, open the
-      app once so it re-registers webhooks on a successful local poll, then:
-  - [ ] `curl http://<uni-ip>/rpc/Webhook.List` — confirm `voltmeter.measurement` / `voltmeter.change`
-        hooks carry `&v=${ev.xvoltage}&vraw=${ev.voltage}` and the right `cid` (voltmeter = 100, flood = 0).
-  - [ ] Confirm the worker writes `vehicles/{vid}/sensorState/{shellyDeviceId}` with `v`/`vraw`, ~every 60s.
-  - [ ] Confirm off-LAN the battery widget shows voltage. If wrong, check `webhookValueParams` / `cidFor`
-        in [shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) (placeholder `${ev.X}` syntax or cid is the
-        likely culprit).
+- [x] **Task 1 — Shelly Plus Uni remote telemetry — ROOT-CAUSED + FIXED 2026-07-03.** It never worked
+      because provisioning enabled the voltmeter peripheral (which reboots the device) AFTER registering
+      webhooks + securing — so `voltmeter.*` events didn't exist when webhooks registered (the 10-hook
+      slot filled with `input.*`) and the password step ran against a rebooting device (left `auth_en:false`).
+      Confirmed on-device (Uni `192.168.50.181`): 10 input.* hooks, zero voltmeter.*. Fixes shipped:
+      provisioning reorder — voltmeter→reconnect-wait→webhooks→secure (#95); **cloud-webhook self-heal on
+      local poll** (#94, `refreshCloudShellyWebhooks`); the live Uni was fixed directly over the LAN (added
+      voltmeter.measurement/.change with `&v=${ev.xvoltage}&vraw=${ev.voltage}`, cid 100) and the worker
+      confirmed `persisted:true` — it now shows in the admin Operations tab (`v=12 vraw=11.66`).
+  - [x] **Shore-power PM Mini G3** (`shellypmminig3-...`, `192.168.86.171`): same class of bug — its
+        `pm1.voltage_change` hook carried no value (webhookValueParams only handled `voltmeter.*`) and the
+        cloud→widget mapping only mapped to `voltmeter:100`, never `pm1:0`. Fixed (#96): `pm1.voltage_change
+        → &v=${ev.voltage}`, `WEBHOOK_EVENT_RE` matches `voltage`, role-aware cloud mapping, duplicate-hook
+        dedup. Live device fixed over LAN (one clean voltage hook). ⚠️ **Live-worker gap:** the orphaned
+        worker classifies `pm1.voltage_change` as an alert (spurious FCM attempt, `pushFailed`); brvg-cloud-
+        server already treats it as telemetry, so the **Task 7 cutover** resolves it.
+  - [ ] **Still to verify off-LAN (native):** battery + shore-power widgets show voltage from `sensorState`
+        after the #96 role-aware mapping (build the debug `.app`; needs the real account signed in).
 - [~] **Task 11 cutover — re-register Shelly webhooks against `api.boatrvguardian.com`.** The code-side
       `DEFAULT_WORKER_URL` flip shipped (PR #62); devices still cache the old `*.workers.dev` URL until a
-      successful poll re-registers them. **Uni battery sensor: re-added 2026-07-03 on the correct URL**
-      (telemetry should now flow — verify in the admin Operations tab). **Flood sensor: still pending** —
-      a recent flood event did NOT reach the worker (its `sensorState` row is stale), so it's still on the
-      old URL. Because it's a deep-sleep sensor, re-registration needs the app open on its LAN while it's
-      awake. The admin console now flags stale telemetry loudly (brvg-admin-site #6).
+      successful poll re-registers them. **Uni battery sensor: FIXED 2026-07-03** — telemetry live in the
+      admin Operations tab (`v=12 vraw=11.66`). **PM Mini G3 (shore power, `192.168.86.171`): FIXED** —
+      voltage now persists (`v=118`). Both were on the correct URL already; the real gaps were the
+      voltmeter-enable-reboot ordering + missing value params (see Task 1, fixed in #94/#95/#96). **Flood
+      sensor: STILL PENDING** — a recent flood event did NOT reach the worker (stale `sensorState`), so
+      it's still on the old URL. Deep-sleep → re-registration needs the app open on its LAN while it's
+      awake (the poll self-heal from #94 can't help a sensor that's never polled). The admin console flags
+      stale telemetry loudly (brvg-admin-site #6).
 - [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the 1559-line widget):
       polling loop → hook; command senders (start/stop) → hook; Flooding Sentry + auto-restart + washdown
       automation → hook. Touches the `commandersRef`/`stateRef`/`expectedWateringStateRef` state machine —
