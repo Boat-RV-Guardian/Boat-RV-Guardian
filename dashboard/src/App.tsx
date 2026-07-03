@@ -11,6 +11,7 @@ import { buildLoginProfile } from './utils/userProfile';
 import SyncModal from './components/SyncModal';
 import GlobalBar from './components/GlobalBar';
 import CreateVehicleForm from './components/CreateVehicleForm';
+import EmailVerifyBanner from './components/EmailVerifyBanner';
 import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
 import { migrateAllVehiclesThresholds } from './utils/configSync';
@@ -163,6 +164,7 @@ export default function App() {
         </div>
         <GlobalBar onOpenAccount={() => setCurrentView('account')} />
       </header>
+      <EmailVerifyBanner user={user} />
       {(() => {
         const tabs: { v: AppView; icon: string; label: string }[] = [
           { v: 'overview', icon: '📊', label: 'Overview' },
