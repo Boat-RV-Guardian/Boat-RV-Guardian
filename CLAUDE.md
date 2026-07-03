@@ -147,6 +147,56 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-07-03 — SEC-7 CSP shipped + account portal + device provisioning/telemetry fixes (owner-away autonomous stretch) — READ FIRST
+
+**All 5 repos clean on `main`, `HEAD == origin/main`, 0 open PRs.** Fifth repo now: **brvg-account-site**
+(customer portal). This session ran partly autonomously while the owner was away, testing on their machine
+against the live devices. Verify-in-native-app method: [[brvg-native-verify-app-bundle]] (build the debug
+`.app`; the raw `target/debug/app` isn't grantable to computer-use).
+
+### Shipped + merged (app repo — no auto-deploy on merge)
+- **SEC-7 Tauri CSP** (#76) — replaced `"csp": null`; native-verified. Fixed 2 origins the draft blocked
+  (Google Fonts, `api.github.com`). Device LAN I/O (Shelly `tauri-plugin-http`, LinkTap `raw_linktap_post`)
+  is native, so `connect-src` never gates it.
+- **Email verification on sign-up** (#91) — `sendEmailVerification` + non-blocking banner; **Google +
+  `brvg-tests.com` exempt** (test domain lets agents make throwaways with no inbox). Pure helpers in
+  `utils/emailVerification.ts`.
+- **In-app change-password + email badge** (#92, Task 14) — reauth+updatePassword (password accounts only).
+- **Device-settings UX** (#89) — fixed onboarding "Add Device" double-click clones (isFinalizing guard);
+  moved Remove under the ⚙️ gear; dropped the redundant Secure-password / Enable-voltmeter buttons.
+- **Shelly telemetry — the big one (#94/#95/#96), root-caused on live hardware:** enabling a Low Power
+  Sensor's voltmeter REBOOTS the device, and provisioning did it AFTER registering webhooks + securing —
+  so voltmeter hooks never registered (slot filled with `input.*`) and the password step hit a rebooting
+  device (`auth_en:false`). Fixes: (a) provisioning reorder voltmeter→reconnect-wait→webhooks→secure (#95);
+  (b) **cloud-webhook self-heal on every local poll** for signed-in users (`refreshCloudShellyWebhooks`,
+  #94) — merge semantics, throttled, also the Task 11 cutover recovery path; (c) shore-power (`pm1`)
+  support — `webhookValueParams` sends `pm1.voltage_change → &v=${ev.voltage}`, role-aware cloud mapping
+  (High Power → `pm1:0.voltage`), duplicate-hook dedup, and the widget shows **voltage not watts** (shore
+  installs aren't wired inline for current) (#96). **Live devices fixed over the LAN:** Uni `192.168.50.181`
+  (voltmeter hooks) + PM Mini G3 `192.168.86.171` (one clean `pm1.voltage_change` hook w/ `&v=`). Both now
+  persist to the cloud (admin Operations shows `v=12`/`v=118`). ⚠️ **Live orphaned worker** still classifies
+  `pm1.voltage_change` as an alert (spurious FCM `pushFailed`); brvg-cloud-server already treats it as
+  telemetry → **Task 7 cutover resolves it.**
+- **Wi-Fi AP provisioning** (#96) — new "Step 1: join the Shelly hotspot" screen (directions + reachability
+  Check + gated Connect) because selecting Wi-Fi AP jumped straight to creds; the #1 failure is the laptop
+  never leaving its normal net for the internet-less `shelly-xxxx` AP (macOS auto-switches back). A web/Tauri
+  app can't switch the OS Wi-Fi, so it's directions + a check.
+
+### Other repos (owner action)
+- **website #10 (merged, auto-deployed):** pricing → **Free during beta** with regular prices struck
+  through (single `BETA_FREE` flag to revert).
+- **brvg-admin-site #6 (merged, auto-deployed):** Operations tab now surfaces STALE telemetry loudly (red
+  + banner) instead of silently showing days-old rows.
+- **brvg-account-site (NEW repo, pushed to main, NOT deployed):** customer portal (profile / telemetry /
+  subscription) for **account.boatrvguardian.com**; subscriptions shown only for OWNED vehicles. Owner must:
+  create the Pages project, attach the custom domain, add it to Firebase authorized domains (README).
+
+### Flood sensor — still the one broken telemetry path (hardware)
+`shellyfloodg4-d885acea3914` never got its recent flood event to the worker; still on the old URL. Deep-sleep,
+so the poll self-heal can't reach it — needs the app open on its LAN while awake (Task 11). Devices seen this
+session (all reachable from the dev machine, on different subnets): Uni `192.168.50.181`, PM Mini
+`192.168.86.171`, LinkTap gw `172.31.0.245`.
+
 ## Session handoff — 2026-07-02 (late) — MULTI-REPO security review + worker cutover prep + connectors/ntfy (MACHINE SWITCH — READ THIS FIRST)
 
 Huge session. **All four repos clean on `main`, `HEAD == origin/main`, every gate green.** Only ONE PR
