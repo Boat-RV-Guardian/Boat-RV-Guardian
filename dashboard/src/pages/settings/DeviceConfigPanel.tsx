@@ -37,7 +37,6 @@ interface Props {
   setDevAutoRestart: (v: boolean) => void;
   saveDeviceNormalRun: (key: string, value: string | number | boolean) => void;
   volUnit: string;
-  unitSystem: 'metric' | 'imperial';
   devicePanelBusy: boolean;
   setDevicePanelBusy: (v: boolean) => void;
   devicePanelMsg: DevicePanelMsg;
@@ -54,7 +53,7 @@ export default function DeviceConfigPanel({
   devices, setDevices, expandedDeviceId, handleExpandDevice, setDeviceToRemove, setFactoryResetOnRemove,
   fwBusy, fwMsg, handleCheckFirmware, handleUpdateFirmware,
   devNormalHrs, setDevNormalHrs, devNormalMins, setDevNormalMins, devNormalDaily, setDevNormalDaily,
-  devNormalVol, setDevNormalVol, devAutoRestart, setDevAutoRestart, saveDeviceNormalRun, volUnit, unitSystem,
+  devNormalVol, setDevNormalVol, devAutoRestart, setDevAutoRestart, saveDeviceNormalRun, volUnit,
   devicePanelBusy, setDevicePanelBusy, devicePanelMsg, setDevicePanelMsg, deviceLocalHost,
   readVoltNow, voltReadMsg, offsetDraft, setOffsetDraft, applyVoltOffset,
 }: Props) {
@@ -197,16 +196,7 @@ export default function DeviceConfigPanel({
                               {/* Safety Limits */}
                               <div>
                                 <h4 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600 }}>Safety Limits</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Max Flow Speed Limit</span>
-                                      <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{device.maxFlowRate || 15} {unitSystem === 'metric' ? 'L/min' : 'Gal/min'}</span>
-                                    </div>
-                                    <input type="range" min="5" max="35" className="form-input" style={{ padding: 0 }}
-                                      value={device.maxFlowRate || 15}
-                                      onChange={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { maxFlowRate: Number(e.target.value) }); setDevices(m.getDevices()); }); }} />
-                                  </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
                                   <div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
                                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Max Continuous Open</span>

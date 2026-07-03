@@ -57,7 +57,6 @@ const SAMPLE: PersistedSettings = {
   alarmSound: 'beep',
   alarmVolume: 0.5,
   alarmRepeatInterval: '15',
-  maxFlowRate: 20,
   maxDuration: 45,
   autoGuardEnabled: false,
   battType: 'lifepo4',
@@ -93,7 +92,7 @@ describe('settingsStorage', () => {
     expect(s.alarmRepeatInterval).toBe('30');
     expect(s.battType).toBe('flooded');
     expect(s.battSystemV).toBe('12');
-    expect(s.maxFlowRate).toBe(15);
+    expect(s.maxDuration).toBe(30);
     expect(s.shoreNormalV).toBe(120);
     // the four notification toggles that the rehydrate effect omits still default ON when read
     expect(s.notifyFlood).toBe(true);

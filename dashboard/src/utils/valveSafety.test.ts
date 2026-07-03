@@ -6,9 +6,6 @@ const base: SafetyGuardInputs = {
   isBroken: false,
   isLeak: false,
   isWatering: true,
-  displaySpeed: 5,
-  maxFlowRate: 15,
-  speedUnit: 'L/min',
 };
 
 describe('evaluateSafetyGuard', () => {
@@ -31,26 +28,20 @@ describe('evaluateSafetyGuard', () => {
     expect(d.cause).toMatch(/leak/i);
   });
 
-  // Regression: the excess-flow branch used to set `cause` but never armed the trip, so the
-  // configured max flow rate did nothing. This asserts the shutoff now actually fires.
-  it('trips when flow exceeds the max flow rate (was dead code)', () => {
-    const d = evaluateSafetyGuard({ ...base, displaySpeed: 20, maxFlowRate: 15 });
-    expect(d.shutOff).toBe(true);
-    expect(d.cause).toContain('exceeded safety limit');
+  // A boat's valve legitimately runs wide open, so there is NO flow-rate trip — high flow alone
+  // must never close the valve.
+  it('never trips on high flow (flow-rate shutoff removed)', () => {
+    expect(evaluateSafetyGuard({ ...base }).shutOff).toBe(false);
   });
 
-  it('does NOT trip on normal flow under the limit', () => {
-    expect(evaluateSafetyGuard({ ...base, displaySpeed: 5, maxFlowRate: 15 }).shutOff).toBe(false);
-  });
-
-  it('reports the cause but does not shut off when not watering', () => {
-    const d = evaluateSafetyGuard({ ...base, displaySpeed: 20, maxFlowRate: 15, isWatering: false });
+  it('reports no cause and does not shut off when watering with no alarm', () => {
+    const d = evaluateSafetyGuard({ ...base });
     expect(d.shutOff).toBe(false);
-    expect(d.cause).toContain('exceeded safety limit');
+    expect(d.cause).toBe('');
   });
 
-  it('never trips on flow when maxFlowRate is 0 (guard against shutting off all watering)', () => {
-    expect(evaluateSafetyGuard({ ...base, displaySpeed: 5, maxFlowRate: 0 }).shutOff).toBe(false);
+  it('does not shut off on an alarm when not watering', () => {
+    expect(evaluateSafetyGuard({ ...base, isBroken: true, isWatering: false }).shutOff).toBe(false);
   });
 });
 

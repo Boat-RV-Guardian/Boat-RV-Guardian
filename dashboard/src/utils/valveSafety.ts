@@ -9,12 +9,6 @@ export interface SafetyGuardInputs {
   isBroken: boolean;
   isLeak: boolean;
   isWatering: boolean;
-  /** Flow rate in the user's display unit (already converted from raw speed). */
-  displaySpeed: number;
-  /** User-configured max flow rate in the same display unit. Always > 0 (defaulted upstream). */
-  maxFlowRate: number;
-  /** Display unit label, only used to build the human-readable cause string. */
-  speedUnit: string;
 }
 
 export interface SafetyGuardDecision {
@@ -27,9 +21,10 @@ export interface SafetyGuardDecision {
 /**
  * Evaluate the Auto-Guard / Safety Sentry.
  *
- * A broken-pipe alarm, a leak alarm, OR flow exceeding the configured max rate all trip the guard;
- * the valve is only actually shut off when it is currently watering. Previously the excess-flow
- * branch set `cause` but never armed the trip, so `lt_maxflow` did nothing.
+ * A broken-pipe alarm or a leak alarm trips the guard; the valve is only actually shut off when it
+ * is currently watering. There is deliberately NO flow-rate ("max flow") trip: on a boat the valve
+ * legitimately runs wide open (washdown, tank fill), so a flow-rate cap only produced spurious
+ * shutoffs. The valve's real safety net is the hardware volume/duration open-limit.
  */
 export function evaluateSafetyGuard(i: SafetyGuardInputs): SafetyGuardDecision {
   if (!i.autoGuardEnabled) return { shutOff: false, cause: '' };
@@ -43,9 +38,6 @@ export function evaluateSafetyGuard(i: SafetyGuardInputs): SafetyGuardDecision {
   } else if (i.isLeak) {
     triggered = true;
     cause = 'Gateway reported a leak alarm!';
-  } else if (i.maxFlowRate > 0 && i.displaySpeed > i.maxFlowRate) {
-    triggered = true;
-    cause = `Flow rate (${i.displaySpeed.toFixed(1)} ${i.speedUnit}) exceeded safety limit of ${i.maxFlowRate} ${i.speedUnit}!`;
   }
 
   return { shutOff: triggered && i.isWatering, cause };

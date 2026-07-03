@@ -107,7 +107,6 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
       name: device.name,
       linktapGatewayId: device.gatewayId,
       linktapDeviceId: device.id,
-      maxFlowRate: 15,
       maxDuration: 30,
       autoGuardEnabled: true
     });

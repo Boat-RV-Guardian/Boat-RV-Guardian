@@ -52,7 +52,6 @@ export interface PersistedSettings {
   alarmSound: AlarmSound;
   alarmVolume: number;
   alarmRepeatInterval: AlarmRepeat;
-  maxFlowRate: number;
   maxDuration: number;
   autoGuardEnabled: boolean;
   battType: string;
@@ -129,7 +128,6 @@ export function readSettings(): PersistedSettings {
     alarmSound: (g('lt_alarm_sound') as AlarmSound) || 'siren',
     alarmVolume: Number(g('lt_alarm_vol') || '1.0'),
     alarmRepeatInterval: (g('lt_alarm_repeat') as AlarmRepeat) || '30',
-    maxFlowRate: Number(g('lt_max_flow') || '15'),
     maxDuration: Number(g('lt_max_dur') || '30'),
     autoGuardEnabled: g('lt_auto_guard') !== 'false',
     battType: g('lt_batt_type') || 'flooded',
@@ -216,7 +214,6 @@ export function writeSettings(s: PersistedSettings): void {
   localStorage.setItem('lt_alarm_vol', s.alarmVolume.toString());
   localStorage.setItem('lt_alarm_repeat', s.alarmRepeatInterval);
 
-  localStorage.setItem('lt_max_flow', s.maxFlowRate.toString());
   localStorage.setItem('lt_max_dur', s.maxDuration.toString());
   localStorage.setItem('lt_auto_guard', s.autoGuardEnabled.toString());
 
