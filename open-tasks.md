@@ -156,13 +156,11 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
       (brvg-cloud-server #9); app account-portal UI ([#80](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/80));
       FirestoreStorage reads the prefs (brvg-cloud-server #11). ⚠️ App UI wants a native verify; real delivery
       needs provider creds.
-- [ ] **Free push for the self-hosted version (no operator Firebase project required).** Today self-host
-      background push needs the operator's OWN Firebase project (FCM tokens are scoped to the app's build-time
-      Firebase project) — see the cloud-server README. Add ONE free, self-host-friendly push path.
-      **Approach (owner to pick):** (a) **ntfy** — free/OSS, cross-platform app, self-hostable, minimal server
-      code (recommended); (b) **Web Push / VAPID** — in-app but web/PWA only; (c) **Gotify** — self-hosted push
-      server + app. Then: server sender + app config (topic/subscription) + docs. Local (app-open) alerts
-      already work self-hosted; this is for away/background.
+- [x] **Free push for the self-hosted version — DONE via ntfy** (owner picked ntfy). No Firebase project
+      required: set a per-vehicle ntfy topic in `/admin`, users subscribe in the ntfy app; the server
+      publishes alerts to it. Wired on self-host + hosted, FirestoreStorage carries the fields, tested +
+      documented (brvg-cloud-server #14). Optional follow-up: an app-side UI to set an ntfy topic for
+      **hosted** vehicles (hosted already has FCM, so low priority).
 - [ ] **Home Assistant integration (free + paid) — second integration alongside API tokens/webhooks.**
       **Free:** basic HA visibility — expose Guardian sensors (flood, voltage, shore power, flow) + alerts to
       HA (e.g. MQTT discovery or a REST/webhook bridge) so HA can display them and automate on a flood.
