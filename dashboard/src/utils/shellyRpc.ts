@@ -141,20 +141,28 @@ export async function registerShellyWebhooks(
  * keep other listeners' urls; we drop only our own stale entry (current host, or `priorBase`'s host
  * from a previous IP) so DHCP churn doesn't pile up dead URLs. Call while the device is awake.
  */
-export async function refreshLocalShellyWebhooks(
+async function mergeShellyWebhooks(
   call: (method: string, params: any) => Promise<any>,
-  localBase: string,
+  base: string,
   vid: string,
-  deviceId = '',
-  priorBase?: string,
+  deviceId: string,
+  priorBase: string | undefined,
+  key: string,
+  secret: string,
 ): Promise<void> {
-  const root = localBase.replace(/\/$/, '');
+  const root = base.replace(/\/$/, '');
   const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
   const myHost = hostOf(root);
   const priorHost = priorBase ? hostOf(priorBase.replace(/\/$/, '')) : '';
+  // Instance API key for a self-hosted server (?key=) + the per-vehicle SEC-4 bearer secret (?k=).
+  const auth = key ? `&key=${encodeURIComponent(key)}` : '';
+  const perVehicle = secret ? `&k=${encodeURIComponent(secret)}` : '';
 
-  // Desired alert events (so e.g. a flood sensor gets flood.alarm AND flood.alarm_off AND
-  // flood.cable_unplugged — without alarm_off the UI never clears back to dry).
+  // Desired alert/telemetry events (so e.g. a flood sensor gets flood.alarm AND flood.alarm_off AND
+  // flood.cable_unplugged — without alarm_off the UI never clears back to dry; a Plus Uni gets its
+  // voltmeter.measurement/.change once the peripheral is live). CRITICAL for the voltmeter case:
+  // this runs on every successful local poll, so a device provisioned before its voltmeter existed
+  // self-heals here once the peripheral is enabled (Webhook.ListSupported then includes it).
   let supported: string[] = [];
   try {
     const sup = await call('Webhook.ListSupported', {});
@@ -171,7 +179,9 @@ export async function refreshLocalShellyWebhooks(
   try { const list = await call('Webhook.List', {}); hooks = list?.hooks || []; } catch { /* none */ }
 
   for (const event of events) {
-    const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}${webhookValueParams(event)}`;
+    const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}${perVehicle}`;
+    // Match our own prior entry for this event by HOST (query params like &k= rotate), so we update
+    // in place instead of piling up duplicates.
     const existing = hooks.find((h) => h.event === event);
     try {
       if (existing) {
@@ -185,6 +195,30 @@ export async function refreshLocalShellyWebhooks(
     } catch { /* skip events that reject the cid/shape */ }
   }
 }
+
+// Ensure this app instance is a LOCAL-webhook target (the device pushes events straight to us over the
+// LAN with no internet). MERGES rather than replaces (each hook holds up to 5 URLs), dropping only our
+// own stale host so DHCP churn doesn't pile up dead URLs. Call while the device is awake.
+export const refreshLocalShellyWebhooks = (
+  call: (method: string, params: any) => Promise<any>,
+  localBase: string,
+  vid: string,
+  deviceId = '',
+  priorBase?: string,
+): Promise<void> => mergeShellyWebhooks(call, localBase, vid, deviceId, priorBase, '', '');
+
+// Ensure the hosted/self-host WORKER is a webhook target (for off-LAN alerts + telemetry). Same merge
+// semantics; adds the self-host ?key= and per-vehicle SEC-4 ?k= secret. Re-running this on each poll is
+// how a device provisioned before its voltmeter peripheral existed self-heals its telemetry hooks.
+export const refreshCloudShellyWebhooks = (
+  call: (method: string, params: any) => Promise<any>,
+  cloudBase: string,
+  vid: string,
+  deviceId = '',
+  priorBase?: string,
+  key = '',
+  secret = '',
+): Promise<void> => mergeShellyWebhooks(call, cloudBase, vid, deviceId, priorBase, key, secret);
 
 /**
  * Enable the Shelly Plus Uni's 0-30 V DC voltmeter. The Uni's onboard ADC has NO Voltmeter

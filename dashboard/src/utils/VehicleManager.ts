@@ -15,6 +15,7 @@ export interface DeviceConfig {
   localIp?: string; // Shelly local IP (for local RPC polling / factory reset)
   mdnsHost?: string; // Shelly mDNS .local hostname — survives DHCP IP churn; preferred over localIp
   webhookAppIp?: string; // app LAN IP last registered in this device's local webhook (self-heal marker)
+  webhookCloudBase?: string; // worker base URL last registered in this device's cloud webhook (self-heal / cutover marker)
   batteryPowered?: boolean; // sleepy sensor (flood etc.) — don't poll; rely on webhook push
   bleMac?: string; // BLE address recorded during BLE pairing/onboarding
   fwVersion?: string;        // current firmware version (from Shelly.GetDeviceInfo at onboarding)
