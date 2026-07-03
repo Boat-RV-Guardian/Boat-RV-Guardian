@@ -62,9 +62,15 @@ below with why.
       secret (brvg-cloud-server #11), self-host admin can set it (brvg-cloud-server #12).
       **Remaining (owner + hardware):** the worker cutover ([docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)),
       re-register devices so they emit `&k=`, then flip to Phase 2. (SEC-5 path-injection already fixed.)
-- [ ] **SEC-7 — Tauri CSP disabled** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json) `"csp": null`).
-      A drafted CSP is in **[PR #76](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/76) (held)** —
-      merge after a native (`npm run tauri dev`) verification pass (a missing origin would break auth/sync).
+- [x] **SEC-7 — Tauri CSP** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json)) — **DONE, merged
+      [#76](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/76) (2026-07-02).** Replaced
+      `"csp": null` with a real allowlist. Native debug-bundle verification found + fixed two origins the
+      draft blocked (Google Fonts `fonts.googleapis.com`/`fonts.gstatic.com`; update-check `api.github.com`).
+      Verified with a throwaway account: fonts, Firebase sign-up + Firestore sync, Google OAuth consent,
+      update check, and a **live LinkTap LAN poll** (real boat gateway, valve status streaming every 5s) —
+      zero CSP violations. Device LAN I/O is unaffected (Shelly via tauri-plugin-http, LinkTap via the
+      `raw_linktap_post` native command — neither uses WebView fetch). FCM push delivery not exercised
+      (endpoints are in `connect-src`).
 
 ---
 
