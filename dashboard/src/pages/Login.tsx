@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult } from '../services/firebase';
+import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signInWithCredential, getRedirectResult } from '../services/firebase';
 import { getAdditionalUserInfo, type UserCredential } from 'firebase/auth';
+import { isEmailVerifyExempt } from '../utils/emailVerification';
 import { open } from '@tauri-apps/plugin-shell';
 import { start, onUrl, cancel } from '@fabianlars/tauri-plugin-oauth';
 import { Capacitor } from '@capacitor/core';
@@ -46,7 +47,13 @@ export default function Login() {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        // Send a verification email (best-effort; a failure shouldn't block sign-up). Google users
+        // never hit this path — they're already verified. The test domain is exempt so automated
+        // testing can create throwaway accounts without a real inbox.
+        if (!isEmailVerifyExempt(email)) {
+          try { await sendEmailVerification(cred.user); } catch { /* best-effort */ }
+        }
       }
     } catch (err: any) {
       const code = err?.code || '';
