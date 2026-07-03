@@ -10,12 +10,17 @@ Legend: `[ ]` not started · `[~]` in progress / partially done.
 
 ## 🔐 Account / auth
 
-- [ ] **Email address verification on sign-up.** Email/password `Sign Up` currently creates a Firebase
-      account with no verification step (any unverified address works). Add a verify-email flow
-      (Firebase `sendEmailVerification` + gate on `emailVerified` for sensitive actions). **Exclusion:**
-      skip verification for addresses on the `brvg-tests.com` domain, so automated/agent testing (native
-      app click-through, CSP/sync verification, etc.) can keep creating throwaway accounts without a
-      real inbox.
+- [x] **Email address verification on sign-up — DONE (2026-07-03).** Email/password sign-ups now send
+      `sendEmailVerification`; a non-blocking app banner (`EmailVerifyBanner`) nudges unverified users
+      with a Resend. Google sign-ins are exempt (already `emailVerified`); `brvg-tests.com` accounts are
+      exempt (no email/banner) so agent testing keeps working. Pure helpers in
+      [utils/emailVerification.ts](dashboard/src/utils/emailVerification.ts). **Follow-up:** hard-gate
+      specific sensitive actions on `emailVerified` (deferred until we pick which — e.g. remote control
+      once it's client-wired). The standalone account portal embeds the same exclusion.
+- [x] **Task 14 — edit password / SSO — DONE (2026-07-03).** In-app Account view now has change-password
+      (reauth + `updatePassword`, password-provider accounts only) + a Verified/Unverified email badge
+      (pure [utils/changePassword.ts](dashboard/src/utils/changePassword.ts)). Also live in the account
+      portal. (SSO/Google users have no password to change.)
 
 ---
 
@@ -87,9 +92,13 @@ the devices are reachable and the app can be smoke-tested against them, not unat
   - [ ] Confirm off-LAN the battery widget shows voltage. If wrong, check `webhookValueParams` / `cidFor`
         in [shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) (placeholder `${ev.X}` syntax or cid is the
         likely culprit).
-- [ ] **Task 11 cutover — re-register Shelly webhooks against `api.boatrvguardian.com`.** The code-side
+- [~] **Task 11 cutover — re-register Shelly webhooks against `api.boatrvguardian.com`.** The code-side
       `DEFAULT_WORKER_URL` flip shipped (PR #62); devices still cache the old `*.workers.dev` URL until a
-      successful poll re-registers them. Flood sensor + Uni both pending re-registration (needs on-LAN).
+      successful poll re-registers them. **Uni battery sensor: re-added 2026-07-03 on the correct URL**
+      (telemetry should now flow — verify in the admin Operations tab). **Flood sensor: still pending** —
+      a recent flood event did NOT reach the worker (its `sensorState` row is stale), so it's still on the
+      old URL. Because it's a deep-sleep sensor, re-registration needs the app open on its LAN while it's
+      awake. The admin console now flags stale telemetry loudly (brvg-admin-site #6).
 - [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the 1559-line widget):
       polling loop → hook; command senders (start/stop) → hook; Flooding Sentry + auto-restart + washdown
       automation → hook. Touches the `commandersRef`/`stateRef`/`expectedWateringStateRef` state machine —
@@ -136,6 +145,11 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 
 ## 💳 Owner / external-gated (need Stripe, DNS, an email provider, or an owner-confirmed prod merge)
 
+- [ ] **Deploy the account portal → `account.boatrvguardian.com`.** NEW repo `brvg-account-site` (Astro +
+      React islands; profile / telemetry / subscription) is built + pushed but **not deployed**. Owner:
+      (1) create the `brvg-account-site` Cloudflare Pages project (`npm run build && wrangler pages deploy`
+      or connect the repo); (2) attach custom domain `account.boatrvguardian.com`; (3) add that domain to
+      Firebase Auth → Authorized domains. No Pages secrets needed (client-only). Steps in the repo README.
 - [ ] **Stripe integration (deferred per owner).** The entitlement layer is provider-agnostic and
       `setActiveVehicleTier` is the drop-in seam (Stripe webhook → `setActiveVehicleTier`). Scope: real
       upgrade/downgrade/cancel, monthly⇄yearly, payment method, invoices/receipts, billing history (Stripe
@@ -199,7 +213,7 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 - [ ] **Task 14 — Account portal "sharing overview"** (read-only mirror of who has access per vehicle).
       Redundant with Settings → Friends and would need a live Firestore listener that breaks Account's
       deliberately Firebase-free/test-light design.
-- [ ] **Task 14 — edit password / SSO** in the Account portal (display-name editing is done).
+- [x] **Task 14 — edit password / SSO** — DONE (see the Account / auth section above; in-app + portal).
 
 ---
 
