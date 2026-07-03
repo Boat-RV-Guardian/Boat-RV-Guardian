@@ -8,6 +8,17 @@ Legend: `[ ]` not started · `[~]` in progress / partially done.
 
 ---
 
+## 🔐 Account / auth
+
+- [ ] **Email address verification on sign-up.** Email/password `Sign Up` currently creates a Firebase
+      account with no verification step (any unverified address works). Add a verify-email flow
+      (Firebase `sendEmailVerification` + gate on `emailVerified` for sensitive actions). **Exclusion:**
+      skip verification for addresses on the `brvg-tests.com` domain, so automated/agent testing (native
+      app click-through, CSP/sync verification, etc.) can keep creating throwaway accounts without a
+      real inbox.
+
+---
+
 ## 🛡️ Security & correctness review (2026-07-02) — multi-repo audit
 
 Findings from a full read-only review of all four repos, then remediated in focused PRs. **Merged**

@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' ipc: http://ipc.localhost https://*.googleapis.com https://*.google.com https://securetoken.google.com https://*.firebaseio.com wss://*.firebaseio.com https://www.link-tap.com https://api.boatrvguardian.com https://api.github.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com https://*.google.com"
     }
   },
   "bundle": {
