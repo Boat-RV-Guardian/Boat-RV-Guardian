@@ -147,6 +147,78 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-07-02 (late) — MULTI-REPO security review + worker cutover prep + connectors/ntfy (MACHINE SWITCH — READ THIS FIRST)
+
+Huge session. **All four repos clean on `main`, `HEAD == origin/main`, every gate green.** Only ONE PR
+open: [#76](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/76) (Tauri CSP, **HELD** for native
+verify). Everything else merged.
+
+### Security review (SEC-1..16) — done
+Read-only audit of all repos → focused PRs.
+- **DEPLOYED to prod:** SEC-1/13 **Firestore role enforcement** (a member can't escalate role / seize
+  owner / forge tier / re-farm trials; `trialsUsed` worker-only). Verified against the Firestore emulator
+  (17/17) and **deployed** → live `cloud.firestore` ruleset **`014945d5-c363-4a2c-b7ab-a2cb313d745e`**. Also
+  SEC-5 worker `vid` path-injection (`sanitizeVid`), SEC-16 website copy.
+- **Merged (non-prod):** SEC-2/8 valve safety (dead max-flow shutoff armed + de-staled volume cutoff),
+  SEC-6 trial ID-token pinned to the trusted worker, SEC-14/15 (no FCM-token logging + full RFC1918 nav),
+  cloud-server SEC-3/10/11/12 (fail-closed webhook auth, timing-safe compares, atomic writes, device-key
+  cap, non-root Docker), SEC-9 admin-docs, DOC-1..5.
+- **HELD:** #76 SEC-7 Tauri CSP — a drafted CSP; merge only after `npm run tauri dev` confirms auth/sync
+  don't break.
+- **SEC-4 (unauthenticated `/api/shelly?vid=`) — Phase 1 IMPLEMENTED.** Per-vehicle `&k=` secret: worker
+  classifier accepts-or-reports; app generates + emits `sh_webhook_secret`; FirestoreStorage reads it.
+  **Phase 2 = flip `WEBHOOK_AUTH_REQUIRED` in brvg-cloud-server after the cutover + device re-registration.**
+
+### Worker cutover (Task 7) — the big structural change (NOT deployed yet)
+The owner **removed `worker/` from this repo**; the replacement is **brvg-cloud-server's Cloudflare Worker
+adapter** (`src/worker.ts` + `FirestoreStorage`, reading/writing the SAME Firestore, with FCM + LinkTap +
+authz + retention + SEC-4 + device-limits + connectors + ntfy). The old `boat-rv-guardian-webhooks` worker
+is **still live but orphaned from git**. Turnkey steps: **[docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)**
+(test-deploy → smoke → move the `api.boatrvguardian.com` custom domain → re-register devices → SEC-4 Phase 2).
+- **CI/branch-protection note:** `main` requires a `worker` status check, but `worker/` is gone — so
+  `ci.yml` has a **no-op placeholder `worker` job** to keep PRs mergeable. Drop `worker` from the required
+  checks (repo Settings → branch protection) and delete the placeholder job when convenient.
+
+### Owner-requested features — done
+- **Per-tier device limits** (free 3 / basic 6 / premium 20): client Add-a-device gating (#79) + server-side
+  `device_limit_reached` (brvg-cloud-server; numbers match).
+- **Connectors decision (owner): SMS + WhatsApp + Telegram are HOSTED-CLOUD ONLY.** The self-host server
+  ships **no** message senders; the hosted worker wires all three. App account-portal UI for all three (#80).
+- **Free self-host push = ntfy** (owner picked): set a per-vehicle **ntfy topic** in cloud-server `/admin`,
+  users subscribe in the ntfy app — **no Firebase required** (brvg-cloud-server #14). FCM (the app's own
+  push) still works self-hosted but needs the operator's OWN Firebase project (tokens are project-scoped);
+  local (app-open) alerts always work.
+- **New backlog task:** Home Assistant integration (free basic sensor/alert visibility + paid two-way
+  control) — a second integration alongside API tokens/webhooks. Transport (MQTT vs REST/custom-component)
+  is the open design fork.
+
+### Machine-local state that does NOT travel (re-establish on the new machine)
+- **Firebase SA key:** `~/Downloads/boat-rv-guardian-9f8a4-firebase-adminsdk-fbsvc-c5a1a6cdc6.json` (used to
+  deploy Firestore rules via the Rules REST API + any Firebase admin op). Re-download: Firebase console →
+  Project Settings → Service accounts → Generate new private key.
+- **JDK 21 for the rules emulator:** installed `openjdk@21` via brew (keg-only, `/opt/homebrew/opt/openjdk@21`).
+  Run the Firestore rules tests with `JAVA_HOME=/opt/homebrew/opt/openjdk@21 PATH=$JAVA_HOME/bin:$PATH` then
+  `cd firestore-tests && npm i && npm test` (17 tests). On the new machine: `brew install openjdk@21`.
+- gh (authed), wrangler (OAuth to sc4tech, Workers+Pages, no DNS), `npx firebase-tools` for rules.
+
+### Working method / hazards
+- **Shared checkout hazard:** this main checkout was shared with another autonomous session — use a **git
+  worktree** for any non-trivial main-repo work. See the memory note [[boatrvguardian-shared-worktree-hazard]].
+- Every change went via a branch → PR → merge-when-green; prod-deploy PRs (rules deploy, the cutover) held
+  for the owner.
+
+### Next (all gated on owner / hardware / native — nothing else autonomously actionable remains)
+1. **Run the worker cutover** (docs/WORKER_CUTOVER.md) — makes device limits, connectors, ntfy, and SEC-4
+   all LIVE and retires the orphaned worker. **Highest leverage.**
+2. **Native `tauri dev` verify** → clears the native-verify queue (incl. #79/#80 UIs) and lets you merge #76.
+3. **Hardware smokes** (valve path #67/#71, device re-registration emitting `&k=`, Uni telemetry) → then flip
+   SEC-4 Phase 2.
+4. Drop the `worker` required check on `main`, then delete the placeholder CI job.
+5. Owner/external: Stripe, transactional-email provider, Twilio-verified number, connector provider creds
+   (WhatsApp/Telegram tokens), `app.`/`admin.` Pages custom domains.
+6. Start **Home Assistant** — confirm transport first (MQTT discovery = most native but adds a broker; a REST
+   / HA custom component is lighter).
+
 ## Session handoff — 2026-06-29, account model + ownership + delete fixes → v1.0.46
 
 Big session, all merged to `main`, gates green (dashboard tsc + **195 tests** + build), **v1.0.46 tagged**
