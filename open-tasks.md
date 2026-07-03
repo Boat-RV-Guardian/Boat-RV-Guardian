@@ -150,12 +150,25 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
       Add-a-device gating ([#79](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/79)); server-side
       `device_limit_reached` enforcement in the worker (brvg-cloud-server, matching numbers). ⚠️ UI wants a
       native verify.
-- [x] **Self-hosted feature limitations & new connectors.** DONE — Twilio SMS is wired only on the hosted
-      worker (self-host server wires WhatsApp + Telegram only); WhatsApp + Telegram senders added across
-      versions (brvg-cloud-server), covered by tests (brvg-cloud-server #9); app account-portal UI for
-      WhatsApp/Telegram destinations ([#80](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/80));
-      FirestoreStorage reads the prefs (brvg-cloud-server #11); self-host `/admin` can set per-vehicle
-      destinations (brvg-cloud-server #12). ⚠️ App UI wants a native verify; real delivery needs provider creds.
+- [x] **Self-hosted feature limitations & new connectors.** DONE — **SMS, WhatsApp, and Telegram are all
+      hosted-cloud only** (owner decision, brvg-cloud-server #13): the hosted Worker adapter wires all three;
+      the self-host Node server ships **no** message senders. WhatsApp + Telegram senders added + tested
+      (brvg-cloud-server #9); app account-portal UI ([#80](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/80));
+      FirestoreStorage reads the prefs (brvg-cloud-server #11). ⚠️ App UI wants a native verify; real delivery
+      needs provider creds.
+- [ ] **Free push for the self-hosted version (no operator Firebase project required).** Today self-host
+      background push needs the operator's OWN Firebase project (FCM tokens are scoped to the app's build-time
+      Firebase project) — see the cloud-server README. Add ONE free, self-host-friendly push path.
+      **Approach (owner to pick):** (a) **ntfy** — free/OSS, cross-platform app, self-hostable, minimal server
+      code (recommended); (b) **Web Push / VAPID** — in-app but web/PWA only; (c) **Gotify** — self-hosted push
+      server + app. Then: server sender + app config (topic/subscription) + docs. Local (app-open) alerts
+      already work self-hosted; this is for away/background.
+- [ ] **Home Assistant integration (free + paid) — second integration alongside API tokens/webhooks.**
+      **Free:** basic HA visibility — expose Guardian sensors (flood, voltage, shore power, flow) + alerts to
+      HA (e.g. MQTT discovery or a REST/webhook bridge) so HA can display them and automate on a flood.
+      **Paid (Premium `canIntegrations`):** two-way control — HA can open/close the valve + richer entities.
+      Decide transport (MQTT discovery vs REST/long-poll vs an HA custom component / HACS). Works on hosted +
+      self-host. (Mirror the entitlement gate used by the existing integrations toggle.)
 
 ---
 
