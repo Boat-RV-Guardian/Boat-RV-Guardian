@@ -43,16 +43,17 @@ below with why.
 - [x] **SEC-16 + DOC-5 (website) — stale pricing/platform copy + stock README.**
       [website #8](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/8). Pages auto-deploy succeeded.
 
-### 🧊 Deferred (documented — not a quick fix)
-- [ ] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`.** Guessable vid → forced valve close,
-      FCM/SMS fan-out (cost attack, only capped by the Twilio trial), arbitrary `sensorState` writes.
-      Can't make auth mandatory without re-provisioning every deployed Shelly device (breaks the live
-      flood path). **Phased migration design written: [docs/SEC4_WEBHOOK_AUTH.md](docs/SEC4_WEBHOOK_AUTH.md)**
-      (per-vehicle URL secret `&k=`, accept-or-none Phase 1 → required Phase 2). **Owner: approve the plan,
-      then it's ~1 worker PR + ~1 app PR + a hardware pass.** (SEC-5, the path-injection subset, is fixed.)
+### 🧊 Deferred / partially done
+- [~] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`. Phase 1 IMPLEMENTED.** Per-vehicle
+      webhook secret (`&k=`), accept-or-report in Phase 1 → `WEBHOOK_AUTH_REQUIRED` flip for Phase 2.
+      Design: [docs/SEC4_WEBHOOK_AUTH.md](docs/SEC4_WEBHOOK_AUTH.md). Shipped: worker-side classifier
+      (brvg-cloud-server #8), app emits `&k=` + syncs `sh_webhook_secret` (#82), FirestoreStorage reads the
+      secret (brvg-cloud-server #11), self-host admin can set it (brvg-cloud-server #12).
+      **Remaining (owner + hardware):** the worker cutover ([docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)),
+      re-register devices so they emit `&k=`, then flip to Phase 2. (SEC-5 path-injection already fixed.)
 - [ ] **SEC-7 — Tauri CSP disabled** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json) `"csp": null`).
-      Adding a CSP risks breaking Firebase/asset loads, so it needs a native (`npm run tauri dev`)
-      verification pass rather than a blind change. **Needs native verify.**
+      A drafted CSP is in **[PR #76](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/76) (held)** —
+      merge after a native (`npm run tauri dev`) verification pass (a missing origin would break auth/sync).
 
 ---
 
@@ -137,13 +138,24 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 
 ## 🏗️ Self-host / infra (Task 7 line)
 
-- [ ] **Unify + retire the main repo's live `worker/` onto the brvg-cloud-server core.** The greenfield
-      self-host server already has a Firestore-capable storage seam + a Cloudflare Worker adapter; the
-      owner-driven cutover ports the live worker onto it (kills the duplicated logic). Requires a hardware
-      smoke of the real LinkTap/FCM calls since `worker/**` is the live flood-shutoff path.
-- [ ] **Task 9 — add the Docker image build to CI** once the cloud-server unify lands.
-- [ ] **Create device limits in plans.** Enforce monitoring limits based on tier: free can monitor 3 devices, basic can do 6, premium can do 20.
-- [ ] **Self-hosted feature limitations & new connectors.** Remove Twilio SMS integration from the self-hosted option. Add WhatsApp and Telegram connectors as alert options across all versions.
+- [~] **Unify + retire the main repo's live `worker/` onto the brvg-cloud-server core.** The old `worker/`
+      dir is already removed from this repo; brvg-cloud-server's Worker adapter (`src/worker.ts` +
+      `FirestoreStorage`) is the replacement — it reads/writes the same Firestore, with FCM/LinkTap/
+      connectors/authz/retention/SEC-4/device-limits. **Remaining: the owner-run cutover** —
+      [docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md) (test-deploy → smoke → move the custom domain →
+      re-register devices → SEC-4 Phase 2). Needs a hardware smoke of the live flood path.
+- [x] **Task 9 — Docker image build in CI.** DONE — brvg-cloud-server CI builds the Docker image and runs a
+      `wrangler --dry-run` bundle-check of the Worker adapter.
+- [x] **Create device limits in plans (free 3 / basic 6 / premium 20).** DONE — client entitlement +
+      Add-a-device gating ([#79](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/79)); server-side
+      `device_limit_reached` enforcement in the worker (brvg-cloud-server, matching numbers). ⚠️ UI wants a
+      native verify.
+- [x] **Self-hosted feature limitations & new connectors.** DONE — Twilio SMS is wired only on the hosted
+      worker (self-host server wires WhatsApp + Telegram only); WhatsApp + Telegram senders added across
+      versions (brvg-cloud-server), covered by tests (brvg-cloud-server #9); app account-portal UI for
+      WhatsApp/Telegram destinations ([#80](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/80));
+      FirestoreStorage reads the prefs (brvg-cloud-server #11); self-host `/admin` can set per-vehicle
+      destinations (brvg-cloud-server #12). ⚠️ App UI wants a native verify; real delivery needs provider creds.
 
 ---
 
