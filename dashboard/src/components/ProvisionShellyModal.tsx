@@ -56,6 +56,10 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   
   const [statusMessage, setStatusMessage] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  // Guards the final "Add Device" step: it's async (dynamic import + optional BLE voltmeter-enable),
+  // so without this a impatient double/triple-click during the pause calls addDevice repeatedly and
+  // creates duplicate device clones.
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Wi-Fi scan (asks the Shelly to list networks it can see, via its Gen2 Wifi.Scan RPC)
   const [isScanningWifi, setIsScanningWifi] = useState(false);
@@ -209,6 +213,9 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
 
   // Finalize: persist the device locally using the confirmed role + detected id
   const finalizeAddDevice = async () => {
+    if (isFinalizing) return; // re-entry guard against double-clicks during the async pause
+    setIsFinalizing(true);
+    try {
     const { addDevice } = await import('../utils/VehicleManager');
     addDevice({
       id: 'brv_sh_' + Math.random().toString(36).substr(2, 9),
@@ -235,9 +242,12 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       try {
         const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
         await enableShellyVoltmeter((m, p) => shellyRpc(bleLocalIp, m, p));
-      } catch { /* best-effort — the Settings button can re-run it */ }
+      } catch { /* best-effort — re-runnable after onboarding */ }
     }
     setStep('completion');
+    } finally {
+      setIsFinalizing(false);
+    }
   };
 
   const executeManualIpProvisioning = async () => {
@@ -612,7 +622,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
               )}
             </div>
             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button className="btn-primary" onClick={finalizeAddDevice}>Add Device</button>
+              <button className="btn-primary" onClick={finalizeAddDevice} disabled={isFinalizing}>{isFinalizing ? 'Adding…' : 'Add Device'}</button>
             </div>
           </div>
         )}

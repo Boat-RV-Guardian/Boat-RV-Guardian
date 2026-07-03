@@ -100,11 +100,6 @@ export default function DeviceConfigPanel({
                             title="Device Settings"
                             style={{ padding: '6px 10px', fontSize: '1.1rem', lineHeight: 1 }}
                           >⚙️</button>
-                          <button
-                            className="btn-secondary"
-                            onClick={() => { setDeviceToRemove(device); setFactoryResetOnRemove(false); }}
-                            style={{ padding: '6px 10px', fontSize: '0.75rem', borderColor: '#ef4444', color: '#ef4444' }}
-                          >Remove</button>
                         </div>
                       </div>
 
@@ -275,75 +270,6 @@ export default function DeviceConfigPanel({
                                 </div>
                               </div>
 
-                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                <button
-                                  className="btn-secondary"
-                                  disabled={devicePanelBusy || !device.localIp || !device.shellyDeviceId}
-                                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                  onClick={async () => {
-                                    setDevicePanelBusy(true); setDevicePanelMsg(null);
-                                    try {
-                                      const { shellySetPassword } = await import('../../utils/shellyRpc');
-                                      const pw = localStorage.getItem('sh_local_password') || '';
-                                      if (!pw) throw new Error('No vehicle password set');
-                                      await shellySetPassword(device.localIp!, device.shellyDeviceId!, pw);
-                                      setDevicePanelMsg({ id: device.id, text: '✓ Device secured with the vehicle password.', ok: true });
-                                    } catch (err: any) {
-                                      setDevicePanelMsg({ id: device.id, text: `✗ ${err?.message || 'Failed'}`, ok: false });
-                                    } finally { setDevicePanelBusy(false); }
-                                  }}
-                                >🔒 Secure with vehicle password</button>
-                                <button
-                                  className="btn-secondary"
-                                  disabled={devicePanelBusy || !device.localIp}
-                                  style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                  onClick={async () => {
-                                    setDevicePanelBusy(true); setDevicePanelMsg(null);
-                                    try {
-                                      const { shellyClearPassword } = await import('../../utils/shellyRpc');
-                                      await shellyClearPassword(device.localIp!, localStorage.getItem('sh_local_password') || '');
-                                      setDevicePanelMsg({ id: device.id, text: '✓ Password cleared.', ok: true });
-                                    } catch (err: any) {
-                                      setDevicePanelMsg({ id: device.id, text: `✗ ${err?.message || 'Failed'}`, ok: false });
-                                    } finally { setDevicePanelBusy(false); }
-                                  }}
-                                >Clear password</button>
-                              </div>
-
-                              {/* Shelly Plus Uni's 0-30 V voltmeter isn't enabled by default — it must be
-                                  linked as a peripheral (creates voltmeter:1xx; reboots the device).
-                                  Provisioning does this automatically; this re-runs it for devices added
-                                  before the fix or after a factory reset. */}
-                              {device.role === 'Low Power Sensor' && (
-                                <div>
-                                  <button
-                                    className="btn-secondary"
-                                    disabled={devicePanelBusy || !deviceLocalHost(device)}
-                                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                                    onClick={async () => {
-                                      const host = deviceLocalHost(device);
-                                      if (!host) return;
-                                      setDevicePanelBusy(true); setDevicePanelMsg(null);
-                                      try {
-                                        const { shellyRpc, enableShellyVoltmeter } = await import('../../utils/shellyRpc');
-                                        const pw = localStorage.getItem('sh_local_password') || undefined;
-                                        const { id, rebooted } = await enableShellyVoltmeter((m, p) => shellyRpc(host, m, p, pw));
-                                        setDevicePanelMsg(id != null
-                                          ? { id: device.id, text: rebooted
-                                              ? `✓ Voltmeter enabled (voltmeter:${id}) — device rebooting (~15 s), then voltage appears.`
-                                              : `✓ Voltmeter already enabled (voltmeter:${id}).`, ok: true }
-                                          : { id: device.id, text: '✗ Could not enable the voltmeter — this device may not expose one.', ok: false });
-                                      } catch (err: any) {
-                                        setDevicePanelMsg({ id: device.id, text: `✗ ${err?.message || 'Unreachable'}${device.batteryPowered ? ' — wake the device and retry' : ''}`, ok: false });
-                                      } finally { setDevicePanelBusy(false); }
-                                    }}
-                                  >🔌 Enable voltmeter</button>
-                                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
-                                    For Shelly Plus Uni battery monitors reading 0.00 V — links the 0-30 V voltmeter peripheral (reboots the device).
-                                  </p>
-                                </div>
-                              )}
-
                               {/* Voltage calibration — a single offset written ONTO the device (Voltmeter
                                   xvoltage), so local + cloud both report the corrected value. */}
                               {device.role === 'Low Power Sensor' && (
@@ -378,6 +304,16 @@ export default function DeviceConfigPanel({
                               )}
                             </div>
                           )}
+
+                          {/* Remove device — moved here (under the gear) so it isn't a one-tap action
+                              on the device row. Opens the confirm dialog (with optional factory reset). */}
+                          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
+                            <button
+                              className="btn-secondary"
+                              onClick={() => { setDeviceToRemove(device); setFactoryResetOnRemove(false); }}
+                              style={{ padding: '8px 12px', fontSize: '0.8rem', borderColor: '#ef4444', color: '#ef4444' }}
+                            >🗑️ Remove device</button>
+                          </div>
                         </div>
                       )}
                     </div>
