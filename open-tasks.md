@@ -214,6 +214,49 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 
 ---
 
+## 🚿 LinkTap architecture redesign (event-driven; 2026-07-03)
+
+The current LinkTap integration is **client-poll-and-react**: every app instance polls the valve
+(~5s local / ~31s cloud) and re-implements safety/automation itself. This is fragile and caused a
+real, hard-to-debug incident — a **stale signed-in copy** (old web build with the since-removed
+flow-rate shutoff, reachable via the shared LinkTap cloud creds AND the boat↔home SpeedFusion VPN)
+kept slamming the valve closed ~40s after every open, from *both* our app and LinkTap's own Start
+button. Ruled out our live app (opens 24h/300gal, sends no stop, logs nothing) and the cloud worker
+(tailed it live: only `voltmeter.measurement` telemetry, zero flood webhooks, zero shutoff). Root
+cause was device-/instance-side, not our worker. LinkTap's own API gives us a much better model.
+
+- [ ] **LinkTap events → webhook (event-driven backbone).** Use LinkTap's
+      [`POST /api/setWebHookUrl`](https://www.link-tap.com/#!/api-for-developers) to register a
+      webhook (→ a new **`/api/linktap`** route on the worker / brvg-cloud-server) so LinkTap **pushes**
+      events instead of us polling: `watering start` / `watering end` / `watering cycle skipped`,
+      `gateway offline|online`, `device offline`, `battery low|good`, **`water cut-off alert`**,
+      **`unusually high|low flow alert`**, `valve broken alert`, `device fall alert`,
+      `manual button pressed`, `freeze alert`, `alarm clear`. Feed them into the **same alert + push
+      (FCM/ntfy) + telemetry pipeline** the Shelly webhooks already use. Then:
+      - **Retire client-side safety-by-polling.** LinkTap's native `water cut-off` / `high-low flow` /
+        `valve broken` / `freeze` alerts replace our Auto-Guard (the flow-rate guard was already removed
+        in [#98](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/98)). The app becomes
+        *display + command*, not a safety controller — which **structurally kills the multi-instance
+        race** (safety lives in one server, not duplicated in every browser tab / phone).
+      - **Diagnostic payoff:** registering the webhook is also the instrument that would have ended the
+        incident above in minutes — the next close arrives labeled `water cut-off alert` (LinkTap
+        protection) vs `watering end` (external command). Worth wiring even just to see it.
+      - **Note:** `setWebHookUrl` is account-global (one URL) and **cloud-only** — a fully-airgapped /
+        local-only boat (see the local-only LinkTap ask) can't use it and must lean on local gateway
+        polling / MQTT instead. Support both, pick by connectivity.
+
+- [ ] **Auto-fetch / rotate the LinkTap API key at onboarding.** Use
+      [`POST /api/getApiKey`](https://www.link-tap.com/#!/api-for-developers) (`username` + `password`,
+      optional `replace:true` to rotate) so the app can retrieve (or regenerate) the user's LinkTap API
+      key from their LinkTap login instead of making them hand-copy it from the LinkTap site.
+      ⚠️ **Credential handling:** this needs the LinkTap **account password**. Exchange it **once** for
+      the API key and **never persist the password** (do the exchange server-side if feasible; hold the
+      password only in memory for the single call, then discard). Store only the returned API key
+      (existing `lt_cloud_key`). Offer `replace:true` as an explicit "rotate key / lock out other apps"
+      action — it's exactly what stopped a rogue copy in the 2026-07-03 incident.
+
+---
+
 ## 🧊 Deferred by choice (parked with a reason — not blocked, just low value now)
 
 - [~] **Task 3 — `useSettingsState` hook extraction** (Settings.tsx). The ~56 synced `useState` + the two
