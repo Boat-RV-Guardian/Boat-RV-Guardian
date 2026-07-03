@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { readSettings, writeSettings, applyPersistedSettings, type PersistedSettings, type SettingsSetters } from './settingsStorage';
+import { readSettings, writeSettings, buildLocalDevices, applyPersistedSettings, type PersistedSettings, type SettingsSetters } from './settingsStorage';
 
 // Build a SettingsSetters whose every setter records the value it was called with into `received`,
 // so a test can assert what applyPersistedSettings fanned out. Keys are derived from a settings
@@ -112,6 +112,36 @@ describe('settingsStorage', () => {
   it('falls back to four empty slots when a device-id array is corrupt', () => {
     localStorage.setItem('sh_high_power', 'not json');
     expect(readSettings().highPowerIds).toEqual(['', '', '', '']);
+  });
+
+  describe('buildLocalDevices (lt_local_devices for the Add-Valve modal)', () => {
+    it('mirrors the local gateway + both TapLinker IDs into the modal shape on write', () => {
+      writeSettings(SAMPLE); // gatewayId GW1234, primary DEV1, secondary DEV2
+      expect(JSON.parse(localStorage.getItem('lt_local_devices') || '[]')).toEqual([
+        { deviceId: 'DEV1', name: 'Local TapLinker 1', gatewayId: 'GW1234' },
+        { deviceId: 'DEV2', name: 'Local TapLinker 2', gatewayId: 'GW1234' },
+      ]);
+    });
+
+    it('emits nothing without a Gateway ID (a device id alone cannot be actuated locally)', () => {
+      expect(buildLocalDevices({ ...SAMPLE, gatewayId: '   ' })).toEqual([]);
+    });
+
+    it('emits only the primary when the secondary is blank', () => {
+      expect(buildLocalDevices({ ...SAMPLE, secondaryDeviceId: '' })).toEqual([
+        { deviceId: 'DEV1', name: 'Local TapLinker 1', gatewayId: 'GW1234' },
+      ]);
+    });
+
+    it('de-dupes a secondary that repeats the primary', () => {
+      expect(buildLocalDevices({ ...SAMPLE, secondaryDeviceId: 'DEV1' })).toEqual([
+        { deviceId: 'DEV1', name: 'Local TapLinker 1', gatewayId: 'GW1234' },
+      ]);
+    });
+
+    it('emits an empty list when the gateway has no configured TapLinker', () => {
+      expect(buildLocalDevices({ ...SAMPLE, primaryDeviceId: '', secondaryDeviceId: '' })).toEqual([]);
+    });
   });
 
   describe('applyPersistedSettings', () => {
