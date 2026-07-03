@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { registerShellyWebhooks, refreshLocalShellyWebhooks } from './shellyRpc';
+import { registerShellyWebhooks, refreshLocalShellyWebhooks, refreshCloudShellyWebhooks } from './shellyRpc';
 
 // registerShellyWebhooks/refreshLocalShellyWebhooks take a transport-agnostic `call(method,params)`.
 // We stand in a fake Shelly that answers the discovery RPCs, and capture the Webhook.Create/Update
@@ -110,5 +110,44 @@ describe('refreshLocalShellyWebhooks merge semantics', () => {
     expect(urls.some((u) => u.includes('192.168.1.50'))).toBe(false); // our prior url dropped
     expect(urls.some((u) => u.includes('192.168.1.99'))).toBe(true);  // our current url added
     expect(urls.length).toBeLessThanOrEqual(5); // Shelly's 5-URL cap respected
+  });
+});
+
+describe('refreshCloudShellyWebhooks (voltmeter self-heal + SEC-4 secret)', () => {
+  it('creates the voltmeter telemetry hook (with v/vraw) once the peripheral exists', async () => {
+    // A Uni whose voltmeter is now live → ListSupported includes voltmeter.* and the status has voltmeter:100.
+    const sh = fakeShelly({
+      supported: ['input.toggle_on', 'voltmeter.change', 'voltmeter.measurement'],
+      status: { 'voltmeter:100': { id: 100 } },
+      existingHooks: [], // provisioned before the voltmeter existed → no voltmeter hook yet
+    });
+    await refreshCloudShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'v1', 'uni1', undefined, '', 'SEKRET');
+
+    const meas = sh.created.find((c) => c.event === 'voltmeter.measurement');
+    expect(meas).toBeTruthy();
+    expect(meas.cid).toBe(100); // voltmeter:100 → cid 100, not the default 0
+    expect(meas.urls[0]).toContain('event=voltmeter.measurement');
+    expect(meas.urls[0]).toContain('v=${ev.xvoltage}');
+    expect(meas.urls[0]).toContain('vraw=${ev.voltage}');
+    expect(meas.urls[0]).toContain('&k=SEKRET'); // per-vehicle SEC-4 secret
+    // input.* is not alert/telemetry-ish → not registered when voltmeter events are present.
+    expect(sh.created.some((c) => c.event === 'input.toggle_on')).toBe(false);
+  });
+
+  it('merges the worker url into an existing hook without dropping a local listener', async () => {
+    const sh = fakeShelly({
+      supported: ['voltmeter.measurement'],
+      status: { 'voltmeter:100': { id: 100 } },
+      existingHooks: [{
+        id: 9, event: 'voltmeter.measurement', name: 'brvg-local',
+        urls: ['http://192.168.1.50:3030/api/shelly?vid=v1&event=voltmeter.measurement'], // a local listener
+      }],
+    });
+    await refreshCloudShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'v1', 'uni1');
+
+    expect(sh.updated).toHaveLength(1);
+    const urls: string[] = sh.updated[0].urls;
+    expect(urls.some((u) => u.includes('192.168.1.50:3030'))).toBe(true);         // local listener kept
+    expect(urls.some((u) => u.includes('api.boatrvguardian.com'))).toBe(true);    // worker url added
   });
 });

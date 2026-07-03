@@ -8,6 +8,10 @@ import { lastStatusKey } from '../hooks/useSensorBridge';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
+// Cloud-webhook self-heal is idempotent but does 3-4 device RPCs, so run it at most once per
+// device+worker-base per app session (a base change, e.g. the Task 11 cutover, re-triggers it).
+const cloudWebhookReconciled = new Set<string>();
+
 const unifiedFetch = async (url: string, options?: any) => {
   if (isTauriEnv()) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
@@ -187,12 +191,44 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     } catch { /* best-effort */ }
   };
 
+  // Signed-in cloud users: ensure the WORKER is a webhook target on this reachable device, so off-LAN
+  // alerts + telemetry flow. Self-heals a device provisioned before its voltmeter peripheral existed
+  // (its voltmeter.* hooks were never created) and re-points devices after the Task 11 worker cutover.
+  // Merge semantics (refreshCloudShellyWebhooks) never clobber flood/other hooks. Throttled per session.
+  const ensureCloudWebhook = async (reachableHost: string) => {
+    if (!device.shellyDeviceId) return;
+    const vid = getActiveVehicleId();
+    if (!vid) return;
+    try {
+      const { isLocalMode } = await import('../utils/userScope');
+      if (isLocalMode(localStorage)) return; // cloud-mode users only; local mode never uses the worker
+      const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
+      const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
+      if (!base) return;
+      const throttleKey = `${device.shellyDeviceId}|${base}`;
+      if (cloudWebhookReconciled.has(throttleKey)) return;
+      cloudWebhookReconciled.add(throttleKey); // mark before await so concurrent polls don't double-run
+      try {
+        const pw = localStorage.getItem('sh_local_password') || undefined;
+        const key = localStorage.getItem('sh_webhook_url') ? (localStorage.getItem('sh_webhook_key') || '') : '';
+        const { ensureWebhookSecret } = await import('../utils/webhookSecret');
+        const { refreshCloudShellyWebhooks } = await import('../utils/shellyRpc');
+        const prior = device.webhookCloudBase && device.webhookCloudBase !== base ? device.webhookCloudBase : undefined;
+        await refreshCloudShellyWebhooks((m, params) => shellyRpc(reachableHost, m, params, pw), base, vid, device.shellyDeviceId, prior, key, ensureWebhookSecret());
+        if (device.webhookCloudBase !== base) {
+          const { updateDevice } = await import('../utils/VehicleManager');
+          updateDevice(device.id, { webhookCloudBase: base });
+        }
+      } catch { cloudWebhookReconciled.delete(throttleKey); /* transient — retry on a later poll */ }
+    } catch { /* best-effort */ }
+  };
+
   const fetchStatus = async () => {
     // Raw IP first, then .local (desktop churn fallback). localHosts is already ordered + deduped.
     for (const host of localHosts) {
       try {
         const json = await shellyRpc(host, 'Shelly.GetStatus', {}, localStorage.getItem('sh_local_password') || undefined);
-        if (json && !json.error) { applyData(json, 'local'); if (isBattery) ensureLocalWebhook(host); return; }
+        if (json && !json.error) { applyData(json, 'local'); if (isBattery) ensureLocalWebhook(host); ensureCloudWebhook(host); return; }
       } catch { /* try next host / fall back to cloud */ }
     }
     if (shellyServer && shellyAuthKey) {
