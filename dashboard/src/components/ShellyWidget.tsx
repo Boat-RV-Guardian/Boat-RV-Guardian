@@ -100,7 +100,12 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       if (Date.now() - lastLocalAtRef.current < 20000) return;
       const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
       const remote: any = {};
-      if (d.v != null || d.vraw != null) remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+      if (d.v != null || d.vraw != null) {
+        // Same `v` field, mapped to the shape each role's display reads: shore power → pm1:0.voltage,
+        // DC battery/voltmeter → voltmeter:100.
+        if (device.role === 'High Power Sensor') remote['pm1:0'] = { voltage: n(d.v) ?? n(d.vraw) };
+        else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+      }
       if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
       if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
       const ev = String(d.event || '');
@@ -146,7 +151,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
 
   // Pull the role's primary trend metric out of a status object (same keys local + cloud).
   const extractMetric = (d: any): number | null => {
-    if (device.role === 'High Power Sensor') return d['pm1:0']?.apower ?? d['switch:0']?.apower ?? d['em:0']?.total_act_power ?? d.meters?.[0]?.power ?? null;
+    // Shore power: track VOLTAGE, not wattage — these are voltage-only installs (the device isn't
+    // wired inline for current), so apower is always ~0.
+    if (device.role === 'High Power Sensor') return d['pm1:0']?.voltage ?? d['switch:0']?.voltage ?? d['em:0']?.a_voltage ?? d.meters?.[0]?.voltage ?? null;
     // Prefer xvoltage (device-side calibrated value) over the raw voltage when present.
     if (device.role === 'Low Power Sensor')
       return d['voltmeter:0']?.xvoltage ?? d['voltmeter:0']?.voltage
@@ -271,20 +278,21 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   // Show last-known data first so a transient/asleep poll failure doesn't hide it.
   if (data) {
     if (device.role === 'High Power Sensor') {
-      const power = data['pm1:0']?.apower ?? data['switch:0']?.apower ?? data['em:0']?.total_act_power ?? data.meters?.[0]?.power ?? 0;
       const voltage = data['pm1:0']?.voltage ?? data['switch:0']?.voltage ?? data['em:0']?.a_voltage ?? data.meters?.[0]?.voltage ?? 0;
       const critLow = num('lt_shore_crit_low_v', 104), low = num('lt_shore_low_v', 114), normal = num('lt_shore_normal_v', 120), high = num('lt_shore_high_v', 126), critHigh = num('lt_shore_crit_high_v', 132);
       const status = voltage <= critLow ? { t: 'CRITICAL LOW', c: '#ef4444' } : voltage <= low ? { t: 'LOW', c: '#f59e0b' }
         : voltage >= critHigh ? { t: 'CRITICAL HIGH', c: '#ef4444' } : voltage >= high ? { t: 'HIGH', c: '#f59e0b' } : { t: 'NORMAL', c: '#10b981' };
+      // Voltage-only: these installs aren't wired inline for current, so wattage is always ~0 and is
+      // not shown. Voltage is the shore-power health signal.
       content = (
         <div style={{ width: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-            <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f59e0b' }}>{power.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>W</span></span>
+            <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#f59e0b' }}>{voltage.toFixed(1)} <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>V</span></span>
             <span style={{ fontSize: '0.7rem', fontWeight: 700, color: status.c, background: `${status.c}22`, padding: '2px 8px', borderRadius: '10px' }}>{status.t}</span>
           </div>
-          <div style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>{voltage.toFixed(1)} V <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>· nominal {normal} V</span></div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>nominal {normal} V</div>
           <Sparkline points={history} color="#f59e0b" />
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Power trend (W)</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Voltage trend (V)</div>
         </div>
       );
     } else if (device.role === 'Low Power Sensor') {

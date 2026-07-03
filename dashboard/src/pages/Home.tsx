@@ -47,11 +47,11 @@ function ShellyTile({ device }: { device: DeviceConfig }) {
 
   if (data) {
     if (device.role === 'High Power Sensor') {
-      const power = data['pm1:0']?.apower ?? data['switch:0']?.apower ?? data['em:0']?.total_act_power ?? data.meters?.[0]?.power ?? 0;
+      // Voltage-only shore-power install (not wired inline for current) — show volts, not watts.
       const v = data['pm1:0']?.voltage ?? data['switch:0']?.voltage ?? data['em:0']?.a_voltage ?? data.meters?.[0]?.voltage ?? 0;
       const cl = num('lt_shore_crit_low_v', 104), lo = num('lt_shore_low_v', 114), hi = num('lt_shore_high_v', 126), ch = num('lt_shore_crit_high_v', 132);
       badge = v <= cl ? { t: 'CRIT LOW', c: '#ef4444' } : v <= lo ? { t: 'LOW', c: '#f59e0b' } : v >= ch ? { t: 'CRIT HIGH', c: '#ef4444' } : v >= hi ? { t: 'HIGH', c: '#f59e0b' } : { t: 'NORMAL', c: '#10b981' };
-      primary = `${Number(power).toFixed(0)} W`; secondary = `${Number(v).toFixed(1)} V`;
+      primary = `${Number(v).toFixed(1)} V`; secondary = 'Shore power';
     } else if (device.role === 'Low Power Sensor') {
       const v = data['voltmeter:0']?.xvoltage ?? data['voltmeter:0']?.voltage
         ?? data['voltmeter:100']?.xvoltage ?? data['voltmeter:100']?.voltage
