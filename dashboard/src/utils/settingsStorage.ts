@@ -147,6 +147,24 @@ export function readSettings(): PersistedSettings {
   };
 }
 
+// Build the local-device list that ProvisionLinkTapModal reads from `lt_local_devices` (shape:
+// `{deviceId, name, gatewayId}[]`). The Local Gateway Control section only ever persisted the gateway
+// + TapLinker IDs to their own keys, and nothing wrote `lt_local_devices` — so a local-only gateway
+// + TapLinker (no LinkTap cloud creds) could be fully configured here yet never show up as a
+// selectable valve in the Add-LinkTap-Valve modal ("No TapLinker devices found."). Deriving it here
+// from the same fields closes that gap. A Gateway ID is required (local actuation is addressed
+// per-gateway); the second TapLinker is optional and de-duped against the first.
+export function buildLocalDevices(s: PersistedSettings): { deviceId: string; name: string; gatewayId: string }[] {
+  const gatewayId = s.gatewayId.trim();
+  if (!gatewayId) return [];
+  const out: { deviceId: string; name: string; gatewayId: string }[] = [];
+  const d1 = s.primaryDeviceId.trim();
+  const d2 = s.secondaryDeviceId.trim();
+  if (d1) out.push({ deviceId: d1, name: 'Local TapLinker 1', gatewayId });
+  if (d2 && d2 !== d1) out.push({ deviceId: d2, name: 'Local TapLinker 2', gatewayId });
+  return out;
+}
+
 // Persist every Settings value. Webhook fields are trimmed (matching the original write effect).
 // Does NOT dispatch `settings_updated` — the caller owns that (it also guards against re-entry).
 export function writeSettings(s: PersistedSettings): void {
@@ -175,6 +193,9 @@ export function writeSettings(s: PersistedSettings): void {
   localStorage.setItem('lt_gateway_id', s.gatewayId);
   localStorage.setItem('lt_device_id', s.primaryDeviceId);
   localStorage.setItem('lt_device_id_2', s.secondaryDeviceId);
+  // Mirror the local gateway + TapLinker IDs into the shape the Add-LinkTap-Valve modal reads, so
+  // local-only valves become selectable there (see buildLocalDevices).
+  localStorage.setItem('lt_local_devices', JSON.stringify(buildLocalDevices(s)));
 
   localStorage.setItem('sh_server', s.shellyServer);
   localStorage.setItem('sh_auth_key', s.shellyAuthKey);
