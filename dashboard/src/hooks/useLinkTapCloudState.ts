@@ -11,12 +11,20 @@ import { useEffect, useState } from 'react';
 import { db, doc, onSnapshot } from '../services/firebase';
 import { getActiveVehicleId } from '../utils/VehicleManager';
 import { mergeLinkTapSensorDoc, linkTapSensorStateKey, type LinkTapCloudState } from '../utils/linktapCloudState';
+import { demoLinkTapDoc } from '../utils/demoTelemetry';
 
 export function useLinkTapCloudState(taplinkerId: string | undefined | null): LinkTapCloudState | null {
   const [state, setState] = useState<LinkTapCloudState | null>(null);
 
   useEffect(() => {
     if (!taplinkerId) return;
+    // DEMO: no Firestore — tick the deterministic valve generator in place of onSnapshot.
+    if (__DEMO__) {
+      const tick = () => setState((prev) => mergeLinkTapSensorDoc(prev, demoLinkTapDoc(Date.now())));
+      tick();
+      const id = setInterval(tick, 1000);
+      return () => clearInterval(id);
+    }
     const vid = getActiveVehicleId();
     if (!vid) return;
     const ref = doc(db, 'vehicles', vid, 'sensorState', linkTapSensorStateKey(taplinkerId));

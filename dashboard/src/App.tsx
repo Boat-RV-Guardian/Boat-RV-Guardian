@@ -18,6 +18,7 @@ import { migrateAllVehiclesThresholds } from './utils/configSync';
 import { applyUserScope, enterLocalMode, exitLocalMode, isLocalMode } from './utils/userScope';
 import { parseViewTarget, sectionForCategory, type AppView, type SystemsSection } from './utils/navTargets';
 import { useIsMobile } from './hooks/useIsMobile';
+import { seedDemoVehicle } from './utils/demoSeed';
 
 export default function App() {
   usePushNotifications();
@@ -66,6 +67,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // DEMO: no auth, no cloud. Seed the fake fleet and drop straight into the app.
+    if (__DEMO__) {
+      seedDemoVehicle();
+      setUser(null);
+      setHasVehicle(true);
+      setLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       // Per-user data isolation: if the signed-in identity changed (different user, or sign-out),
       // wipe the prior user's cached vehicles + secrets and hard-reload so no in-memory state from

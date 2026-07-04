@@ -53,7 +53,8 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
   // Pin to 31s when cloud-only (local disconnected) to respect the API rate limit.
   // Use the slider value when local is active for fast real-time telemetry.
-  const pollInterval = (isLocalPollingActive && gatewayIp) ? effectiveInterval : 31;
+  // DEMO: tick fast off the in-memory generator (no rate limit — nothing hits the network).
+  const pollInterval = __DEMO__ ? 2 : ((isLocalPollingActive && gatewayIp) ? effectiveInterval : 31);
 
   // --- Local Safety  // Auto-Guard settings
   const autoGuardEnabled = device.autoGuardEnabled !== false;
@@ -448,6 +449,22 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     setConnectionStatus('disconnected');
 
     const poll = async () => {
+      // DEMO: no network — mirror the deterministic server-observed valve state (fed by
+      // useLinkTapCloudState's generator) into the display, always "connected", never errors.
+      if (__DEMO__) {
+        const ss = serverStateRef.current;
+        if (ss && ss.at > 0) {
+          setIsRfLinked(true); setIsBroken(false); setIsLeak(false); setIsClog(false);
+          setBattery(ss.battery ?? 0);
+          setSignal(ss.signal ?? 0);
+          setIsWatering(!!ss.isWatering);
+          setSpeed(ss.isWatering && ss.flow != null ? ss.flow : 0);
+          setLastUpdated(ss.at);
+          setConnectionStatus('connected');
+          setErrorMsg(null);
+        }
+        return;
+      }
       if (device.enabled === false || (!isLocalPollingActive && !isCloudPollingActive)) {
         setConnectionStatus('disconnected');
         return;

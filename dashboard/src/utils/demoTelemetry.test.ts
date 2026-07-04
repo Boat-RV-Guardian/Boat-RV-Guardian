@@ -99,6 +99,13 @@ describe('demoShellyDoc', () => {
   it('shapes a battery as a voltmeter doc', () => {
     const d = demoShellyDoc({ deviceId: 'x', kind: 'battery', base: 12.8 }, 0);
     expect(d).toMatchObject({ event: 'voltmeter.change', v: '12.8', vraw: '12.8' });
+    expect(d.tC).toBeUndefined();
+  });
+
+  it('adds a temperature reading to a battery configured with tempBaseC', () => {
+    const d = demoShellyDoc({ deviceId: 'x', kind: 'battery', base: 12.5, tempBaseC: 21 }, 0);
+    expect(d.event).toBe('voltmeter.change');
+    expect(Number(d.tC)).toBe(19); // 21 + 4·(diurnal(0)-0.5) = 21 - 2
   });
 
   it('flood is dry by default and alarms when scripted (as the widget’s regex reads it)', () => {

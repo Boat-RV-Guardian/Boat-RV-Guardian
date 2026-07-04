@@ -5,6 +5,8 @@ import { shellyRpc } from '../utils/shellyRpc';
 import { formatTime } from '../utils/time';
 import { db, doc, onSnapshot } from '../services/firebase';
 import { lastStatusKey } from '../hooks/useSensorBridge';
+import { demoSpecFor } from '../utils/demoFleet';
+import { demoShellyDoc } from '../utils/demoTelemetry';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
@@ -26,6 +28,25 @@ const invokeTauri = async (cmd: string, args?: any) => {
   return invoke(cmd, args);
 };
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
+
+// Map a worker-cached sensorState doc ({v,vraw,tC,batt,event}) to the internal status shape the
+// widget's displays read (the same keys a local Shelly poll produces). Shared by the live onSnapshot
+// reader and the DEMO generator so both render identically. Returns {} when the doc carries nothing.
+export function mapCloudSensorDoc(role: string, d: Record<string, any>): Record<string, any> {
+  const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
+  const remote: any = {};
+  if (d.v != null || d.vraw != null) {
+    // Same `v` field, mapped to the shape each role's display reads: shore power → pm1:0.voltage,
+    // DC battery/voltmeter → voltmeter:100.
+    if (role === 'High Power Sensor') remote['pm1:0'] = { voltage: n(d.v) ?? n(d.vraw) };
+    else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
+  }
+  if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
+  if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
+  const ev = String(d.event || '');
+  if (/flood|alarm|leak/i.test(ev)) remote['flood:0'] = { alarm: !/off|clear|inactive|dry/i.test(ev) };
+  return remote;
+}
 
 // Compact SVG trend line with optional dashed threshold lines.
 function Sparkline({ points, color, min, max, thresholds }: {
@@ -89,6 +110,19 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   // fills in when local is stale/absent (the off-site case). Also feeds the "last report" line.
   useEffect(() => {
     if (device.enabled === false || !device.shellyDeviceId) return;
+    // DEMO: no Firestore — tick the deterministic generator for this device in place of onSnapshot.
+    const demoSpec = __DEMO__ ? demoSpecFor(device.shellyDeviceId) : undefined;
+    if (demoSpec) {
+      const tick = () => {
+        const d = demoShellyDoc(demoSpec, Date.now());
+        if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
+        const remote = mapCloudSensorDoc(device.role, d);
+        if (Object.keys(remote).length) applyData(remote, 'cloud');
+      };
+      tick();
+      const id = setInterval(tick, 2000);
+      return () => clearInterval(id);
+    }
     const vid = getActiveVehicleId();
     if (!vid) return;
     const ref = doc(db, 'vehicles', vid, 'sensorState', device.shellyDeviceId);
@@ -98,22 +132,11 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
       // Don't clobber a fresh local poll (home); only synthesize from the cloud when local is stale.
       if (Date.now() - lastLocalAtRef.current < 20000) return;
-      const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
-      const remote: any = {};
-      if (d.v != null || d.vraw != null) {
-        // Same `v` field, mapped to the shape each role's display reads: shore power → pm1:0.voltage,
-        // DC battery/voltmeter → voltmeter:100.
-        if (device.role === 'High Power Sensor') remote['pm1:0'] = { voltage: n(d.v) ?? n(d.vraw) };
-        else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
-      }
-      if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
-      if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
-      const ev = String(d.event || '');
-      if (/flood|alarm|leak/i.test(ev)) remote['flood:0'] = { alarm: !/off|clear|inactive|dry/i.test(ev) };
+      const remote = mapCloudSensorDoc(device.role, d);
       if (Object.keys(remote).length) applyData(remote, 'cloud');
     }, () => {});
     return () => unsub();
-  }, [device.enabled, device.shellyDeviceId]);
+  }, [device.enabled, device.shellyDeviceId, device.role]);
 
   // The strike on a sleepy device's wake (GetStatus + self-heal) is handled app-level by
   // useSensorBridge so it runs regardless of the active page. Here we just consume the result:
