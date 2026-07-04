@@ -6,6 +6,7 @@ import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDu
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
+import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 
 const APP_VERSION = '1.0.49';
 
@@ -18,6 +19,10 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const [gatewayIp, setGatewayIp] = useState(() => localStorage.getItem('lt_gateway_ip') || '');
   const [gatewayId, setGatewayId] = useState(() => localStorage.getItem('lt_gateway_id') || '');
   const deviceId = device.linktapDeviceId || device.id;
+  // Server-observed valve state (worker-cached from LinkTap's pushed webhook events). Read-only display
+  // for now — the off-LAN source of truth once the app's poll/command paths move off direct LinkTap
+  // cloud (retiring the multi-instance race). Does NOT feed the poll/command/safety state machine here.
+  const serverState = useLinkTapCloudState(deviceId);
   const [refreshInterval, setRefreshInterval] = useState(() => Number(localStorage.getItem('lt_refresh') || '5'));
   const effectiveInterval = refreshInterval;
 
@@ -1042,6 +1047,14 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
               <div>
                 <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Real-Time Flow Analysis</h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Data refreshed every {isLocalPollingActive && gatewayIp ? `${effectiveInterval}s (local)` : '31s (cloud)'} • Last update: {lastUpdated ? formatTime(lastUpdated) : 'Never'}</p>
+                {serverState && serverState.at > 0 && (
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                    ☁️ Server-observed: {serverState.isWatering ? 'OPEN' : 'CLOSED'}
+                    {serverState.flow != null && serverState.isWatering ? ` · ${serverState.flow.toFixed(1)} L/min` : ''}
+                    {serverState.battery != null ? ` · 🔋 ${serverState.battery}%` : ''}
+                    {' · '}{formatTime(serverState.at)}
+                  </p>
+                )}
                 {!canControl && (
                   <p style={{ fontSize: '0.78rem', color: '#fde68a', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px', padding: '6px 10px', marginTop: '6px', display: 'inline-block' }}>
                     🔒 Monitor-only access — you can view status but not operate this device.
