@@ -21,10 +21,12 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const [gatewayIp, setGatewayIp] = useState(() => localStorage.getItem('lt_gateway_ip') || '');
   const [gatewayId, setGatewayId] = useState(() => localStorage.getItem('lt_gateway_id') || '');
   const deviceId = device.linktapDeviceId || device.id;
-  // Server-observed valve state (worker-cached from LinkTap's pushed webhook events). Read-only display
-  // for now — the off-LAN source of truth once the app's poll/command paths move off direct LinkTap
-  // cloud (retiring the multi-instance race). Does NOT feed the poll/command/safety state machine here.
+  // Server-observed valve state (worker-cached from LinkTap's pushed webhook events). Displayed AND
+  // used as the OFF-LAN source (replacing the app's direct LinkTap-cloud getWateringStatus poll) — the
+  // read half of retiring the multi-instance race. serverStateRef gives the poll closure a live handle.
   const serverState = useLinkTapCloudState(deviceId);
+  const serverStateRef = useRef(serverState);
+  serverStateRef.current = serverState;
   const [refreshInterval, setRefreshInterval] = useState(() => Number(localStorage.getItem('lt_refresh') || '5'));
   const effectiveInterval = refreshInterval;
 
@@ -478,45 +480,32 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
            }
         }
 
-        // 2. Fallback to Cloud API (If local fails, e.g., device not on same network)
-        // Guard: Cloud API enforces a 30s minimum poll interval — track last call time
-        const now = Date.now();
-        const lastCloudPoll = (window as any).__lastCloudStatusPoll || 0;
-        const cloudCooldownMs = 31000; // 31s to stay safely above the 30s limit
-        if (!data && isCloudPollingActive && cloudUsername && cloudApiKey && (now - lastCloudPoll >= cloudCooldownMs)) {
-           (window as any).__lastCloudStatusPoll = now;
-           usedCloud = true;
-           const cloudRes = await unifiedFetch('https://www.link-tap.com/api/getWateringStatus', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ username: cloudUsername, apiKey: cloudApiKey, taplinkerId: deviceId })
-           });
-           data = await cloudRes.json();
-           
-           if (data.result === 'error' && data.message && data.message.toLowerCase().includes('error')) {
-               data = { status: { watering: null } }; // Mock an idle response
-           } else if (data.result === 'error') {
-               throw new Error(data.message);
+        // 2. Off-LAN: use the SERVER-observed state (worker cache from LinkTap's pushed webhooks)
+        //    instead of polling LinkTap's cloud directly. The app no longer reads LinkTap cloud, so a
+        //    stale copy can't add polling load / race. Values are already clean (no swap/normalize).
+        //    We set the basic display state and return — the local-only logic (volume cutoff / history /
+        //    auto-restart) needs continuous LAN data and is skipped off-LAN (it was unreliable via the
+        //    old cloud poll too). Signed-in only; local-only users have no server cache.
+        if (!data && auth.currentUser) {
+           const ss = serverStateRef.current;
+           if (ss && ss.at > 0) {
+             const wat = !!ss.isWatering;
+             setIsRfLinked(true);
+             setIsBroken(false); setIsLeak(false); setIsClog(false);
+             setBattery(ss.battery ?? 0);
+             setSignal(ss.signal ?? 0);
+             setIsWatering(wat);
+             setSpeed(wat && ss.flow != null ? ss.flow : 0);
+             setLastUpdated(ss.at);
+             setConnectionStatus('connected');
+             // Clear the optimistic command lock once the server reflects the commanded state.
+             if (expectedWateringStateRef.current !== null && wat === expectedWateringStateRef.current) {
+               expectedWateringStateRef.current = null;
+               setIsCommandLoading(false);
+               if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
+             }
            }
-           
-           // Fetch battery/signal occasionally (Cloud API only provides this via a separate endpoint)
-           if (Date.now() - (window as any).lastCloudDevicePoll > 300000 || !(window as any).lastCloudDevicePoll) {
-               try {
-                   const devRes = await unifiedFetch('https://www.link-tap.com/api/getAllDevices', {
-                       method: 'POST',
-                       headers: { 'Content-Type': 'application/json' },
-                       body: JSON.stringify({ username: cloudUsername, apiKey: cloudApiKey })
-                   });
-                   const devData = await devRes.json();
-                   if (devData.result === 'ok' && devData.devices) {
-                       const tl = devData.devices[0].taplinker.find((t: any) => t.taplinkerId === deviceId) || devData.devices[0].taplinker[0];
-                       (window as any).cachedCloudBattery = tl.batteryStatus ? parseInt(String(tl.batteryStatus).replace('%','')) : 100;
-                       (window as any).cachedCloudSignal = tl.signal ? parseInt(String(tl.signal).replace('%','')) : 100;
-                       (window as any).cachedCloudStatus = tl.status;
-                       (window as any).lastCloudDevicePoll = Date.now();
-                   }
-               } catch (e) { console.warn('Failed to fetch battery/signal', e); }
-           }
+           return; // no LAN data + no direct-cloud read — done for this tick
         }
 
         if (!data) {
