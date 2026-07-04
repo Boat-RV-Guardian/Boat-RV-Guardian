@@ -19,10 +19,12 @@ import { applyUserScope, enterLocalMode, exitLocalMode, isLocalMode } from './ut
 import { parseViewTarget, sectionForCategory, type AppView, type SystemsSection } from './utils/navTargets';
 import { useIsMobile } from './hooks/useIsMobile';
 import { seedDemoVehicle } from './utils/demoSeed';
+import { useDemoScenario } from './hooks/useDemoScenario';
 
 export default function App() {
   usePushNotifications();
   useSensorBridge(); // app-level: handle sleepy-sensor local webhooks regardless of active page
+  useDemoScenario(); // demo builds only: drive the scripted flood → auto-shutoff → alert incident
   // Deep link (web): app.boatrvguardian.com/?view=account lands on the subscription portal. The
   // native app's Plan "Upgrade/Manage" button opens that URL in the system browser.
   const initialTarget = (() => {
@@ -142,6 +144,9 @@ export default function App() {
               Local mode keeps everything on this device and never syncs to the cloud. Switch to a cloud
               account any time to sync across devices.
             </p>
+            <a href="https://demo.boatrvguardian.com" target="_blank" rel="noopener noreferrer" style={{ textAlign: 'center', color: '#00f2fe', fontSize: '0.85rem', textDecoration: 'none' }}>
+              🎬 Try the live demo — no sign-up
+            </a>
           </div>
         )}
       </div>
@@ -174,6 +179,11 @@ export default function App() {
         <GlobalBar onOpenAccount={() => setCurrentView('account')} />
       </header>
       <EmailVerifyBanner user={user} />
+      {__DEMO__ && (
+        <div style={{ background: 'linear-gradient(90deg, rgba(0,242,254,0.14), rgba(99,102,241,0.14))', borderBottom: '1px solid rgba(0,242,254,0.28)', padding: '8px 16px', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
+          🎬 <strong style={{ color: '#00f2fe' }}>Demo</strong> — simulated data, no real devices. Explore freely; controls animate but change nothing.
+        </div>
+      )}
       {(() => {
         const tabs: { v: AppView; icon: string; label: string }[] = [
           { v: 'overview', icon: '📊', label: 'Overview' },

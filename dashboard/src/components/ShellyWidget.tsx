@@ -6,7 +6,7 @@ import { formatTime } from '../utils/time';
 import { db, doc, onSnapshot } from '../services/firebase';
 import { lastStatusKey } from '../hooks/useSensorBridge';
 import { demoSpecFor } from '../utils/demoFleet';
-import { demoShellyDoc } from '../utils/demoTelemetry';
+import { demoShellyDoc, demoFloodAlarmActive } from '../utils/demoTelemetry';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
@@ -114,7 +114,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     const demoSpec = __DEMO__ ? demoSpecFor(device.shellyDeviceId) : undefined;
     if (demoSpec) {
       const tick = () => {
-        const d = demoShellyDoc(demoSpec, Date.now());
+        const now = Date.now();
+        // The bilge flood sensor follows the scripted incident (alarm window); the rest are steady.
+        const d = demoShellyDoc(demoSpec, now, demoSpec.kind === 'flood' && demoFloodAlarmActive(now));
         if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
         const remote = mapCloudSensorDoc(device.role, d);
         if (Object.keys(remote).length) applyData(remote, 'cloud');

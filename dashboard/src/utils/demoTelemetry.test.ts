@@ -9,9 +9,13 @@ import {
   demoVoltage,
   demoTempC,
   demoShellyDoc,
+  demoFloodAlarmActive,
   sampleBack,
   DEMO_VALVE_CYCLE_MS,
   DEMO_VALVE_WATER_MS,
+  DEMO_SCENARIO_CYCLE_MS,
+  DEMO_FLOOD_START_MS,
+  DEMO_FLOOD_DURATION_MS,
   type DemoSensorSpec,
 } from './demoTelemetry';
 import { mergeLinkTapSensorDoc } from './linktapCloudState';
@@ -59,6 +63,25 @@ describe('demo valve', () => {
 
     const closed = mergeLinkTapSensorDoc(open, demoLinkTapDoc(DEMO_VALVE_WATER_MS));
     expect(closed).toMatchObject({ isWatering: false, flow: 0, event: 'wateringOff' });
+  });
+});
+
+describe('scripted flood incident', () => {
+  it('alarms only inside the flood window of each scenario cycle', () => {
+    expect(demoFloodAlarmActive(0)).toBe(false);
+    expect(demoFloodAlarmActive(DEMO_FLOOD_START_MS - 1)).toBe(false);
+    expect(demoFloodAlarmActive(DEMO_FLOOD_START_MS)).toBe(true);
+    expect(demoFloodAlarmActive(DEMO_FLOOD_START_MS + DEMO_FLOOD_DURATION_MS - 1)).toBe(true);
+    expect(demoFloodAlarmActive(DEMO_FLOOD_START_MS + DEMO_FLOOD_DURATION_MS)).toBe(false);
+    // wraps into the next cycle
+    expect(demoFloodAlarmActive(DEMO_SCENARIO_CYCLE_MS + DEMO_FLOOD_START_MS)).toBe(true);
+  });
+
+  it('forces the valve shut (safety shutoff) while the flood is active', () => {
+    const doc = demoLinkTapDoc(DEMO_FLOOD_START_MS + 5000);
+    expect(doc).toMatchObject({ watering: '0', flow: '0', event: 'water cut-off alert', alarm: 'floodShutoff', kind: 'alarm' });
+    const s = mergeLinkTapSensorDoc(null, doc);
+    expect(s).toMatchObject({ isWatering: false, alarm: 'floodShutoff' });
   });
 });
 
