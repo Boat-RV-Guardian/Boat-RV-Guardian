@@ -1,0 +1,62 @@
+name: Deploy Demo Site to Cloudflare Pages
+
+# Publishes the public no-login showcase to demo.boatrvguardian.com. Same dashboard code as
+# deploy-dashboard.yml, but built with `--mode demo` (VITE `__DEMO__` = true) so the app runs on the
+# fake fleet + simulated telemetry instead of auth/cloud/hardware. The real web app (deploy-dashboard.yml)
+# builds WITHOUT this mode, so it never ships mock data.
+#
+# ONE-TIME OWNER SETUP (Cloudflare-gated — can't be scripted from here):
+#   1. Create a Cloudflare Pages project named `boat-rv-guardian-demo` (same account as the app).
+#   2. Attach the custom domain `demo.boatrvguardian.com` to it.
+#   3. Set repo variable DEMO_DEPLOY_ENABLED=true (Settings → Secrets and variables → Actions →
+#      Variables). Until then the deploy job is SKIPPED, so this workflow can't fail on `main` while
+#      the Pages project doesn't exist yet. After that it keeps the demo in sync on every dashboard change.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'dashboard/src/**'
+      - 'dashboard/index.html'
+      - 'dashboard/package.json'
+      - 'dashboard/vite.config.ts'
+      - '.github/workflows/deploy-demo.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    # Skipped until the owner creates the Pages project and flips this repo variable on (see header).
+    if: vars.DEMO_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        working-directory: ./dashboard
+        run: npm ci
+
+      - name: Build Demo (web SPA, mock mode)
+        working-directory: ./dashboard
+        # BRVG_TARGET=web → real PWA service worker (same as the app). --mode demo → __DEMO__ true.
+        env:
+          BRVG_TARGET: web
+        run: npm run build:demo
+
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_PAGES_EDIT }}
+          accountId: 9b75e814c0fc254c910fd1afc3c88028
+          projectName: boat-rv-guardian-demo
+          directory: ./dashboard/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
