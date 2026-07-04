@@ -182,12 +182,15 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 
 ## 🏗️ Self-host / infra (Task 7 line)
 
-- [~] **Unify + retire the main repo's live `worker/` onto the brvg-cloud-server core.** The old `worker/`
-      dir is already removed from this repo; brvg-cloud-server's Worker adapter (`src/worker.ts` +
-      `FirestoreStorage`) is the replacement — it reads/writes the same Firestore, with FCM/LinkTap/
-      connectors/authz/retention/SEC-4/device-limits. **Remaining: the owner-run cutover** —
-      [docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md) (test-deploy → smoke → move the custom domain →
-      re-register devices → SEC-4 Phase 2). Needs a hardware smoke of the live flood path.
+- [x] **Unify + retire the main repo's live `worker/` onto the brvg-cloud-server core — CUTOVER DONE
+      (2026-07-04).** `api.boatrvguardian.com` now routes to `brvg-cloud-worker` (`FirestoreStorage`,
+      same Firestore, with FCM/LinkTap/connectors/authz/retention/device-limits + strict per-vehicle
+      SEC-4 auth + the LinkTap `/api/linktap` pipeline). Deployed with Firebase + `LINKTAP_WEBHOOK_SECRET`
+      secrets; `/api/health` + `/api/shelly` (401 without `&k=`) + `/api/linktap` verified live. The old
+      `boat-rv-guardian-webhooks` worker is left in place for rollback (move the custom domain back).
+      **Remaining:** owner re-adds devices on-LAN so they re-register with `&k=` (else they 401 — the
+      flood + valve are the ones that matter); then delete the old worker after a few clean days. There
+      is **no SEC-4 Phase-2 flip** on the hosted worker — it's strict from the start (cloud-server #20).
 - [x] **Task 9 — Docker image build in CI.** DONE — brvg-cloud-server CI builds the Docker image and runs a
       `wrangler --dry-run` bundle-check of the Worker adapter.
 - [x] **Create device limits in plans (free 3 / basic 6 / premium 20).** DONE — client entitlement +
@@ -235,15 +238,19 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
       **hosted multi-tenant auth** (per-vehicle `&k=` required, no instance key). **DEPLOYED + LIVE** on
       `brvg-cloud-worker.jgearinger.workers.dev` with secrets set; MVP's LinkTap webhook is registered;
       `/api/shelly` verified 401 without `&k=`. ~129 tests.
-      - **REMAINING (2 pieces):**
-        - [ ] **App-side rewrite** — the app reads valve state from Firestore `onSnapshot`, sends commands
-              via `/api/control`, and **stops calling LinkTap cloud directly** (keep an on-LAN gateway
-              fallback for offline). This is what actually *retires the multi-instance race*.
-              **Native-verify-gated** (touches the safety-critical command path).
-        - [ ] **Worker cutover** — move `api.boatrvguardian.com` to the new worker
-              ([docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)); re-register devices for `&k=`. Owner action.
-      - Capture the real `flowMeterValue`/`wateringOn` payloads on a live watering to confirm the
-        defensive field-parsing, then tighten if needed.
+      - **App side — DONE (2026-07-04):** off-LAN valve state now comes from the worker cache via
+        Firestore `onSnapshot` ([#103](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/103)
+        + display #105 + read-swap #107), and **open/close route through `/api/control`**
+        ([#106](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/106)) — the app no longer
+        calls LinkTap cloud directly, so the worker is the single reader + actuator. **Multi-instance
+        race retired both ways.** On-LAN gateway path kept as the offline fallback.
+      - **Worker cutover — DONE (2026-07-04):** `api.boatrvguardian.com` moved to `brvg-cloud-worker`
+        (custom domain in `wrangler.toml`); verified live. Old worker left for rollback.
+      - **Payloads confirmed live:** real capture showed flow arrives in `vel` (mL/min) — parser fixed
+        to L/min (cloud-server #21); `wateringOn` battery is a `"100%"` string (handled); `msg`/`event`
+        both used. **NATIVE-VERIFY (owner):** re-add the LinkTap valve + flood sensor (they re-register
+        with `&k=`), then sign in and open/close the valve (cloud path) + off-LAN read + on-LAN local
+        fallback. One minor on-LAN limit-supplement `getWateringStatus` fetch remains (edge case).
 
 - [x] **Auto-fetch / rotate the LinkTap API key — CLIENT DONE (brvg-cloud-server #18: `linkTapGetApiKey`).**
       `getApiKey` (username + password, optional `replace:true`) is implemented + tested; password is
