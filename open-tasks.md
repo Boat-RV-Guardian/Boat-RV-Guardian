@@ -269,6 +269,29 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
 
 ---
 
+## 🎬 Demo site — `demo.boatrvguardian.com` (mock mode) + strip mock mode from the real apps
+
+Public, no-login showcase of the full app driven by fake sensors, so new users can explore
+functionality before buying/installing anything.
+
+- [ ] **Build a demo/mock data layer** — a full set of **fake sensors + valve** with simulated live
+      telemetry and working (no-op) controls, exercising every screen: a LinkTap **valve** (flow /
+      volume / battery, start/stop, plans), a **flood** sensor (with a scripted alarm → auto-shutoff
+      demo), **shore power**, **house + engine battery** voltage, **temp/humidity**. Feed it through the
+      same widgets (no forked UI): a `DEMO`-gated data source that stands in for the LinkTap/Shelly
+      poll + the Firestore `onSnapshot` reads. Seed believable history so charts/trends render.
+- [ ] **Gate it behind a build-time flag** (e.g. `VITE_DEMO=1`) so mock mode is **compiled OUT of the
+      production web app and the native apps** — the real apps never ship it. NOTE: there is **no
+      existing "mock mode"** to remove today (only `MOCK_COUPONS` in `utils/billing.ts`, which is the
+      unrelated Stripe-placeholder coupon flow) — so this is "build it demo-only-gated," not "strip an
+      existing feature." Auto-skip auth/onboarding in demo builds (drop straight into a seeded vehicle,
+      read-only-ish; controls animate but change nothing real).
+- [ ] **Deploy the demo build to `demo.boatrvguardian.com`** (Cloudflare Pages, like the marketing
+      site; owner attaches the custom domain). Add a **"Try the live demo"** link from the marketing
+      site + the login screen → `demo.boatrvguardian.com`.
+- Keep the demo pinned to a "happy path" data script (occasional alert to show notifications), and a
+  banner making clear it's a demo with simulated data.
+
 ## 🧊 Deferred by choice (parked with a reason — not blocked, just low value now)
 
 - [~] **Task 3 — `useSettingsState` hook extraction** (Settings.tsx). The ~56 synced `useState` + the two
