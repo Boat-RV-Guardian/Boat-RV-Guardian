@@ -54,18 +54,34 @@ export function demoSignal(t: number): number {
   return Math.round(72 + wobble(t, 20 * MIN, 8));
 }
 
+// ── Scripted flood incident ──────────────────────────────────────────────────
+// Once per scenario cycle the bilge flood sensor alarms for a short window, which auto-closes the
+// valve (safety shutoff) and logs an alert — the app's core burst-pipe story, on a loop. The window
+// is offset from the valve's wash-down so the "flood → valve was open, now forced closed" reads clearly.
+export const DEMO_SCENARIO_CYCLE_MS = 3 * MIN;
+export const DEMO_FLOOD_START_MS = 90_000;    // 1:30 into each cycle
+export const DEMO_FLOOD_DURATION_MS = 20_000; // 20s alarm
+
+/** Is the scripted bilge flood alarm active at `t`? */
+export function demoFloodAlarmActive(t: number): boolean {
+  const phase = t % DEMO_SCENARIO_CYCLE_MS;
+  return phase >= DEMO_FLOOD_START_MS && phase < DEMO_FLOOD_START_MS + DEMO_FLOOD_DURATION_MS;
+}
+
 /** A full LinkTap valve `sensorState` doc for time `t`, as the worker would write it. */
 export function demoLinkTapDoc(t: number): Record<string, string> {
-  const watering = demoValveWatering(t);
+  const flood = demoFloodAlarmActive(t);
+  // A flood forces the valve shut regardless of the wash-down schedule (the safety net).
+  const watering = !flood && demoValveWatering(t);
   return {
-    event: watering ? 'flowMeterValue' : 'wateringOff',
+    event: flood ? 'water cut-off alert' : (watering ? 'flowMeterValue' : 'wateringOff'),
     at: String(t),
     watering: watering ? '1' : '0',
-    flow: String(demoValveFlow(t)),
+    flow: String(watering ? demoValveFlow(t) : 0),
     battery: String(demoValveBattery(t)),
     signal: String(demoSignal(t)),
     workMode: 'M',
-    kind: watering ? 'telemetry' : 'watering',
+    ...(flood ? { alarm: 'floodShutoff', kind: 'alarm' } : { kind: watering ? 'telemetry' : 'watering' }),
   };
 }
 
