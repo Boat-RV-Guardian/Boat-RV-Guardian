@@ -68,11 +68,15 @@ Cloudflare allows only one Worker per custom domain, so moving the domain is the
    still provisioned against that hostname keep working until re-registered (Step 4).
 3. Re-verify `https://api.boatrvguardian.com/api/health` and one telemetry webhook.
 
-## Step 4 — re-register devices (on the boat / home LAN)
+## Step 4 — re-register devices (on the boat / home LAN) — REQUIRED
 
-Devices cache their webhook URL. Open the app once on the same LAN as each device so it re-registers its
-webhooks — this both (a) points them at `api.boatrvguardian.com` and (b) adds `&k=<secret>` (SEC-4).
-Confirm on the device: `curl http://<ip>/rpc/Webhook.List` shows the new URL with `&k=`.
+The hosted worker is **multi-tenant and authenticates every webhook by the per-vehicle `&k=` secret**
+(`Deps.multiTenant` → strict SEC-4; there is no instance key and no `allowUnauthenticated`). So a device
+that hasn't re-registered (no `&k=`, or the old hostname) is **rejected (401)** — this is not optional
+hardening, it's the auth. Open the app once on the same LAN as each device so it re-registers: this both
+(a) points it at `api.boatrvguardian.com` and (b) adds `&k=<sh_webhook_secret>`. Confirm on the device:
+`curl http://<ip>/rpc/Webhook.List` shows the new URL with `&k=`. Every vehicle must have a
+`sh_webhook_secret` (the app provisions one); a vehicle without one can't receive webhooks.
 
 ## Step 4b — register the LinkTap webhook (turns on the push pipeline)
 
@@ -91,12 +95,13 @@ flow / valve-broken / freeze / battery / offline — into `sensorState` + the al
   `/api/linktap` state as an authoritative mirror for off-app / off-LAN display + alerts.
 - To undo: `linkTapDeleteWebhook({username, apiKey})`.
 
-## Step 5 — enforce SEC-4 (Phase 2)
+## Step 5 — (SEC-4 is already enforced on the hosted worker)
 
-Once every active vehicle's devices have re-registered (unauthenticated hits ~0), flip
-`WEBHOOK_AUTH_REQUIRED` to `true` in `brvg-cloud-server/src/auth.ts` and redeploy. After this, a webhook
-with a missing/wrong `&k=` for a secret-bearing vehicle is rejected (401). Keep the old worker until
-you're confident no device still fires the pre-`&k=` URL.
+There is **no Phase-2 flip on the hosted worker** — `Deps.multiTenant=true` makes per-vehicle `&k=`
+mandatory from the start (a missing/wrong secret is a 401). So the only thing to watch here is that all
+your real devices have re-registered (Step 4); until one has, its webhooks 401 (expected). Keep the old
+`boat-rv-guardian-webhooks` worker live until you've confirmed no device still fires the pre-`&k=` URL,
+then delete it. (`WEBHOOK_AUTH_REQUIRED` in `auth.ts` only governs the **self-host** phased rollout.)
 
 ## Rollback
 
