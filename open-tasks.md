@@ -225,35 +225,47 @@ button. Ruled out our live app (opens 24h/300gal, sends no stop, logs nothing) a
 (tailed it live: only `voltmeter.measurement` telemetry, zero flood webhooks, zero shutoff). Root
 cause was device-/instance-side, not our worker. LinkTap's own API gives us a much better model.
 
-- [ ] **LinkTap events → webhook (event-driven backbone).** Use LinkTap's
-      [`POST /api/setWebHookUrl`](https://www.link-tap.com/#!/api-for-developers) to register a
-      webhook (→ a new **`/api/linktap`** route on the worker / brvg-cloud-server) so LinkTap **pushes**
-      events instead of us polling: `watering start` / `watering end` / `watering cycle skipped`,
-      `gateway offline|online`, `device offline`, `battery low|good`, **`water cut-off alert`**,
-      **`unusually high|low flow alert`**, `valve broken alert`, `device fall alert`,
-      `manual button pressed`, `freeze alert`, `alarm clear`. Feed them into the **same alert + push
-      (FCM/ntfy) + telemetry pipeline** the Shelly webhooks already use. Then:
-      - **Retire client-side safety-by-polling.** LinkTap's native `water cut-off` / `high-low flow` /
-        `valve broken` / `freeze` alerts replace our Auto-Guard (the flow-rate guard was already removed
-        in [#98](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/98)). The app becomes
-        *display + command*, not a safety controller — which **structurally kills the multi-instance
-        race** (safety lives in one server, not duplicated in every browser tab / phone).
-      - **Diagnostic payoff:** registering the webhook is also the instrument that would have ended the
-        incident above in minutes — the next close arrives labeled `water cut-off alert` (LinkTap
-        protection) vs `watering end` (external command). Worth wiring even just to see it.
-      - **Note:** `setWebHookUrl` is account-global (one URL) and **cloud-only** — a fully-airgapped /
-        local-only boat (see the local-only LinkTap ask) can't use it and must lean on local gateway
-        polling / MQTT instead. Support both, pick by connectivity.
+- [x] **LinkTap events → webhook — SERVER SIDE DONE (2026-07-04, brvg-cloud-server #15–#20).** LinkTap
+      `setWebHookUrl` → **`/api/linktap`** (secret-gated `?t=`), routed by `gatewayId` → vehicle,
+      coalesced into the same `sensorState` cache + FCM/ntfy alert pipeline the Shelly webhooks use.
+      Pure classifier (`linktapEvents`), ingest (`linktapCore`), command relay (`linktapCommands`:
+      instantMode **without `vol`** — fixed the 400 — plus plans / pause / `dismissAlarm`), account
+      API (`linktapAccount`: setWebHookUrl / deleteWebHookUrl / getApiKey), opt-in **auto-recover**
+      (benign `noWater`/low-flow only; never high-flow/valve-broken/fall/freeze), and the permanent
+      **hosted multi-tenant auth** (per-vehicle `&k=` required, no instance key). **DEPLOYED + LIVE** on
+      `brvg-cloud-worker.jgearinger.workers.dev` with secrets set; MVP's LinkTap webhook is registered;
+      `/api/shelly` verified 401 without `&k=`. ~129 tests.
+      - **REMAINING (2 pieces):**
+        - [ ] **App-side rewrite** — the app reads valve state from Firestore `onSnapshot`, sends commands
+              via `/api/control`, and **stops calling LinkTap cloud directly** (keep an on-LAN gateway
+              fallback for offline). This is what actually *retires the multi-instance race*.
+              **Native-verify-gated** (touches the safety-critical command path).
+        - [ ] **Worker cutover** — move `api.boatrvguardian.com` to the new worker
+              ([docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)); re-register devices for `&k=`. Owner action.
+      - Capture the real `flowMeterValue`/`wateringOn` payloads on a live watering to confirm the
+        defensive field-parsing, then tighten if needed.
 
-- [ ] **Auto-fetch / rotate the LinkTap API key at onboarding.** Use
-      [`POST /api/getApiKey`](https://www.link-tap.com/#!/api-for-developers) (`username` + `password`,
-      optional `replace:true` to rotate) so the app can retrieve (or regenerate) the user's LinkTap API
-      key from their LinkTap login instead of making them hand-copy it from the LinkTap site.
-      ⚠️ **Credential handling:** this needs the LinkTap **account password**. Exchange it **once** for
-      the API key and **never persist the password** (do the exchange server-side if feasible; hold the
-      password only in memory for the single call, then discard). Store only the returned API key
-      (existing `lt_cloud_key`). Offer `replace:true` as an explicit "rotate key / lock out other apps"
-      action — it's exactly what stopped a rogue copy in the 2026-07-03 incident.
+- [x] **Auto-fetch / rotate the LinkTap API key — CLIENT DONE (brvg-cloud-server #18: `linkTapGetApiKey`).**
+      `getApiKey` (username + password, optional `replace:true`) is implemented + tested; password is
+      used for one call and never persisted. **Remaining: wire it into app onboarding** (below).
+
+- [ ] **Guardian-native LinkTap onboarding — "no second app" (2026-07-04).** Make the LinkTap app
+      unnecessary for end users. Wire together pieces that already exist:
+      1. **Creds:** user enters their LinkTap username+password into *Guardian* → `linkTapGetApiKey`
+         → store only `lt_cloud_key` (+ offer `replace:true` "rotate / lock out other apps").
+      2. **Discovery:** auto-find the gateway + valve IDs over the LAN via `useLinkTapDiscovery`
+         (there is **no** cloud list-devices endpoint; the local gateway API returns them, and the
+         webhook events carry `gatewayId`/`deviceId` as a cross-check).
+      3. **Webhook:** auto-register `setWebHookUrl` for the account.
+      **Hard boundary (no API for these — one-time, in LinkTap's app):** account creation, gateway
+      Wi-Fi onboarding, and **valve↔gateway pairing**. Cover them by **pre-provisioning hardware kits
+      at fulfillment** (customer never installs the LinkTap app) and a one-time "install LinkTap, pair,
+      come back" screen for BYO-hardware users.
+
+- [ ] **Owner action — email support@link-tap.com for a provisioning/pairing API.** Their API page
+      invites "further requirements." Ask whether they expose gateway onboarding + valve pairing to
+      integrators; if yes, the last one-time LinkTap-app dependency disappears entirely. (True
+      zero-LinkTap-account alternative remains **Shelly + motorized ball valve** — see the deferred note.)
 
 ---
 
@@ -270,8 +282,13 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
       Redundant with Settings → Friends and would need a live Firestore listener that breaks Account's
       deliberately Firebase-free/test-light design.
 - [x] **Task 14 — edit password / SSO** — DONE (see the Account / auth section above; in-app + portal).
-
----
+- [ ] **Gateway-free / zero-third-party-cloud valve = Shelly + motorized ball valve.** LinkTap valves
+      speak proprietary sub-GHz RF and **cannot exist without a LinkTap gateway** (hardware fact; no
+      pairing API). For a truly gateway-free, no-LinkTap-account valve, use a **Shelly switch (Gen3/Plus)
+      driving a 12V motorized ball valve** — rides the existing Shelly LAN-RPC + webhook + provisioning
+      path with near-zero new server code (add a "valve" role for a Shelly switch: open/close UI +
+      Flooding-Sentry hook). Trade-off vs LinkTap: no integrated flow meter (add a pulse flow sensor on
+      a Shelly Uni input if wanted). Fits the low-cost-first site framing. Parked pending product call.
 
 ## 📌 Reference (not action items — kept because the open work above needs it)
 
