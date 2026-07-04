@@ -10,7 +10,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 // previously-installed SW and clears its caches, then removes itself.
 const isWeb = process.env.BRVG_TARGET === 'web'
 
-export default defineConfig({
+// The public no-login showcase (demo.boatrvguardian.com) is built with `vite build --mode demo`.
+// `__DEMO__` is injected as a boolean literal so `if (__DEMO__)` branches — and the fake fleet /
+// generator modules they reference — are dead-code-eliminated from every normal build. The real
+// web app and native apps never ship mock mode.
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA(
@@ -49,8 +53,9 @@ export default defineConfig({
   base: isWeb ? '/' : './',
   define: {
     __WEB_PWA__: JSON.stringify(isWeb),
+    __DEMO__: JSON.stringify(mode === 'demo'),
   },
   build: {
     outDir: 'dist',
   },
-})
+}))

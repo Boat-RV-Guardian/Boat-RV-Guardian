@@ -53,22 +53,15 @@ export const DEMO_DEVICES: DeviceConfig[] = [
     shellyDeviceId: 'demo-flood',
     batteryPowered: true,
   },
-  {
-    id: 'demo-cabin',
-    type: 'shelly_sensor',
-    role: 'Low Power Sensor',
-    name: 'Cabin Temp / Humidity',
-    shellyDeviceId: 'demo-cabin',
-  },
 ];
 
 /** Telemetry generator spec per Shelly device id (the LinkTap valve is driven by demoLinkTapDoc). */
 export const DEMO_SENSOR_SPECS: DemoSensorSpec[] = [
   { deviceId: 'demo-shore', kind: 'shore', base: 120 },
-  { deviceId: 'demo-house-batt', kind: 'battery', base: 12.5, solar: true },
+  // House bank climbs on solar through the day and also reports cabin temperature (🌡️ badge).
+  { deviceId: 'demo-house-batt', kind: 'battery', base: 12.5, solar: true, tempBaseC: 21 },
   { deviceId: 'demo-engine-batt', kind: 'battery', base: 12.8 },
   { deviceId: 'demo-flood', kind: 'flood', base: 0 },
-  { deviceId: 'demo-cabin', kind: 'thermo', base: 21 },
 ];
 
 /** Look up the generator spec for a Shelly device id, if this is a demo device. */

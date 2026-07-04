@@ -28,9 +28,10 @@ const round = (n: number, dp = 2): number => {
 };
 
 // ── LinkTap valve ────────────────────────────────────────────────────────────
-// A believable "wash-down" schedule: a short watering burst at the top of each cycle, idle otherwise.
-export const DEMO_VALVE_CYCLE_MS = 15 * MIN;
-export const DEMO_VALVE_WATER_MS = 90_000; // 90s of flow per cycle
+// A believable "wash-down" schedule: a watering burst at the top of each cycle, idle otherwise. Kept
+// short so a demo visitor sees the valve open, flow, and close within a minute rather than waiting.
+export const DEMO_VALVE_CYCLE_MS = 60_000;
+export const DEMO_VALVE_WATER_MS = 18_000; // 18s of flow per 60s cycle
 
 /** Is the demo valve open at `t`? */
 export function demoValveWatering(t: number): boolean {
@@ -78,6 +79,8 @@ export interface DemoSensorSpec {
   base: number;
   /** Adds a diurnal charge bump — used for the house/solar battery so it climbs midday. */
   solar?: boolean;
+  /** Battery only: also emit a temperature (°C nominal) so the widget shows a 🌡️ badge, like a real Uni. */
+  tempBaseC?: number;
 }
 
 /** Voltage (V) for a shore-power or battery sensor at `t`. */
@@ -110,7 +113,10 @@ export function demoShellyDoc(spec: DemoSensorSpec, t: number, alarmActive = fal
     case 'battery': {
       const v = demoVoltage(spec, t);
       // Voltmeter reports raw + corrected; the demo applies no offset, so they match.
-      return { ...base, event: 'voltmeter.change', v: String(v), vraw: String(v) };
+      const doc: Record<string, string> = { ...base, event: 'voltmeter.change', v: String(v), vraw: String(v) };
+      // A Shelly Uni's voltmeter install often also reports temperature — surface it when configured.
+      if (spec.tempBaseC != null) doc.tC = String(demoTempC({ ...spec, base: spec.tempBaseC }, t));
+      return doc;
     }
     case 'thermo':
       return { ...base, event: 'temperature.change', tC: String(demoTempC(spec, t)), batt: '100' };
