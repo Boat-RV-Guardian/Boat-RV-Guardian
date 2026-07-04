@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { type DeviceConfig } from '../utils/VehicleManager';
+import { type DeviceConfig, getActiveVehicleId } from '../utils/VehicleManager';
+import { auth } from '../services/firebase';
+import { sendLinkTapControl } from '../utils/linktapControl';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
 import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
@@ -729,36 +731,22 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       let success = false;
       let usedLocal = false;
 
-      // 1. Always attempt Cloud API first for maximum safety (hardware volume cutoffs)
-      if (isCloudPollingActive && cloudUsername && cloudApiKey) {
+      // 1. Prefer the worker's role-checked /api/control — the app no longer calls LinkTap cloud
+      // directly, so a stale signed-in copy can't fight over the valve (retires the multi-instance
+      // race). Signed-in only; local-only users skip straight to the LAN gateway below.
+      if (auth.currentUser) {
         try {
-          const payload: any = {
-            username: cloudUsername,
-            apiKey: cloudApiKey,
-            gatewayId,
-            taplinkerId: deviceId,
-            action: true,
-            duration: Math.min(1439, durationMins), // Cloud API strict max is 1439 mins (23h 59m)
-            autoBack: true
-          };
-          if (volumeLimitLiters > 0) {
-            payload.vol = Math.round(volumeLimitLiters);
+          const vid = getActiveVehicleId();
+          const token = await auth.currentUser.getIdToken();
+          if (vid && token) {
+            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
+            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
+            const r = await sendLinkTapControl(base, token, vid, 'open', durationMins * 60);
+            if (r.ok) { success = true; addLog('success', 'Open command relayed via cloud server.'); }
+            else addLog('warning', `Cloud control failed: ${r.error}. Falling back to Local API...`);
           }
-
-          const cloudRes = await unifiedFetch('https://www.link-tap.com/api/activateInstantMode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          
-          if (!cloudRes.ok) throw new Error(`Cloud HTTP Error ${cloudRes.status}`);
-          const cloudData = await cloudRes.json();
-          if (cloudData.result === 'error') throw new Error(cloudData.message);
-          
-          success = true;
-          addLog('success', 'Cloud API Start command received by Gateway.');
         } catch (e: any) {
-          addLog('warning', `Cloud API Start failed: ${e.message}. Falling back to Local API...`);
+          addLog('warning', `Cloud control error: ${e.message}. Falling back to Local API...`);
         }
       }
 
@@ -834,30 +822,21 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       setErrorMsg(null);
       let success = false;
 
-      // 1. Attempt Cloud API first
-      if (cloudUsername && cloudApiKey) {
+      // 1. Prefer the worker's role-checked /api/control (retires the direct-LinkTap race).
+      // Signed-in only; local-only users skip to the LAN gateway below.
+      if (auth.currentUser) {
         try {
-          const cloudRes = await unifiedFetch('https://www.link-tap.com/api/activateInstantMode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              username: cloudUsername,
-              apiKey: cloudApiKey,
-              gatewayId,
-              taplinkerId: deviceId,
-              action: false,
-              duration: 0,
-              autoBack: true
-            }),
-          });
-          if (!cloudRes.ok) throw new Error(`Cloud HTTP Error ${cloudRes.status}`);
-          const cloudData = await cloudRes.json();
-          if (cloudData.result === 'error') throw new Error(cloudData.message);
-          
-          success = true;
-          addLog('success', 'Cloud API Stop command received by Gateway.');
+          const vid = getActiveVehicleId();
+          const token = await auth.currentUser.getIdToken();
+          if (vid && token) {
+            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
+            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
+            const r = await sendLinkTapControl(base, token, vid, 'close');
+            if (r.ok) { success = true; addLog('success', 'Stop command relayed via cloud server.'); }
+            else addLog('warning', `Cloud control stop failed: ${r.error}. Falling back to Local API...`);
+          }
         } catch (e: any) {
-          addLog('warning', `Cloud API Stop failed: ${e.message}. Falling back to Local API...`);
+          addLog('warning', `Cloud control stop error: ${e.message}. Falling back to Local API...`);
         }
       }
 
