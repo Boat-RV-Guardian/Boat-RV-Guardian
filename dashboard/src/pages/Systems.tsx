@@ -19,14 +19,24 @@ const SECTIONS: { key: SystemsSection; label: string; icon: string; color: strin
   { key: 'flood', label: 'Flood', icon: '🚨', color: '#3b82f6' },
 ];
 
-export default function Systems({ active, section, onSection }: {
+export default function Systems({ active, section, onSection, onBack }: {
   active: boolean;
   section: SystemsSection;
   onSection: (s: SystemsSection) => void;
+  /** Systems is a drill-down from Overview (no nav tab of its own since the merge) — the way back. */
+  onBack?: () => void;
 }) {
   return (
     <div style={{ padding: '20px 20px 100px', maxWidth: '1100px', margin: '0 auto', color: '#fff' }}>
-      <h2 style={{ fontSize: '2rem', color: 'var(--accent-cyan)', margin: '0 0 16px' }}>Systems</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '0 0 16px' }}>
+        {onBack && (
+          <button className="btn-secondary" onClick={onBack} aria-label="Back to Overview"
+            style={{ padding: '6px 12px', fontSize: '0.85rem', boxShadow: 'none', whiteSpace: 'nowrap' }}>
+            ← Overview
+          </button>
+        )}
+        <h2 style={{ fontSize: '2rem', color: 'var(--accent-cyan)', margin: 0 }}>Systems</h2>
+      </div>
 
       <nav style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
         {SECTIONS.map((s) => (

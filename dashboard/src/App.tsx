@@ -185,12 +185,15 @@ export default function App() {
         </div>
       )}
       {(() => {
+        // Systems merged into Overview (owner call, 2026-07-07): the Overview cards drill into the
+        // full Systems sections, so Systems no longer gets its own tab. While drilled in, the
+        // Overview tab stays highlighted (isTabActive) — Systems is Overview's detail view.
         const tabs: { v: AppView; icon: string; label: string }[] = [
           { v: 'overview', icon: '📊', label: 'Overview' },
-          { v: 'systems', icon: '🛰', label: 'Systems' },
           { v: 'alerts', icon: '🔔', label: 'Alerts' },
           { v: 'settings', icon: '⚙️', label: 'Settings' },
         ];
+        const isTabActive = (v: AppView) => currentView === v || (v === 'overview' && currentView === 'systems');
         // Desktop: a top row of pill buttons. Mobile: a bottom tab bar (icon over label) in normal flow.
         const nav = (
           <nav style={isMobile
@@ -201,8 +204,8 @@ export default function App() {
                 key={tab.v}
                 onClick={() => setCurrentView(tab.v)}
                 aria-label={tab.label}
-                aria-current={currentView === tab.v ? 'page' : undefined}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', padding: '8px 4px', cursor: 'pointer', color: currentView === tab.v ? 'var(--accent-cyan)' : 'var(--text-secondary)', fontSize: '0.65rem', fontWeight: currentView === tab.v ? 700 : 400 }}
+                aria-current={isTabActive(tab.v) ? 'page' : undefined}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', padding: '8px 4px', cursor: 'pointer', color: isTabActive(tab.v) ? 'var(--accent-cyan)' : 'var(--text-secondary)', fontSize: '0.65rem', fontWeight: isTabActive(tab.v) ? 700 : 400 }}
               >
                 <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{tab.icon}</span>
                 {tab.label}
@@ -210,7 +213,7 @@ export default function App() {
             ) : (
               <button
                 key={tab.v}
-                className={currentView === tab.v ? 'btn-primary' : 'btn-secondary'}
+                className={isTabActive(tab.v) ? 'btn-primary' : 'btn-secondary'}
                 onClick={() => setCurrentView(tab.v)}
                 style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
               >
@@ -225,7 +228,7 @@ export default function App() {
             {currentView === 'overview' && <Home onNavigate={(cat) => goTo('systems', sectionForCategory(cat))} />}
             {/* Systems stays mounted (display:none when inactive) so the valve's Flooding Sentry keeps running. */}
             <div style={{ display: currentView === 'systems' ? 'block' : 'none', height: '100%' }}>
-              <Systems active={currentView === 'systems'} section={systemsSection} onSection={setSystemsSection} />
+              <Systems active={currentView === 'systems'} section={systemsSection} onSection={setSystemsSection} onBack={() => setCurrentView('overview')} />
             </div>
             {currentView === 'alerts' && <Alerts />}
             {currentView === 'settings' && <Settings user={user} />}
