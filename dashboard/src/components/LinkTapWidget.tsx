@@ -9,6 +9,7 @@ import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
+import { resolveQuickOpenCap } from '../utils/quickOpen';
 
 const APP_VERSION = '1.0.60';
 
@@ -1184,7 +1185,32 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
           {/* Main Controls Console */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-            
+
+            {/* One-tap Open — always capped. Uses the per-valve default limit (Settings → Devices), or
+                the Normal Run limit when the default cap is turned off. resolveQuickOpenCap guarantees
+                a positive duration+volume — there is no uncapped open. */}
+            {(() => {
+              const nrDurationMins = normalRunDaily ? 1439 : (normalRunHours * 60) + normalRunMinutes;
+              const nrVolL = unitSystem === 'imperial' ? normalRunVolume / 0.264172 : normalRunVolume;
+              const cap = resolveQuickOpenCap(device, { durationMins: nrDurationMins, volumeLiters: nrVolL });
+              const capVolDisplay = unitSystem === 'imperial' ? cap.volumeLiters * 0.264172 : cap.volumeLiters;
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <button
+                    disabled={isWatering || !!isCommandLoading}
+                    onClick={() => executeStartCommand(cap.durationMins, cap.volumeLiters)}
+                    className="btn-primary"
+                    style={{ width: '100%', padding: '14px', fontSize: '1rem', fontWeight: 700, background: isWatering ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #06b6d4, #0891b2)', color: isWatering ? '#888' : '#fff' }}
+                  >
+                    {isCommandLoading === 'start' ? '⏳ OPENING…' : (isCommandLoading === 'stop' ? '⏳ STOPPING…' : (isWatering ? '🛑 STOP CURRENT CYCLE FIRST' : '💧 Open Valve Now'))}
+                  </button>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    Opens with a {device.applyDefaultCap !== false ? 'default' : 'Normal Run'} limit of {cap.durationMins} min / {capVolDisplay.toFixed(0)} {volUnit}. Adjust in Settings → Devices → Configuration.
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Normal Run Mode */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
