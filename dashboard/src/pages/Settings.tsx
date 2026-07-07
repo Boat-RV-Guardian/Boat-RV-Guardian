@@ -148,7 +148,6 @@ export default function Settings({ user }: { user: any }) {
   const [isLocalPollingActive, setIsLocalPollingActive] = useState(() => localStorage.getItem('lt_is_local_polling') === 'true');
   const [cloudUsername, setCloudUsername] = useState(() => localStorage.getItem('lt_cloud_user') || '');
   const [cloudApiKey, setCloudApiKey] = useState(() => localStorage.getItem('lt_cloud_key') || '');
-  const [showCloudApiKey, setShowCloudApiKey] = useState(false);
   // Fetch the API key from username + password (never persist the password). cloudPassword is
   // deliberately NOT in writeSettings — it lives only for the one getApiKey call.
   const [cloudPassword, setCloudPassword] = useState('');
@@ -179,9 +178,9 @@ export default function Settings({ user }: { user: any }) {
       setCloudApiKey(key);
       setCloudPassword('');
       setIsCloudPollingActive(false);
-      setKeyMsg({ text: replace ? 'New API key generated.' : 'API key retrieved — you can connect now.', type: 'success' });
+      setKeyMsg({ text: 'Signed in to LinkTap Cloud.', type: 'success' });
     } catch (e: any) {
-      setKeyMsg({ text: e?.message || 'Could not get the API key.', type: 'error' });
+      setKeyMsg({ text: e?.message || 'Could not sign in to LinkTap Cloud.', type: 'error' });
     } finally {
       setIsFetchingKey(false);
     }
@@ -195,7 +194,7 @@ export default function Settings({ user }: { user: any }) {
     setCloudUsername('');
     setCloudPassword('');
     setIsCloudPollingActive(false);
-    setKeyMsg({ text: 'Logged out — API key removed from this vehicle.', type: 'success' });
+    setKeyMsg({ text: 'Signed out of LinkTap Cloud.', type: 'success' });
   };
 
   // Shelly Hardware Connections
@@ -826,7 +825,6 @@ export default function Settings({ user }: { user: any }) {
               isLocalPollingActive={isLocalPollingActive} setIsLocalPollingActive={setIsLocalPollingActive}
               cloudUsername={cloudUsername} setCloudUsername={setCloudUsername}
               cloudApiKey={cloudApiKey} setCloudApiKey={setCloudApiKey}
-              showCloudApiKey={showCloudApiKey} setShowCloudApiKey={setShowCloudApiKey}
               cloudPassword={cloudPassword} setCloudPassword={setCloudPassword}
               showCloudPassword={showCloudPassword} setShowCloudPassword={setShowCloudPassword}
               handleDisconnectAccount={handleDisconnectAccount}
