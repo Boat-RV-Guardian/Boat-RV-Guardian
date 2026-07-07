@@ -216,23 +216,37 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         } catch { /* best-effort */ }
       }
 
+      // Secure the device with this vehicle's local password BEFORE it leaves the AP — on this path
+      // we never learn the device's post-join LAN address, so this is the only moment we can set it.
+      // The documented ordering hazard (a secured device 401s unauthenticated calls) is resolved by
+      // sending the remaining call (Wifi.SetConfig) through shellyRpc, which digest-authenticates on
+      // demand — that also makes AP-flow RETRIES against an already-secured device work. Best-effort:
+      // a device left unsecured still provisions fine.
+      const vehiclePw = localStorage.getItem('sh_local_password') || '';
+      if (vehiclePw && shellyDeviceId !== 'UNKNOWN_SHELLY') {
+        try {
+          setStatusMessage('Securing with vehicle password…');
+          const { shellyChangePassword } = await import('../utils/shellyRpc');
+          // Pass vehiclePw as the old password too, so a retry against a device we already secured
+          // on a previous attempt authenticates instead of failing.
+          await shellyChangePassword('192.168.33.1', shellyDeviceId, vehiclePw, vehiclePw);
+        } catch { /* best-effort */ }
+      }
+
       setStatusMessage('Sending Wi-Fi Credentials (3/3)...');
-      // 2. Setup Wi-Fi and reboot. Check the RPC response so an outright rejection (bad shape / device
-      // busy) surfaces instead of silently "succeeding" — a wrong Wi-Fi PASSWORD isn't caught here
-      // (the device accepts the config, then fails to join and keeps its AP up), which is why we warn
-      // about the password up front and in the completion note.
-      const scRes = await unifiedFetch(`http://192.168.33.1/rpc/Wifi.SetConfig`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          config: {
-            sta: { ssid: ssid, pass: password, is_open: password.length === 0, enable: true }
-          }
-        })
-      });
-      let sc: any = null;
-      try { sc = await scRes.json(); } catch { /* non-JSON response — assume the device accepted it */ }
-      if (sc?.error) throw new Error(sc.error.message || 'Device rejected the Wi-Fi settings');
+      // 2. Setup Wi-Fi and reboot. Sent via shellyRpc (digest-aware, since the device may now be
+      // secured); it throws on an outright rejection (bad shape / device busy) so that surfaces
+      // instead of silently "succeeding" — a wrong Wi-Fi PASSWORD isn't caught here (the device
+      // accepts the config, then fails to join and keeps its AP up), which is why we warn about the
+      // password up front and in the completion note.
+      const { shellyRpc: rpcMaybeAuthed } = await import('../utils/shellyRpc');
+      try {
+        await rpcMaybeAuthed('192.168.33.1', 'Wifi.SetConfig', {
+          config: { sta: { ssid: ssid, pass: password, is_open: password.length === 0, enable: true } },
+        }, vehiclePw || undefined);
+      } catch (e: any) {
+        throw new Error(e?.message || 'Device rejected the Wi-Fi settings');
+      }
 
       // Confirm/override the (auto-detected) device type before adding it
       setStep('confirm_type');
@@ -393,6 +407,21 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       const { info, localIp, lastStatus } = await bleProvision(selectedDev.deviceId, { ssid, password, webhookBase: webhookBase || undefined, vid, onProgress: setStatusMessage });
       setBleLocalIp(localIp || '');
       setBleJoinStatus(localIp ? '' : (lastStatus || ''));
+
+      // Secure the just-provisioned device with the vehicle's local password now that it's on the
+      // LAN. BLE RPC can't do the HTTP digest handshake, so the password is set over HTTP right
+      // after the Wi-Fi join — while the device (even a sleepy flood sensor, fresh off pairing) is
+      // still awake. Best-effort: an unsecured device still works; the fields below aren't blocked.
+      const blePw = localStorage.getItem('sh_local_password') || '';
+      const bleDevId = info?.id || info?.mac || '';
+      if (localIp && blePw && bleDevId) {
+        try {
+          setStatusMessage('Securing with vehicle password…');
+          const { shellyChangePassword } = await import('../utils/shellyRpc');
+          // vehiclePw as the old password too, so a re-provision of an already-secured device works.
+          await shellyChangePassword(localIp, bleDevId, blePw, blePw);
+        } catch { /* best-effort */ }
+      }
 
       // Auto-identify from the device's reported info (fall back to the advertised name).
       const detected = detectRole(info) ?? detectRole({ id: selectedDev.name, model: selectedDev.name });
