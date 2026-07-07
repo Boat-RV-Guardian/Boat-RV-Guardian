@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { type DeviceConfig, getActiveVehicleId } from '../utils/VehicleManager';
+import { type DeviceConfig } from '../utils/VehicleManager';
 import { auth } from '../services/firebase';
-import { sendLinkTapControl } from '../utils/linktapControl';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
 import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
@@ -9,6 +8,7 @@ import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
+import { useLinkTapCommands } from '../hooks/useLinkTapCommands';
 
 const APP_VERSION = '1.0.50';
 
@@ -713,178 +713,18 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   }, [gatewayIp, gatewayId, deviceId, isCloudPollingActive, isLocalPollingActive, refreshInterval, effectiveInterval, pollInterval, manualRefresh, cloudUsername, cloudApiKey, device.enabled]);
 
   // --- API Action Commanders ---
-  
-  // cmd 6: Start watering
-  const executeStartCommandRaw = async (durationMins: number, volumeLimitLiters: number) => {
-    setTargetDuration(durationMins * 60);
-    setTargetVolume(volumeLimitLiters);
-    setVolume(0);
-    setVolumeOffset(0);
-    setDurationOffset(0);
-
-    // Optimistically lock the buttons so they react immediately
-    lastCommandTimeRef.current = Date.now();
-    expectedWateringStateRef.current = true;
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('start');
-
-    addLog('info', `Sending API command: START watering. Duration: ${durationMins}m, Limit: ${volumeLimitLiters}L`);
-
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('start');
-    try {
-      setErrorMsg(null);
-      let success = false;
-      let usedLocal = false;
-
-      // 1. Prefer the worker's role-checked /api/control — the app no longer calls LinkTap cloud
-      // directly, so a stale signed-in copy can't fight over the valve (retires the multi-instance
-      // race). Signed-in only; local-only users skip straight to the LAN gateway below.
-      if (auth.currentUser) {
-        try {
-          const vid = getActiveVehicleId();
-          const token = await auth.currentUser.getIdToken();
-          if (vid && token) {
-            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
-            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
-            const r = await sendLinkTapControl(base, token, vid, 'open', durationMins * 60);
-            if (r.ok) { success = true; addLog('success', 'Open command relayed via cloud server.'); }
-            else addLog('warning', `Cloud control failed: ${r.error}. Falling back to Local API...`);
-          }
-        } catch (e: any) {
-          addLog('warning', `Cloud control error: ${e.message}. Falling back to Local API...`);
-        }
-      }
-
-      // 2. Fallback to Local API
-      if (!success) {
-        if (!gatewayIp) throw new Error("Cloud API failed and no Local Gateway IP configured for fallback.");
-        
-        const localRes = await unifiedFetch(`http://${gatewayIp}/api.shtml`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cmd: 6,
-            gw_id: gatewayId,
-            dev_id: deviceId,
-            duration: Math.round(durationMins * 60), // Local API expects SECONDS
-            volume_limit: Math.round(volumeLimitLiters), // Local API expects 'volume_limit' not 'vol'
-            vol: Math.round(volumeLimitLiters) // Fallback just in case
-          }),
-        });
-        
-        if (!localRes.ok) throw new Error(`Local HTTP Error ${localRes.status}`);
-        // Local API usually returns JSON or HTML. Assume success if reached.
-        success = true;
-        usedLocal = true;
-        addLog('success', 'Local API Start command received by Gateway.');
-      }
-
-      // 3. UI State Management
-      if (usedLocal && volumeLimitLiters > 0) {
-        setIsSoftwareCutoffActive(true);
-      } else {
-        setIsSoftwareCutoffActive(false);
-      }
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
-      commandTimeoutRef.current = setTimeout(() => {
-         if (expectedWateringStateRef.current !== null) {
-             expectedWateringStateRef.current = null;
-             setIsCommandLoading(false);
-         }
-      }, lockDuration);
-      
-      const refreshDelay = 2500;
-      setTimeout(() => setManualRefresh(Date.now()), refreshDelay); // Speed up next poll to detect change faster
-    } catch (err: any) {
-      addLog('danger', `API Start command failed: ${err.message}`);
-      setErrorMsg(err.message);
-      expectedWateringStateRef.current = null;
-      setIsCommandLoading(false);
-    }
-  };
+  // Open/close senders (worker /api/control relay + LAN fallback, optimistic command lock) live in
+  // useLinkTapCommands. The shared command/state-machine refs stay owned here so the poll loop and
+  // the automation logic keep operating on the SAME instances.
+  const { executeStartCommandRaw, executeStartCommand, executeStopCommand } = useLinkTapCommands({
+    gatewayIp, gatewayId, deviceId, effectiveInterval, canControl,
+    lastCommandTimeRef, expectedWateringStateRef, commandTimeoutRef, washDownTransitionTimeRef,
+    setTargetDuration, setTargetVolume, setVolume, setVolumeOffset, setDurationOffset,
+    setIsCommandLoading, setErrorMsg, setIsSoftwareCutoffActive, setManualRefresh, addLog,
+  });
 
   // Automation (auto-restart, washdown) uses the raw command; user buttons use the gated wrapper.
   commandersRef.current.start = executeStartCommandRaw;
-
-  // Monitor-only users can view but not operate the valve.
-  const executeStartCommand = (durationMins: number, volumeLimitLiters: number) => {
-    if (!canControl) { addLog('warning', '🔒 Monitor-only access — controls are disabled for your account.'); return; }
-    executeStartCommandRaw(durationMins, volumeLimitLiters);
-  };
-
-  // cmd 7: Stop watering (Emergency Button)
-  const executeStopCommand = async (reason: 'manual' | 'limit' = 'manual') => {
-    if (reason === 'manual' && !canControl) { addLog('warning', '🔒 Monitor-only access — controls are disabled for your account.'); return; }
-    addLog('warning', reason === 'limit' ? `⚠️ Valve turned off due to limit reached.` : `⚠️ Manual valve turn off initiated.`);
-
-    lastCommandTimeRef.current = Date.now();
-    expectedWateringStateRef.current = false;
-    washDownTransitionTimeRef.current = null;
-    
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('stop');
-    try {
-      setErrorMsg(null);
-      let success = false;
-
-      // 1. Prefer the worker's role-checked /api/control (retires the direct-LinkTap race).
-      // Signed-in only; local-only users skip to the LAN gateway below.
-      if (auth.currentUser) {
-        try {
-          const vid = getActiveVehicleId();
-          const token = await auth.currentUser.getIdToken();
-          if (vid && token) {
-            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
-            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
-            const r = await sendLinkTapControl(base, token, vid, 'close');
-            if (r.ok) { success = true; addLog('success', 'Stop command relayed via cloud server.'); }
-            else addLog('warning', `Cloud control stop failed: ${r.error}. Falling back to Local API...`);
-          }
-        } catch (e: any) {
-          addLog('warning', `Cloud control stop error: ${e.message}. Falling back to Local API...`);
-        }
-      }
-
-      // 2. Fallback to Local API
-      if (!success) {
-        if (!gatewayIp) throw new Error("Cloud API failed and no Local Gateway IP configured for fallback.");
-        const localRes = await unifiedFetch(`http://${gatewayIp}/api.shtml`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cmd: 7,
-            gw_id: gatewayId,
-            dev_id: deviceId,
-          }),
-        });
-        
-        if (!localRes.ok) throw new Error(`Local HTTP Error ${localRes.status}`);
-        success = true;
-        addLog('success', 'Local API Stop command received by Gateway.');
-      }
-
-      // 3. UI State Management
-      setIsSoftwareCutoffActive(false);
-      
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
-      commandTimeoutRef.current = setTimeout(() => {
-         if (expectedWateringStateRef.current !== null) {
-             expectedWateringStateRef.current = null;
-             setIsCommandLoading(false);
-         }
-      }, lockDuration);
-      
-      const refreshDelay = 2500;
-      setTimeout(() => setManualRefresh(Date.now()), refreshDelay); // Speed up next poll to detect change faster
-    } catch (err: any) {
-      addLog('danger', `API Stop command failed: ${err.message}`);
-      setErrorMsg(err.message);
-      expectedWateringStateRef.current = null;
-      setIsCommandLoading(false);
-    }
-  };
-
   commandersRef.current.stop = executeStopCommand;
 
   // --- HTML5 Canvas History Graph Rendering ---
