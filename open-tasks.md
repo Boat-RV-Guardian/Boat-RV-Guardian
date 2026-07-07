@@ -102,17 +102,19 @@ the devices are reachable and the app can be smoke-tested against them, not unat
         server already treats it as telemetry, so the **Task 7 cutover** resolves it.
   - [ ] **Still to verify off-LAN (native):** battery + shore-power widgets show voltage from `sensorState`
         after the #96 role-aware mapping (build the debug `.app`; needs the real account signed in).
-- [~] **Task 11 cutover — re-register Shelly webhooks against `api.boatrvguardian.com`.** The code-side
-      `DEFAULT_WORKER_URL` flip shipped (PR #62); devices still cache the old `*.workers.dev` URL until a
-      successful poll re-registers them. **Uni battery sensor: FIXED 2026-07-03** — telemetry live in the
-      admin Operations tab (`v=12 vraw=11.66`). **PM Mini G3 (shore power, `192.168.86.171`): FIXED** —
-      voltage now persists (`v=118`). Both were on the correct URL already; the real gaps were the
-      voltmeter-enable-reboot ordering + missing value params (see Task 1, fixed in #94/#95/#96). **Flood
-      sensor: STILL PENDING** — a recent flood event did NOT reach the worker (stale `sensorState`), so
-      it's still on the old URL. Deep-sleep → re-registration needs the app open on its LAN while it's
-      awake (the poll self-heal from #94 can't help a sensor that's never polled). The admin console flags
-      stale telemetry loudly (brvg-admin-site #6).
-- [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the 1559-line widget):
+- [x] **Task 11 cutover — re-register Shelly webhooks against `api.boatrvguardian.com` — DONE (all sensors).**
+      The code-side `DEFAULT_WORKER_URL` flip shipped (PR #62); devices re-register on a successful poll (or
+      wake). **Uni battery sensor: FIXED 2026-07-03** — telemetry live in the admin Operations tab
+      (`v=12 vraw=11.66`). **PM Mini G3 (shore power, `192.168.86.171`): FIXED** — voltage now persists
+      (`v=118`). Both were on the correct URL already; the real gaps were the voltmeter-enable-reboot ordering
+      + missing value params (see Task 1, fixed in #94/#95/#96). **Flood sensor (`shellyfloodg4-d885acea3914`):
+      FIXED + VERIFIED 2026-07-07** — re-registered after re-adding it on-LAN with v1.0.50 open while awake.
+      Confirmed live via `wrangler tail brvg-cloud-worker`: `flood.alarm` **and** `flood.alarm_off` both hit
+      `api.boatrvguardian.com/api/shelly?...&k=…` and the worker relayed the valve shutoff
+      (`flood event flood.alarm on v_uusajkm88: shutoff {"ok":true,"valves":1}`) — the full flood → auto-shutoff
+      safety chain works end-to-end on the new worker. (Off-LAN native widget display verify is still tracked
+      under Task 1.)
+- [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the ~1535-line widget):
       polling loop → hook; command senders (start/stop) → hook; Flooding Sentry + auto-restart + washdown
       automation → hook. Touches the `commandersRef`/`stateRef`/`expectedWateringStateRef` state machine —
       verify against a live gateway, not by tsc/tests alone.
@@ -127,6 +129,10 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       Wi-Fi-AP path (ordering hazard: securing the device would 401 the subsequent unauthenticated
       `Wifi.SetConfig`) and the BLE path (`bleProvision`) to set `sh_local_password` on pairing. See
       [ProvisionShellyModal.tsx](dashboard/src/components/ProvisionShellyModal.tsx).
+      **Confirmed on-device 2026-07-07:** the re-added flood sensor (`shellyfloodg4-d885acea3914`, a
+      BLE-provisioned FloodSensorG4) reports `auth_en:false` via `Shelly.GetDeviceInfo` — i.e. **no local
+      password is set**, so the BLE path still isn't applying `sh_local_password`. (This is expected until
+      the BLE path is wired; recorded as the hardware baseline.)
 - [ ] **Verify `shellyChangePassword` on hardware.** Settings "Edit→Save" pushes the new password to every
       Shelly (`Shelly.SetAuth`); the digest path in [shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) is
       untested. A wrong/failed SetAuth can lock a device out (factory reset to recover); sleeping battery
