@@ -61,9 +61,7 @@ export interface LinkTapPollDeps {
   lastCommandTimeRef: React.MutableRefObject<number>;
   stateRef: React.MutableRefObject<LinkTapLiveState>;
   commandersRef: React.MutableRefObject<{ start: any; stop: any }>;
-  manualStopTriggeredRef: React.MutableRefObject<boolean>;
   previousVolumeRef: React.MutableRefObject<number>;
-  washDownTransitionTimeRef: React.MutableRefObject<number | null>;
   lastPollTimeRef: React.MutableRefObject<number>;
   // --- Widget state setters ---
   setIsRfLinked: React.Dispatch<React.SetStateAction<boolean>>;
@@ -87,6 +85,10 @@ export interface LinkTapPollDeps {
   setFlowHistory: React.Dispatch<React.SetStateAction<FlowData[]>>;
   setUsageHistory: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   addLog: (type: AlertLog['type'], message: string) => void;
+  // --- Automation hook points (from useLinkTapAutomation), called at the exact spots the
+  //     inline auto-restart / washdown-resume code used to run within a poll tick ---
+  maybeScheduleAutoRestart: (newIsWatering: boolean) => void;
+  applyWashdownTransition: (data: any) => void;
 }
 
 export function useLinkTapPoll(deps: LinkTapPollDeps): void {
@@ -94,13 +96,13 @@ export function useLinkTapPoll(deps: LinkTapPollDeps): void {
     deviceEnabled, gatewayIp, gatewayId, deviceId, cloudUsername, cloudApiKey,
     isLocalPollingActive, isCloudPollingActive, refreshInterval, effectiveInterval, manualRefresh,
     serverStateRef, expectedWateringStateRef, commandTimeoutRef, lastCommandTimeRef,
-    stateRef, commandersRef, manualStopTriggeredRef, previousVolumeRef,
-    washDownTransitionTimeRef, lastPollTimeRef,
+    stateRef, commandersRef, previousVolumeRef, lastPollTimeRef,
     setIsRfLinked, setIsBroken, setIsLeak, setIsClog, setSignal, setBattery,
     setIsWatering, setSpeed, setVolume, setRemainDuration, setLastUpdated,
     setConnectionStatus, setErrorMsg, setIsCommandLoading,
     setVolumeOffset, setDurationOffset, setTargetVolume, setTargetDuration,
     setFlowHistory, setUsageHistory, addLog,
+    maybeScheduleAutoRestart, applyWashdownTransition,
   } = deps;
 
   // Pin to 31s when cloud-only (local disconnected) to respect the API rate limit.
@@ -234,24 +236,8 @@ export function useLinkTapPoll(deps: LinkTapPollDeps): void {
           }
         }
 
-        // NOTE: Auto-restart is driven entirely by the app — it only loops while the app is open
-        // and polling. TODO(future): move this to a cloud worker so it can watch the device and
-        // restart the Normal Run timer even when the app is closed.
-        if (stateRef.current.isWatering && !newIsWatering && stateRef.current.autoRestartNormal) {
-          const naturalExpiration = stateRef.current.remainDuration <= (effectiveInterval + 15);
-          if (manualStopTriggeredRef.current || !naturalExpiration) {
-            addLog('info', 'Valve closed manually before timer expired. Auto-restart skipped.');
-            manualStopTriggeredRef.current = false;
-          } else {
-            addLog('info', 'Timer expired. Auto-restart is ON. Restarting Normal Run profile in 5 seconds...');
-            setTimeout(() => {
-               let vol = stateRef.current.normalRunVolume;
-               if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-               const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-               if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-            }, 5000);
-          }
-        }
+        // Auto-restart (Normal Run loop) — logic lives in useLinkTapAutomation.
+        maybeScheduleAutoRestart(newIsWatering);
 
         if (stateRef.current.isWatering && !newIsWatering) {
             setVolumeOffset(0);
@@ -331,21 +317,9 @@ export function useLinkTapPoll(deps: LinkTapPollDeps): void {
         previousVolumeRef.current = currentVolume;
         setVolume(currentVolume);
 
-        if (washDownTransitionTimeRef.current) {
-          const remainingMs = washDownTransitionTimeRef.current - Date.now();
-          if (remainingMs <= 0) {
-            // Washdown timer expired! Reprogram to Normal Cycle!
-            addLog('info', 'Washdown complete! Resuming Normal Run profile without shutting off valve...');
-            washDownTransitionTimeRef.current = null;
-            let vol = stateRef.current.normalRunVolume;
-            if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-            const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-            if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-          } else {
-            // Override UI remain duration so it shows the exact Washdown time instead of Washdown + Buffer
-            data.remain_duration = Math.round(remainingMs / 1000);
-          }
-        }
+        // Washdown → Normal Run transition — logic lives in useLinkTapAutomation.
+        // (May override data.remain_duration for display while the washdown window is active.)
+        applyWashdownTransition(data);
 
         setRemainDuration(Number(data.remain_duration ?? 0));
 

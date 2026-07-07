@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { type DeviceConfig } from '../utils/VehicleManager';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
-import { isTauriEnv, listenTauri } from '../utils/linktapHttp';
+import { isTauriEnv } from '../utils/linktapHttp';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard } from '../utils/valveSafety';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { useLinkTapCommands } from '../hooks/useLinkTapCommands';
 import { useLinkTapPoll } from '../hooks/useLinkTapPoll';
+import { useLinkTapAutomation } from '../hooks/useLinkTapAutomation';
 
 const APP_VERSION = '1.0.50';
 
@@ -349,25 +350,20 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     }
   };
 
-  useEffect(() => {
-    let unlisten: any;
-    const setupFloodListener = async () => {
-      try {
-        unlisten = await listenTauri('flood-alarm', () => {
-          setIsFloodAlarmActive(true);
-          playSynthesizedAlarm('siren');
-          triggerAlert('CRITICAL', 'Flood Sensor Triggered! Instantly closing the valve.', false);
-          if (commandersRef.current.stop) commandersRef.current.stop('limit');
-        });
-      } catch (e) {
-        console.error('Failed to setup flood listener:', e);
-      }
-    };
-    setupFloodListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
+  // Shared valve state-machine refs: written by the command senders and the poll loop, read by the
+  // automation logic. The useRef declarations moved up here (declaration position carries no
+  // effect-order significance) so useLinkTapAutomation below can consume them; the stateRef sync
+  // effect stays at its original slot further down to preserve effect ordering.
+  const commandersRef = useRef({ start: null as any, stop: null as any });
+  const stateRef = useRef({ isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration });
+
+  // Flooding Sentry + auto-restart + washdown-resume live in useLinkTapAutomation. Its flood
+  // listener effect registers here — the same slot the inline effect occupied. The returned
+  // per-tick helpers are handed to useLinkTapPoll below.
+  const { maybeScheduleAutoRestart, applyWashdownTransition } = useLinkTapAutomation({
+    effectiveInterval, commandersRef, stateRef, washDownTransitionTimeRef, manualStopTriggeredRef,
+    setIsFloodAlarmActive, playSynthesizedAlarm, triggerAlert, addLog,
+  });
 
   // Listen for PWA Install Prompt
   useEffect(() => {
@@ -432,8 +428,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     previousWatering.current = isWatering;
   }, [isWatering, notifyWatering]);
 
-  const commandersRef = useRef({ start: null as any, stop: null as any });
-  const stateRef = useRef({ isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration });
+  // stateRef declared above (before useLinkTapAutomation); this sync effect keeps its original slot.
   useEffect(() => {
     stateRef.current = { isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration };
   }, [isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration]);
@@ -447,13 +442,13 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     gatewayIp, gatewayId, deviceId, cloudUsername, cloudApiKey,
     isLocalPollingActive, isCloudPollingActive, refreshInterval, effectiveInterval, manualRefresh,
     serverStateRef, expectedWateringStateRef, commandTimeoutRef, lastCommandTimeRef,
-    stateRef, commandersRef, manualStopTriggeredRef, previousVolumeRef,
-    washDownTransitionTimeRef, lastPollTimeRef,
+    stateRef, commandersRef, previousVolumeRef, lastPollTimeRef,
     setIsRfLinked, setIsBroken, setIsLeak, setIsClog, setSignal, setBattery,
     setIsWatering, setSpeed, setVolume, setRemainDuration, setLastUpdated,
     setConnectionStatus, setErrorMsg, setIsCommandLoading,
     setVolumeOffset, setDurationOffset, setTargetVolume, setTargetDuration,
     setFlowHistory, setUsageHistory, addLog,
+    maybeScheduleAutoRestart, applyWashdownTransition,
   });
 
   // --- API Action Commanders ---
