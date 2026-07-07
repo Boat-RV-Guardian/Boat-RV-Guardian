@@ -18,6 +18,12 @@ interface Props {
   setCloudApiKey: (v: string) => void;
   showCloudApiKey: boolean;
   setShowCloudApiKey: (v: boolean) => void;
+  // Username + password → LinkTap getApiKey (the key is fetched, never pasted by hand).
+  cloudPassword: string;
+  setCloudPassword: (v: string) => void;
+  handleGetApiKey: (replace: boolean) => void;
+  isFetchingKey: boolean;
+  keyMsg: Msg;
   handleRetrieveFromCloud: () => void;
   isDiscovering: boolean;
   discoveryMsg: Msg;
@@ -77,23 +83,54 @@ export default function LinkTapAuthPanel(p: Props) {
                 {!p.isCloudPollingActive ? 'Connect' : '✓ Connected'}
               </button>
             </div>
-            <div><label className="form-label">Cloud Username</label><input type="text" className="form-input" value={p.cloudUsername} onChange={(e) => { p.setCloudUsername(e.target.value); p.setIsCloudPollingActive(false); }} placeholder="App Username" /></div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <label className="form-label" style={{ marginBottom: 0 }}>Cloud API Key</label>
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                <input type={p.showCloudApiKey ? "text" : "password"} className="form-input" value={p.cloudApiKey} onChange={(e) => { p.setCloudApiKey(e.target.value); p.setIsCloudPollingActive(false); }} placeholder="Paste API Key" style={{ paddingRight: '40px' }} />
+            <div><label className="form-label">Cloud Username</label><input type="text" className="form-input" value={p.cloudUsername} onChange={(e) => { p.setCloudUsername(e.target.value); p.setIsCloudPollingActive(false); }} placeholder="Your LinkTap account username" autoComplete="username" /></div>
+            <div>
+              <label className="form-label">Cloud Password</label>
+              <input type="password" className="form-input" value={p.cloudPassword} onChange={(e) => p.setCloudPassword(e.target.value)} placeholder="Your LinkTap account password" autoComplete="current-password" autoCapitalize="off" autoCorrect="off" />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used once to fetch your API key — never stored.</div>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={() => p.handleGetApiKey(false)}
+              disabled={p.isFetchingKey || !p.cloudUsername || !p.cloudPassword}
+              style={{ padding: '8px 14px', fontSize: '0.85rem', fontWeight: 700 }}
+            >
+              {p.isFetchingKey ? 'Getting API Key…' : '🔑 Get API Key'}
+            </button>
+            {p.keyMsg && (
+              <div style={{ fontSize: '0.8rem', color: p.keyMsg.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-orange)' }}>
+                {p.keyMsg.text}
+              </div>
+            )}
+
+            {p.cloudApiKey ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>API Key <span style={{ color: 'var(--accent-emerald)', fontWeight: 700 }}>✓ active</span></label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input type={p.showCloudApiKey ? 'text' : 'password'} className="form-input" value={p.cloudApiKey} readOnly style={{ paddingRight: '40px', opacity: 0.85 }} />
+                  <button
+                    className="btn-secondary"
+                    onClick={() => p.setShowCloudApiKey(!p.showCloudApiKey)}
+                    style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
+                  >
+                    {p.showCloudApiKey ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
                 <button
                   className="btn-secondary"
-                  onClick={() => p.setShowCloudApiKey(!p.showCloudApiKey)}
-                  style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
+                  onClick={() => { if (window.confirm('Generate a NEW API key? This signs out any other app using the current key (including the LinkTap app).')) p.handleGetApiKey(true); }}
+                  disabled={p.isFetchingKey || !p.cloudUsername || !p.cloudPassword}
+                  title={!p.cloudPassword ? 'Re-enter your password to regenerate' : 'Generate a new key (invalidates the old one)'}
+                  style={{ padding: '6px 12px', fontSize: '0.78rem', alignSelf: 'flex-start' }}
                 >
-                  {p.showCloudApiKey ? '👁️' : '👁️‍🗨️'}
+                  ♻️ Regenerate key
                 </button>
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
-                ℹ️ Generate an API Key by visiting <a href="https://www.link-tap.com/#!/api-for-developers" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>LinkTap API for Developers</a>.
+            ) : (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+                Enter your LinkTap account username and password, then tap <strong>Get API Key</strong> — no manual key copying needed. Prefer to do it yourself? Visit the <a href="https://www.link-tap.com/#!/api-for-developers" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>LinkTap API for Developers</a> page.
               </div>
-            </div>
+            )}
           </div>
 
           {/* Retrieve devices from cloud — shared discovery action, centered between the two controllers */}

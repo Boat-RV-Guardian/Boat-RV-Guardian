@@ -34,15 +34,15 @@ export default function AddDevicePanel({ onAddLinkTap, onAddShelly, deviceCount,
       </p>
 
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <button className="btn-secondary" onClick={onAddLinkTap} disabled={atLimit} title={atLimit ? 'Device limit reached for this plan' : undefined} style={btnStyle()}>
-          <span style={{ fontSize: '2rem' }}>🚰</span>
-          <strong>LinkTap Valve</strong>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Water Shutoff Valve</span>
-        </button>
         <button className="btn-secondary" onClick={onAddShelly} disabled={atLimit} title={atLimit ? 'Device limit reached for this plan' : undefined} style={btnStyle('#f59e0b')}>
           <span style={{ fontSize: '2rem' }}>⚡</span>
           <strong style={{ color: '#f59e0b' }}>Shelly Sensor</strong>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Power, Voltage, or Flood</span>
+        </button>
+        <button className="btn-secondary" onClick={onAddLinkTap} disabled={atLimit} title={atLimit ? 'Device limit reached for this plan' : undefined} style={btnStyle()}>
+          <span style={{ fontSize: '2rem' }}>🚰</span>
+          <strong>LinkTap Valve</strong>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Water Shutoff Valve</span>
         </button>
       </div>
     </div>

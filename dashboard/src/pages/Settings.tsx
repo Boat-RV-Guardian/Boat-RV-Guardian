@@ -26,6 +26,7 @@ import SettingsModals from './settings/SettingsModals';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { getBatteryThresholds } from '../utils/batteryPresets';
 import { readSettings, writeSettings, applyPersistedSettings } from '../utils/settingsStorage';
+import { linkTapGetApiKey } from '../utils/linktapCloud';
 import { isLocalMode } from '../utils/userScope';
 import { useAppUpdater } from '../hooks/useAppUpdater';
 
@@ -34,7 +35,7 @@ const APP_VERSION = '1.0.50';
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'accounts' | 'devices' | 'friends' | 'updates'>('general');
-  const [devicesTab, setDevicesTab] = useState<'add' | 'config' | 'advanced' | 'auth'>('config');
+  const [devicesTab, setDevicesTab] = useState<'add' | 'config' | 'advanced'>('config');
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   // Real signed-update path on Tauri desktop (Task 13 part 3); the GitHub-tag check above/below stays
   // as the version-badge signal on every platform (web/Capacitor included) and as this hook's fallback
@@ -148,6 +149,11 @@ export default function Settings({ user }: { user: any }) {
   const [cloudUsername, setCloudUsername] = useState(() => localStorage.getItem('lt_cloud_user') || '');
   const [cloudApiKey, setCloudApiKey] = useState(() => localStorage.getItem('lt_cloud_key') || '');
   const [showCloudApiKey, setShowCloudApiKey] = useState(false);
+  // Fetch the API key from username + password (never persist the password). cloudPassword is
+  // deliberately NOT in writeSettings — it lives only for the one getApiKey call.
+  const [cloudPassword, setCloudPassword] = useState('');
+  const [isFetchingKey, setIsFetchingKey] = useState(false);
+  const [keyMsg, setKeyMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   // Local gateway config — always-visible fields
   const [gatewayIp, setGatewayIp] = useState(() => localStorage.getItem('lt_gateway_ip') || '');
   const [gatewayId, setGatewayId] = useState(() => localStorage.getItem('lt_gateway_id') || '');
@@ -161,6 +167,24 @@ export default function Settings({ user }: { user: any }) {
     gatewayIdManual, setGatewayIdManual, device1Manual, setDevice1Manual, device2Manual, setDevice2Manual,
     isDiscovering, discoveryMsg, handleRetrieveFromCloud, handleScanGateway,
   } = useLinkTapDiscovery({ cloudUsername, cloudApiKey, setGatewayIp, setGatewayId, setPrimaryDeviceId, setSecondaryDeviceId });
+
+  // Fetch (or rotate, replace=true) the account's LinkTap API key from username + password. The key
+  // persists via the settings-sync effect (setCloudApiKey → lt_cloud_key); the password is dropped.
+  const handleGetApiKey = async (replace: boolean) => {
+    setIsFetchingKey(true);
+    setKeyMsg(null);
+    try {
+      const key = await linkTapGetApiKey(cloudUsername.trim(), cloudPassword, replace);
+      setCloudApiKey(key);
+      setCloudPassword('');
+      setIsCloudPollingActive(false);
+      setKeyMsg({ text: replace ? 'New API key generated.' : 'API key retrieved — you can connect now.', type: 'success' });
+    } catch (e: any) {
+      setKeyMsg({ text: e?.message || 'Could not get the API key.', type: 'error' });
+    } finally {
+      setIsFetchingKey(false);
+    }
+  };
 
   // Shelly Hardware Connections
   const [shellyServer, setShellyServer] = useState(() => localStorage.getItem('sh_server') || 'shelly-1-eu.shelly.cloud');
@@ -750,7 +774,6 @@ export default function Settings({ user }: { user: any }) {
             <button className={devicesTab === 'add' ? 'btn-primary' : 'btn-secondary'} onClick={() => setDevicesTab('add')} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>+ Add a device</button>
             <button className={devicesTab === 'config' ? 'btn-primary' : 'btn-secondary'} onClick={() => setDevicesTab('config')} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Configuration</button>
             <button className={devicesTab === 'advanced' ? 'btn-primary' : 'btn-secondary'} onClick={() => setDevicesTab('advanced')} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>Advanced Options</button>
-            <button className={devicesTab === 'auth' ? 'btn-primary' : 'btn-secondary'} onClick={() => setDevicesTab('auth')} style={{ padding: '6px 12px', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>LinkTap Auth</button>
           </div>
 
           {devicesTab === 'add' && (
@@ -759,29 +782,6 @@ export default function Settings({ user }: { user: any }) {
               maxDevices={entitlements.maxDevices}
               onAddLinkTap={() => { if (devices.length < entitlements.maxDevices) setIsProvisionLinkTapModalOpen(true); }}
               onAddShelly={() => { if (devices.length < entitlements.maxDevices) setIsProvisionModalOpen(true); }}
-            />
-          )}
-
-          {devicesTab === 'auth' && (
-            <LinkTapAuthPanel
-              connectionStatus={connectionStatus}
-              isCloudPollingActive={isCloudPollingActive} setIsCloudPollingActive={setIsCloudPollingActive}
-              isLocalPollingActive={isLocalPollingActive} setIsLocalPollingActive={setIsLocalPollingActive}
-              cloudUsername={cloudUsername} setCloudUsername={setCloudUsername}
-              cloudApiKey={cloudApiKey} setCloudApiKey={setCloudApiKey}
-              showCloudApiKey={showCloudApiKey} setShowCloudApiKey={setShowCloudApiKey}
-              handleRetrieveFromCloud={handleRetrieveFromCloud}
-              isDiscovering={isDiscovering} discoveryMsg={discoveryMsg}
-              gatewayIp={gatewayIp} setGatewayIp={setGatewayIp}
-              handleScanGateway={handleScanGateway} isScanningGateway={isScanningGateway}
-              scanMsg={scanMsg} setScanMsg={setScanMsg} scanResults={scanResults} setScanResults={setScanResults}
-              gatewayId={gatewayId} setGatewayId={setGatewayId}
-              cloudGateways={cloudGateways} gatewayIdManual={gatewayIdManual} setGatewayIdManual={setGatewayIdManual}
-              primaryDeviceId={primaryDeviceId} setPrimaryDeviceId={setPrimaryDeviceId}
-              secondaryDeviceId={secondaryDeviceId} setSecondaryDeviceId={setSecondaryDeviceId}
-              cloudTaplinkers={cloudTaplinkers}
-              device1Manual={device1Manual} setDevice1Manual={setDevice1Manual}
-              device2Manual={device2Manual} setDevice2Manual={setDevice2Manual}
             />
           )}
 
@@ -807,6 +807,29 @@ export default function Settings({ user }: { user: any }) {
           )}
 
           {devicesTab === 'advanced' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <LinkTapAuthPanel
+              connectionStatus={connectionStatus}
+              isCloudPollingActive={isCloudPollingActive} setIsCloudPollingActive={setIsCloudPollingActive}
+              isLocalPollingActive={isLocalPollingActive} setIsLocalPollingActive={setIsLocalPollingActive}
+              cloudUsername={cloudUsername} setCloudUsername={setCloudUsername}
+              cloudApiKey={cloudApiKey} setCloudApiKey={setCloudApiKey}
+              showCloudApiKey={showCloudApiKey} setShowCloudApiKey={setShowCloudApiKey}
+              cloudPassword={cloudPassword} setCloudPassword={setCloudPassword}
+              handleGetApiKey={handleGetApiKey} isFetchingKey={isFetchingKey} keyMsg={keyMsg}
+              handleRetrieveFromCloud={handleRetrieveFromCloud}
+              isDiscovering={isDiscovering} discoveryMsg={discoveryMsg}
+              gatewayIp={gatewayIp} setGatewayIp={setGatewayIp}
+              handleScanGateway={handleScanGateway} isScanningGateway={isScanningGateway}
+              scanMsg={scanMsg} setScanMsg={setScanMsg} scanResults={scanResults} setScanResults={setScanResults}
+              gatewayId={gatewayId} setGatewayId={setGatewayId}
+              cloudGateways={cloudGateways} gatewayIdManual={gatewayIdManual} setGatewayIdManual={setGatewayIdManual}
+              primaryDeviceId={primaryDeviceId} setPrimaryDeviceId={setPrimaryDeviceId}
+              secondaryDeviceId={secondaryDeviceId} setSecondaryDeviceId={setSecondaryDeviceId}
+              cloudTaplinkers={cloudTaplinkers}
+              device1Manual={device1Manual} setDevice1Manual={setDevice1Manual}
+              device2Manual={device2Manual} setDevice2Manual={setDevice2Manual}
+            />
             <AdvancedDeviceSettingsPanel
               battType={battType} battSystemV={battSystemV}
               onApplyBatteryPreset={applyBatteryPreset} onBattCustom={() => setBattType('custom')}
@@ -821,6 +844,7 @@ export default function Settings({ user }: { user: any }) {
               shoreHighV={shoreHighV} onShoreHighChange={setShoreHighV}
               shoreCritHighV={shoreCritHighV} onShoreCritHighChange={setShoreCritHighV}
             />
+            </div>
           )}
         </>
       )}
