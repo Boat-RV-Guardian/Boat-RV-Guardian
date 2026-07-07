@@ -260,14 +260,21 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
       unnecessary for end users. Wire together pieces that already exist:
       1. **Creds:** user enters their LinkTap username+password into *Guardian* → `linkTapGetApiKey`
          → store only `lt_cloud_key` (+ offer `replace:true` "rotate / lock out other apps").
-      2. **Discovery:** auto-find the gateway + valve IDs over the LAN via `useLinkTapDiscovery`
-         (there is **no** cloud list-devices endpoint; the local gateway API returns them, and the
-         webhook events carry `gatewayId`/`deviceId` as a cross-check).
+      2. **Discovery:** use the cloud **`getAllDevices`** endpoint (POST username+apiKey → gateway +
+         taplinker IDs, names, online status, battery, signal, work mode, `vel`/`noWater`/`valveBroken`
+         flags; rate-limited to 1 call / 5 min — fine for a one-shot onboarding fetch). CORRECTION
+         2026-07-07: an earlier note here claimed there is no cloud list-devices endpoint — wrong; it's
+         in the official API doc (V1.6, verified against the live page). So discovery works off-LAN;
+         keep LAN `useLinkTapDiscovery` + webhook `gatewayId`/`deviceId` as fallback/cross-check.
       3. **Webhook:** auto-register `setWebHookUrl` for the account.
       **Hard boundary (no API for these — one-time, in LinkTap's app):** account creation, gateway
-      Wi-Fi onboarding, and **valve↔gateway pairing**. Cover them by **pre-provisioning hardware kits
-      at fulfillment** (customer never installs the LinkTap app) and a one-time "install LinkTap, pair,
-      come back" screen for BYO-hardware users.
+      Wi-Fi onboarding, and **valve↔gateway pairing**. Re-verified against the full API page 2026-07-07
+      (the SPA's `api.client.view.html` template): the complete public surface is the 6 mode-activation
+      calls, `pauseWateringPlan`, `dismissAlarm`, `getAllDevices`, `getWateringStatus`,
+      `getWateringHistory`, `setWebHookUrl`/`deleteWebHookUrl`, and `getApiKey` — nothing for
+      provisioning/pairing, so the support email below stays the only path. Cover them by
+      **pre-provisioning hardware kits at fulfillment** (customer never installs the LinkTap app) and a
+      one-time "install LinkTap, pair, come back" screen for BYO-hardware users.
 
 - [ ] **Owner action — email support@link-tap.com for a provisioning/pairing API.** Their API page
       invites "further requirements." Ask whether they expose gateway onboarding + valve pairing to
