@@ -1,7 +1,8 @@
-// LinkTap Auth panel (Settings → Devices → LinkTap Auth). Extracted from Settings.tsx as part of
-// the Task 3 split. Cloud credentials + local gateway control + TapLinker device IDs. The inline
-// handlers carry side effects (editing a credential drops the active connection, etc.), so the raw
-// state/setters/handlers are passed in and the JSX is kept verbatim to preserve behavior exactly.
+// LinkTap Auth panel (Settings → Devices → Advanced Options). Cloud sign-in + local gateway control +
+// TapLinker device IDs. Signing in fetches a LinkTap API key under the hood to stay connected — that's
+// an implementation detail the UI hides; to the user it's just "sign in / sign out of LinkTap Cloud".
+
+import { useState } from 'react';
 
 type Msg = { text: string; type: 'success' | 'error' } | null;
 type ConnectionStatus = 'connected' | 'disconnected' | 'mock' | 'connecting';
@@ -16,8 +17,6 @@ interface Props {
   setCloudUsername: (v: string) => void;
   cloudApiKey: string;
   setCloudApiKey: (v: string) => void;
-  showCloudApiKey: boolean;
-  setShowCloudApiKey: (v: boolean) => void;
   // Username + password → LinkTap getApiKey (the key is fetched, never pasted by hand).
   cloudPassword: string;
   setCloudPassword: (v: string) => void;
@@ -56,6 +55,9 @@ interface Props {
 }
 
 export default function LinkTapAuthPanel(p: Props) {
+  // Inline two-tap confirm for sign-out. window.confirm() is a no-op in the Tauri webview (that's why
+  // the old delete button "couldn't be clicked"), so we never use it.
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -106,7 +108,7 @@ export default function LinkTapAuthPanel(p: Props) {
                   {p.showCloudPassword ? '👁️' : '👁️‍🗨️'}
                 </button>
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used once to fetch your API key — never stored.</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used only to sign in — never stored.</div>
             </div>
             <button
               className="btn-primary"
@@ -114,7 +116,7 @@ export default function LinkTapAuthPanel(p: Props) {
               disabled={p.isFetchingKey || !p.cloudUsername || !p.cloudPassword}
               style={{ padding: '8px 14px', fontSize: '0.85rem', fontWeight: 700 }}
             >
-              {p.isFetchingKey ? 'Getting API Key…' : '🔑 Get API Key'}
+              {p.isFetchingKey ? 'Signing in…' : '🔑 Login to LinkTap Cloud'}
             </button>
             {p.keyMsg && (
               <div style={{ fontSize: '0.8rem', color: p.keyMsg.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-orange)' }}>
@@ -123,29 +125,23 @@ export default function LinkTapAuthPanel(p: Props) {
             )}
 
             {p.cloudApiKey ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <label className="form-label" style={{ marginBottom: 0 }}>API Key <span style={{ color: 'var(--accent-emerald)', fontWeight: 700 }}>✓ active</span></label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                  <input type={p.showCloudApiKey ? 'text' : 'password'} className="form-input" value={p.cloudApiKey} readOnly style={{ paddingRight: '40px', opacity: 0.85 }} />
-                  <button
-                    className="btn-secondary"
-                    onClick={() => p.setShowCloudApiKey(!p.showCloudApiKey)}
-                    style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
-                  >
-                    {p.showCloudApiKey ? '👁️' : '👁️‍🗨️'}
-                  </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '0.85rem', color: 'var(--accent-emerald)', fontWeight: 700 }}>
+                  ✓ Signed in to LinkTap Cloud{p.cloudUsername ? ` as ${p.cloudUsername}` : ''}
                 </div>
                 <button
                   className="btn-secondary"
-                  onClick={() => { if (window.confirm('Delete the stored API key and log out of your LinkTap account? Cloud valve features stop working until you connect again.')) p.handleDisconnectAccount(); }}
+                  onClick={() => { if (confirmSignOut) { p.handleDisconnectAccount(); setConfirmSignOut(false); } else setConfirmSignOut(true); }}
+                  onBlur={() => setConfirmSignOut(false)}
                   style={{ padding: '6px 12px', fontSize: '0.78rem', alignSelf: 'flex-start', color: '#ef4444' }}
                 >
-                  🗑️ Delete API key &amp; log out
+                  {confirmSignOut ? 'Tap again to confirm sign out' : '🗑️ Sign out of LinkTap Cloud'}
                 </button>
               </div>
             ) : (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
-                Enter your LinkTap account username and password, then tap <strong>Get API Key</strong> — no manual key copying needed. Prefer to do it yourself? Visit the <a href="https://www.link-tap.com/#!/api-for-developers" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-cyan)', textDecoration: 'none' }}>LinkTap API for Developers</a> page.
+                Enter your LinkTap account username and password to sign in — cloud control and device
+                discovery turn on automatically.
               </div>
             )}
           </div>
