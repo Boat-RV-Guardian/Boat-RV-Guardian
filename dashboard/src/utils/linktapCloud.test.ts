@@ -5,7 +5,17 @@ const fakeFetch = (body: any): CloudFetch =>
   vi.fn(async () => ({ text: async () => JSON.stringify(body) }));
 
 describe('linkTapGetApiKey', () => {
-  it('returns the API key from a success response', async () => {
+  it('returns the key from the REAL success shape ({key}) — verified live, docs are wrong', async () => {
+    const f = fakeFetch({ key: '1e3a94eb7bc0b138e57bfc176847d4' });
+    await expect(linkTapGetApiKey('user', 'pass', false, f)).resolves.toBe('1e3a94eb7bc0b138e57bfc176847d4');
+  });
+
+  it('throws the REAL error shape (bare {message}) as the error it is, never as a key', async () => {
+    const f = fakeFetch({ message: 'Invalid password' });
+    await expect(linkTapGetApiKey('user', 'bad', false, f)).rejects.toThrow('Invalid password');
+  });
+
+  it('still accepts the documented {result, message} success shape as a fallback', async () => {
     const f = fakeFetch({ result: 'ok', message: 'KEY-123' });
     await expect(linkTapGetApiKey('user', 'pass', false, f)).resolves.toBe('KEY-123');
   });

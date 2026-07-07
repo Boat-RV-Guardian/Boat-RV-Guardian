@@ -9,9 +9,36 @@
 // SetAuth, firmware update). Behavior is unchanged by this extraction, but changes to those flows
 // want a hardware smoke test (see AGENTS.md / docs/TESTING.md).
 
-import type { Dispatch, SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import type { DeviceConfig } from '../../utils/VehicleManager';
 import DeviceScanPanel from '../../components/DeviceScanPanel';
+
+// Inline rename row for the expanded device panel. Self-contained (draft state + save), so the
+// parent stays presentational; saving goes through updateDevice like every other device edit.
+function DeviceRenameRow({ device, setDevices }: { device: DeviceConfig; setDevices: (v: DeviceConfig[]) => void }) {
+  const [draft, setDraft] = useState(device.name || '');
+  const dirty = draft.trim() !== (device.name || '') && draft.trim().length > 0;
+  const save = () => {
+    if (!dirty) return;
+    import('../../utils/VehicleManager').then((m) => {
+      m.updateDevice(device.id, { name: draft.trim() });
+      setDevices(m.getDevices());
+    });
+  };
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px' }}>
+      <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px' }}>Device Name</div>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input type="text" className="form-input" value={draft} onChange={(e) => setDraft(e.target.value)}
+          placeholder={device.role} style={{ flex: 1 }}
+          onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+        <button className={dirty ? 'btn-primary' : 'btn-secondary'} disabled={!dirty} onClick={save}
+          style={{ padding: '6px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Save</button>
+      </div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Shown across the app (widgets, alerts, scans).</div>
+    </div>
+  );
+}
 
 type DevicePanelMsg = { id: string; text: string; ok: boolean } | null;
 
@@ -124,6 +151,9 @@ export default function DeviceConfigPanel({
                                 style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
                             </label>
                           </div>
+
+                          {/* Rename — the onboarding-chosen name, editable any time */}
+                          <DeviceRenameRow key={`rename-${device.id}-${device.name}`} device={device} setDevices={setDevices} />
 
                           {/* Health check — scans for the misconfigurations we've hit on hardware
                               (voltmeter missing, no password, stale webhooks/IP, LinkTap config). */}

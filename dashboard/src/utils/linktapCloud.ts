@@ -58,8 +58,11 @@ export async function linkTapGetApiKey(
   } catch {
     throw new Error('LinkTap returned an unreadable response. Check your connection and try again.');
   }
-  if (data?.result === 'error') throw new Error(data.message || 'LinkTap rejected those credentials.');
-  const key = data?.message;
-  if (!key || typeof key !== 'string') throw new Error('LinkTap did not return an API key.');
-  return key;
+  // LinkTap's REAL responses (verified live 2026-07-07) don't match their docs: success is
+  // {"key":"<api key>"} and an error is {"message":"Invalid password"} — no `result` field on
+  // either. Accept the real shape first, keep the documented {result,message} success shape as a
+  // fallback, and treat a bare `message` as the error channel it actually is.
+  if (typeof data?.key === 'string' && data.key) return data.key;
+  if (data?.result && data.result !== 'error' && typeof data.message === 'string' && data.message) return data.message;
+  throw new Error(typeof data?.message === 'string' && data.message ? data.message : 'LinkTap did not return an API key.');
 }

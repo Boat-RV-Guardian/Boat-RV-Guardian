@@ -33,7 +33,10 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
   // Credentials step
   const [username, setUsername] = useState(() => localStorage.getItem('lt_cloud_user') || '');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [credBusy, setCredBusy] = useState(false);
+  // What this valve will be called in the app (editable later in Settings → Devices → Configuration).
+  const [deviceName, setDeviceName] = useState('');
 
   const fetchAllDevices = async () => {
     setStatusMessage({ text: 'Fetching your LinkTap devices...', type: 'info' });
@@ -135,7 +138,7 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
       id: 'brv_lt_' + Math.random().toString(36).substr(2, 9),
       type: 'linktap_valve',
       role: 'Fresh Water', // Default role
-      name: device.name,
+      name: deviceName.trim() || device.name, // user's chosen name, falling back to LinkTap's
       linktapGatewayId: device.gatewayId,
       linktapDeviceId: device.id,
       maxDuration: 30,
@@ -172,10 +175,20 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
             </div>
             <div>
               <label className="form-label">LinkTap Password</label>
-              <input type="password" className="form-input" value={password} autoComplete="current-password"
-                autoCapitalize="off" autoCorrect="off"
-                onChange={(e) => setPassword(e.target.value)} placeholder="Your LinkTap account password"
-                onKeyDown={(e) => { if (e.key === 'Enter' && username && password && !credBusy) handleConnectAccount(); }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input type={showPassword ? 'text' : 'password'} className="form-input" value={password} autoComplete="current-password"
+                  autoCapitalize="off" autoCorrect="off" style={{ paddingRight: '40px' }}
+                  onChange={(e) => setPassword(e.target.value)} placeholder="Your LinkTap account password"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && username && password && !credBusy) handleConnectAccount(); }} />
+                <button
+                  className="btn-secondary"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                  style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used once to fetch your API key — never stored.</div>
             </div>
             {statusMessage && <div style={{ color: statusMessage.type === 'error' ? '#ef4444' : 'var(--accent-cyan)', fontSize: '0.85rem' }}>{statusMessage.text}</div>}
@@ -210,6 +223,16 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
                 <option key={d.id} value={d.id}>{d.name} ({d.id})</option>
               ))}
             </select>
+
+            <div>
+              <label className="form-label">Name this valve</label>
+              <input type="text" className="form-input" value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder={availableDevices.find(d => d.id === selectedDeviceId)?.name || 'e.g. Fresh Water Fill'} />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                How it appears in the app. Leave blank to keep the LinkTap name. You can rename it later in Configuration.
+              </div>
+            </div>
 
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between' }}>
               <button className="btn-secondary" onClick={onClose}>Cancel</button>

@@ -152,6 +152,7 @@ export default function Settings({ user }: { user: any }) {
   // Fetch the API key from username + password (never persist the password). cloudPassword is
   // deliberately NOT in writeSettings — it lives only for the one getApiKey call.
   const [cloudPassword, setCloudPassword] = useState('');
+  const [showCloudPassword, setShowCloudPassword] = useState(false);
   const [isFetchingKey, setIsFetchingKey] = useState(false);
   const [keyMsg, setKeyMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
   // Local gateway config — always-visible fields
@@ -184,6 +185,17 @@ export default function Settings({ user }: { user: any }) {
     } finally {
       setIsFetchingKey(false);
     }
+  };
+
+  // "Delete API key & log out": forget the stored key + username and disconnect the cloud
+  // controller. Local-only removal — the key stays valid at LinkTap (other apps keep working);
+  // reconnecting just fetches the same key again with username + password.
+  const handleDisconnectAccount = () => {
+    setCloudApiKey('');
+    setCloudUsername('');
+    setCloudPassword('');
+    setIsCloudPollingActive(false);
+    setKeyMsg({ text: 'Logged out — API key removed from this vehicle.', type: 'success' });
   };
 
   // Shelly Hardware Connections
@@ -816,6 +828,8 @@ export default function Settings({ user }: { user: any }) {
               cloudApiKey={cloudApiKey} setCloudApiKey={setCloudApiKey}
               showCloudApiKey={showCloudApiKey} setShowCloudApiKey={setShowCloudApiKey}
               cloudPassword={cloudPassword} setCloudPassword={setCloudPassword}
+              showCloudPassword={showCloudPassword} setShowCloudPassword={setShowCloudPassword}
+              handleDisconnectAccount={handleDisconnectAccount}
               handleGetApiKey={handleGetApiKey} isFetchingKey={isFetchingKey} keyMsg={keyMsg}
               handleRetrieveFromCloud={handleRetrieveFromCloud}
               isDiscovering={isDiscovering} discoveryMsg={discoveryMsg}
