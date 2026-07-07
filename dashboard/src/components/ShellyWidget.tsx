@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { type DeviceConfig, getActiveVehicleId } from '../utils/VehicleManager';
+import { type DeviceConfig, getActiveVehicleId, updateDevice } from '../utils/VehicleManager';
 import { nativeFetch } from '../utils/nativeFetch';
 import { shellyRpc } from '../utils/shellyRpc';
 import { formatTime } from '../utils/time';
@@ -89,6 +89,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
   // flicker over data we're already showing from the cloud.
   const lastLocalAtRef = useRef(0);
   const sourceRef = useRef<'local' | 'cloud' | null>(null);
+  // Last LAN IP we self-healed onto the device record from the worker-cached &ip= param — guards
+  // against rewriting on every snapshot before the settings_updated refresh delivers the new prop.
+  const healedIpRef = useRef<string | null>(null);
   // The raw IP is the PRIMARY local address — reliable and fast. The mDNS .local host is only a
   // fallback for DHCP churn, and only on desktop/Tauri (mDNS over HTTP is flaky there and absent in
   // mobile WebViews). Derived from the Shelly id for devices added before mdnsHost was stored.
@@ -132,6 +135,14 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       const d = snap.data();
       if (!d) return;
       if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
+      // LAN-IP self-heal: webhooks embed &ip=${status.wifi.sta_ip} (the device's CURRENT LAN IP,
+      // evaluated on the device per fire), which the worker caches into this doc. If DHCP moved the
+      // device, update our stored localIp so local polling recovers without a re-provision.
+      const ip = typeof d.ip === 'string' && /^\d{1,3}(\.\d{1,3}){3}$/.test(d.ip) ? d.ip : undefined;
+      if (ip && ip !== device.localIp && ip !== healedIpRef.current) {
+        healedIpRef.current = ip;
+        updateDevice(device.id, { localIp: ip });
+      }
       // Don't clobber a fresh local poll (home); only synthesize from the cloud when local is stale.
       if (Date.now() - lastLocalAtRef.current < 20000) return;
       const remote = mapCloudSensorDoc(device.role, d);
