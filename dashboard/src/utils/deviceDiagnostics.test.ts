@@ -112,7 +112,7 @@ describe('classifyLinkTapConfig', () => {
 });
 
 describe('scanDevice', () => {
-  const deps = (rpc: any) => ({ rpc, ctx, linktap: { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw' } });
+  const deps = (rpc: any) => ({ rpc, ctx, linktap: { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw', gatewayIp: '' } });
 
   it('reports a sleeping battery sensor as info, not an error', async () => {
     const rpc = vi.fn(async () => { throw new Error('timeout'); });
@@ -143,6 +143,15 @@ describe('scanDevice', () => {
     });
     const issues = await scanDevice(battDev, '192.168.1.10', deps(rpc));
     expect(issues.every((i) => i.severity === 'ok')).toBe(true);
+  });
+
+  it('probes LinkTap gateway LAN reachability when a gateway IP is set', async () => {
+    const valve: DeviceConfig = { id: 'v1', type: 'linktap_valve', role: 'Fresh Water', name: 'V', linktapGatewayId: 'g', linktapDeviceId: 't' };
+    const base = { ctx, rpc: vi.fn(), linktap: { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw', gatewayIp: '192.168.1.5' } };
+    const reachable = await scanDevice(valve, undefined, { ...base, linktapProbe: async () => true });
+    expect(reachable.find((i) => i.title === 'Local gateway reachable')!.severity).toBe('ok');
+    const down = await scanDevice(valve, undefined, { ...base, linktapProbe: async () => false });
+    expect(down.find((i) => i.title === 'Local gateway not reachable')!.severity).toBe('warn');
   });
 
   it('routes a LinkTap valve to the config checks (no device I/O)', async () => {

@@ -191,17 +191,26 @@ export interface ScanDeps {
   rpc: (host: string, method: string, params: any) => Promise<any>;
   ctx: ScanContext;
   /** LinkTap config snapshot (root localStorage keys). */
-  linktap: { cloudUser: string; cloudKey: string; gatewayId: string };
+  linktap: { cloudUser: string; cloudKey: string; gatewayId: string; gatewayIp: string };
+  /** LAN reachability probe for the LinkTap gateway (resolves true if reachable); optional. */
+  linktapProbe?: () => Promise<boolean>;
 }
 
 /**
  * Run the full scan for one device. Never throws — an unreachable device becomes a finding.
- * For Shelly, probes info/status/hooks over the LAN (a sleepy sensor that's asleep reports as such
- * rather than as an error). LinkTap checks are config-level only.
+ * For Shelly, probes info/status/hooks over the LAN. For LinkTap: config checks PLUS a live LAN
+ * reachability probe of the gateway when a gateway IP is set (yes — it checks local connectivity).
  */
 export async function scanDevice(device: DeviceConfig, host: string | undefined, deps: ScanDeps): Promise<DeviceIssue[]> {
   if (device.type === 'linktap_valve') {
-    return classifyLinkTapConfig(device, deps.linktap, deps.ctx);
+    const issues = classifyLinkTapConfig(device, deps.linktap, deps.ctx);
+    if (deps.linktap.gatewayIp && deps.linktapProbe) {
+      const reachable = await deps.linktapProbe();
+      issues.push(reachable
+        ? { severity: 'ok', title: 'Local gateway reachable', detail: `Reached the LinkTap gateway at ${deps.linktap.gatewayIp} — the on-LAN fast path is available.` }
+        : { severity: 'warn', title: 'Local gateway not reachable', detail: `Couldn't reach the gateway at ${deps.linktap.gatewayIp}. Cloud control still works; check you're on the boat's network for the faster local path.` });
+    }
+    return issues;
   }
 
   if (!host) {
