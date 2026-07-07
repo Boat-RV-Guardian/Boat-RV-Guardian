@@ -14,15 +14,18 @@ const goodHooks = [
 const titles = (issues: { title: string }[]) => issues.map((i) => i.title);
 
 describe('classifyShellyProbe', () => {
-  it('flags a missing local password (auth_en:false — the BLE/AP gap)', () => {
+  it('flags a missing local password (auth_en:false — the BLE/AP gap) with a set_password fix', () => {
     const issues = classifyShellyProbe(floodDev, { info: { auth_en: false }, status: {}, hooks: goodHooks }, ctx);
-    expect(titles(issues)).toContain('No local password set');
-    expect(issues.find((i) => i.title === 'No local password set')!.severity).toBe('warn');
+    const iss = issues.find((i) => i.title === 'No local password set')!;
+    expect(iss.severity).toBe('warn');
+    expect(iss.fix?.action).toBe('set_password');
   });
 
-  it('flags a Low Power Sensor with no voltmeter component as an error', () => {
+  it('flags a Low Power Sensor with no voltmeter component as an error with an enable_voltmeter fix', () => {
     const issues = classifyShellyProbe(battDev, { info: { auth_en: true }, status: { sys: {}, 'input:0': {} }, hooks: [] }, ctx);
-    expect(issues.find((i) => i.title === 'Voltmeter not enabled')!.severity).toBe('error');
+    const iss = issues.find((i) => i.title === 'Voltmeter not enabled')!;
+    expect(iss.severity).toBe('error');
+    expect(iss.fix?.action).toBe('enable_voltmeter');
   });
 
   it('passes a healthy battery sensor (voltmeter live, password set, hooks current)', () => {
@@ -39,7 +42,9 @@ describe('classifyShellyProbe', () => {
       info: { auth_en: true }, status: {},
       hooks: [{ event: 'flood.alarm', urls: ['https://old-worker.workers.dev/api/shelly?vid=v'] }],
     }, ctx);
-    expect(issues.find((i) => i.title === 'Cloud alerts not registered')!.severity).toBe('error');
+    const iss = issues.find((i) => i.title === 'Cloud alerts not registered')!;
+    expect(iss.severity).toBe('error');
+    expect(iss.fix?.action).toBe('reregister_webhooks'); // every webhook finding shares the one fix
   });
 
   it('errors when hooks hit the right host but lack the &k= secret (hosted worker 401s them)', () => {
