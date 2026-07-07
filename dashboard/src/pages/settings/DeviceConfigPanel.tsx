@@ -10,33 +10,44 @@
 // want a hardware smoke test (see AGENTS.md / docs/TESTING.md).
 
 import { useState, type Dispatch, type SetStateAction } from 'react';
-import type { DeviceConfig } from '../../utils/VehicleManager';
+import { updateDevice, getDevices, type DeviceConfig } from '../../utils/VehicleManager';
 import DeviceScanPanel from '../../components/DeviceScanPanel';
 
-// Inline rename row for the expanded device panel. Self-contained (draft state + save), so the
-// parent stays presentational; saving goes through updateDevice like every other device edit.
-function DeviceRenameRow({ device, setDevices }: { device: DeviceConfig; setDevices: (v: DeviceConfig[]) => void }) {
+// The device name in the row header, with an inline ✏️ rename shown only while the device's settings
+// are expanded. Editing swaps the name for a text field (Enter / blur saves, Esc cancels) — no
+// separate "Device Name" section. Persist synchronously (updateDevice + setDevices) so the controlled
+// UI reflects the change immediately.
+function DeviceNameEditor({ device, expanded, setDevices }: { device: DeviceConfig; expanded: boolean; setDevices: (v: DeviceConfig[]) => void }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(device.name || '');
-  const dirty = draft.trim() !== (device.name || '') && draft.trim().length > 0;
   const save = () => {
-    if (!dirty) return;
-    import('../../utils/VehicleManager').then((m) => {
-      m.updateDevice(device.id, { name: draft.trim() });
-      setDevices(m.getDevices());
-    });
+    const v = draft.trim();
+    if (v && v !== device.name) { updateDevice(device.id, { name: v }); setDevices(getDevices()); }
+    setEditing(false);
   };
+  if (editing) {
+    return (
+      <input
+        autoFocus type="text" className="form-input" value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') setEditing(false); }}
+        onBlur={save}
+        placeholder={device.role}
+        style={{ padding: '2px 8px', fontSize: '0.9rem', width: '170px' }}
+      />
+    );
+  }
   return (
-    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px' }}>
-      <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '8px' }}>Device Name</div>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <input type="text" className="form-input" value={draft} onChange={(e) => setDraft(e.target.value)}
-          placeholder={device.role} style={{ flex: 1 }}
-          onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
-        <button className={dirty ? 'btn-primary' : 'btn-secondary'} disabled={!dirty} onClick={save}
-          style={{ padding: '6px 14px', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Save</button>
-      </div>
-      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Shown across the app (widgets, alerts, scans).</div>
-    </div>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+      {device.name || device.role}
+      {expanded && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setDraft(device.name || ''); setEditing(true); }}
+          title="Rename this device"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0.6, fontSize: '0.8rem', padding: 0, lineHeight: 1 }}
+        >✏️</button>
+      )}
+    </span>
   );
 }
 
@@ -111,7 +122,7 @@ export default function DeviceConfigPanel({
                       }}>
                         <div style={{ opacity: device.enabled === false ? 0.55 : 1 }}>
                           <div style={{ fontWeight: 600, fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            {device.name || device.role}
+                            <DeviceNameEditor device={device} expanded={expandedDeviceId === device.id} setDevices={setDevices} />
                             {device.enabled === false && (
                               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '6px', padding: '1px 6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Disabled</span>
                             )}
@@ -147,13 +158,10 @@ export default function DeviceConfigPanel({
                             </div>
                             <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
                               <input type="checkbox" checked={device.enabled !== false}
-                                onChange={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { enabled: e.target.checked }); setDevices(m.getDevices()); }); }}
+                                onChange={(e) => { updateDevice(device.id, { enabled: e.target.checked }); setDevices(getDevices()); }}
                                 style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
                             </label>
                           </div>
-
-                          {/* Rename — the onboarding-chosen name, editable any time */}
-                          <DeviceRenameRow key={`rename-${device.id}-${device.name}`} device={device} setDevices={setDevices} />
 
                           {/* Health check — scans for the misconfigurations we've hit on hardware
                               (voltmeter missing, no password, stale webhooks/IP, LinkTap config). */}
@@ -228,27 +236,15 @@ export default function DeviceConfigPanel({
                                 </label>
                               </div>
 
-                              {/* Safety Limits */}
-                              <div>
-                                <h4 style={{ margin: '0 0 10px 0', color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: 600 }}>Safety Limits</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
-                                  <div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Max Continuous Open</span>
-                                      <span style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>{device.maxDuration || 30} Mins</span>
-                                    </div>
-                                    <input type="range" min="5" max="120" className="form-input" style={{ padding: 0 }}
-                                      value={device.maxDuration || 30}
-                                      onChange={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { maxDuration: Number(e.target.value) }); setDevices(m.getDevices()); }); }} />
-                                  </div>
-                                </div>
-                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', cursor: 'pointer' }}>
-                                  <input type="checkbox" checked={device.autoGuardEnabled !== false}
-                                    onChange={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { autoGuardEnabled: e.target.checked }); setDevices(m.getDevices()); }); }}
-                                    style={{ width: '16px', height: '16px', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
-                                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Enable Auto-Guard Flooding Sentry for this valve</span>
-                                </label>
-                              </div>
+                              {/* Auto-Guard (the open command already carries the duration/volume limit
+                                  from the Normal Run Profile — that's the real safety net, so there's no
+                                  separate "max continuous open" control). */}
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px' }}>
+                                <input type="checkbox" checked={device.autoGuardEnabled !== false}
+                                  onChange={(e) => { updateDevice(device.id, { autoGuardEnabled: e.target.checked }); setDevices(getDevices()); }}
+                                  style={{ width: '18px', height: '18px', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
+                                <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Enable Auto-Guard Flooding Sentry for this valve</span>
+                              </label>
                             </>
                           )}
 
@@ -260,7 +256,7 @@ export default function DeviceConfigPanel({
                               <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
                                 <span>🔋 Battery-powered (don't poll — alerts via push)</span>
                                 <input type="checkbox" checked={device.batteryPowered !== false && (device.batteryPowered === true || device.role === 'Flood Sensor')}
-                                  onChange={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { batteryPowered: e.target.checked }); setDevices(m.getDevices()); }); }}
+                                  onChange={(e) => { updateDevice(device.id, { batteryPowered: e.target.checked }); setDevices(getDevices()); }}
                                   style={{ width: '16px', height: '16px', accentColor: 'var(--accent-cyan)' }} />
                               </label>
 
@@ -274,7 +270,7 @@ export default function DeviceConfigPanel({
                                     className="form-input"
                                     placeholder="e.g. 192.168.1.50"
                                     defaultValue={device.localIp || ''}
-                                    onBlur={(e) => { import('../../utils/VehicleManager').then(m => { m.updateDevice(device.id, { localIp: e.target.value.trim() }); setDevices(m.getDevices()); }); }}
+                                    onBlur={(e) => { updateDevice(device.id, { localIp: e.target.value.trim() }); setDevices(getDevices()); }}
                                     style={{ flex: 1 }}
                                   />
                                   <button

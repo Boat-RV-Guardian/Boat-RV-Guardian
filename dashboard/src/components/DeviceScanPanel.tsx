@@ -9,6 +9,7 @@ import { useState } from 'react';
 import type { DeviceConfig } from '../utils/VehicleManager';
 import { scanDevice, type DeviceIssue, type FixAction } from '../utils/deviceDiagnostics';
 import { shellyRpc, shellyChangePassword, enableShellyVoltmeter, refreshCloudShellyWebhooks } from '../utils/shellyRpc';
+import { unifiedFetch } from '../utils/linktapHttp';
 import { updateDevice, getActiveVehicleId } from '../utils/VehicleManager';
 import { DEFAULT_WORKER_URL } from '../utils/configSync';
 import { ensureWebhookSecret } from '../utils/webhookSecret';
@@ -46,6 +47,23 @@ export default function DeviceScanPanel({ device, host }: { device: DeviceConfig
           cloudUser: localStorage.getItem('lt_cloud_user') || '',
           cloudKey: localStorage.getItem('lt_cloud_key') || '',
           gatewayId: localStorage.getItem('lt_gateway_id') || '',
+          gatewayIp: localStorage.getItem('lt_gateway_ip') || '',
+        },
+        // LAN reachability: hit the gateway's local API with a short timeout (same transport the
+        // widget polls with). Any parseable response ⇒ reachable.
+        linktapProbe: async () => {
+          const ip = localStorage.getItem('lt_gateway_ip') || '';
+          if (!ip) return false;
+          try {
+            const res = await unifiedFetch(`http://${ip}/api.shtml`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cmd: 3, gw_id: localStorage.getItem('lt_gateway_id') || '', dev_id: localStorage.getItem('lt_device_id') || '' }),
+              timeout: 4000,
+            });
+            await res.text();
+            return true;
+          } catch { return false; }
         },
       });
       setIssues(results);
