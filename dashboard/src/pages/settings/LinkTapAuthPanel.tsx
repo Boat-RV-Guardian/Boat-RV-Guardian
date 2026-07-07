@@ -78,21 +78,14 @@ export default function LinkTapAuthPanel(p: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h4 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent-cyan)', margin: 0 }}>☁️ Cloud Controller</h4>
-              <button
-                className={!p.isCloudPollingActive ? "btn-primary" : "btn-secondary"}
-                onClick={() => {
-                  p.setIsCloudPollingActive(!p.isCloudPollingActive);
-                  if (!p.isCloudPollingActive && p.cloudUsername && p.cloudApiKey) p.handleRetrieveFromCloud();
-                }}
-                style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700 }}
-              >
-                {!p.isCloudPollingActive ? 'Connect' : '✓ Connected'}
-              </button>
+              {p.cloudApiKey && p.isCloudPollingActive && (
+                <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent-emerald)' }}>● Connected</span>
+              )}
             </div>
             <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
-              <strong>Connect</strong> turns on the LinkTap cloud as a data source: it validates your
-              credentials, fetches your gateways &amp; valves, and enables cloud control when you're away
-              from the boat's network. (Alert webhooks are separate — the server manages those.)
+              Signing in connects the app to your LinkTap account so it can read valve state and control
+              the valve when you're away from the boat's network. (Alert webhooks are separate — the
+              server manages those.)
             </div>
             <div><label className="form-label">Cloud Username</label><input type="text" className="form-input" value={p.cloudUsername} onChange={(e) => { p.setCloudUsername(e.target.value); p.setIsCloudPollingActive(false); }} placeholder="Your LinkTap account username" autoComplete="username" /></div>
             <div>
@@ -169,7 +162,7 @@ export default function LinkTapAuthPanel(p: Props) {
                 title={!p.gatewayIp ? 'Enter or scan for a Gateway IP first' : ''}
                 style={{ padding: '4px 12px', fontSize: '0.75rem', fontWeight: 700 }}
               >
-                {!p.isLocalPollingActive ? 'Connect' : '✓ Connected'}
+                {!p.isLocalPollingActive ? 'Connect Locally' : '✓ Connected Locally'}
               </button>
             </div>
 
