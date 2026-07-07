@@ -12,7 +12,7 @@ import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { externalOpenCapLiters } from '../utils/quickOpen';
 import { isLocalMode } from '../utils/userScope';
 
-const APP_VERSION = '1.0.62';
+const APP_VERSION = '1.0.63';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---
