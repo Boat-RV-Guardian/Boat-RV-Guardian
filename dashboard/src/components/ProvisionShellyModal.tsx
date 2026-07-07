@@ -40,6 +40,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   const [shellyPassword, setShellyPassword] = useState('');
   const [showShellyPassword, setShowShellyPassword] = useState(false);
   const [deviceRole, setDeviceRole] = useState('High Power Sensor');
+  // What this sensor will be called in the app (editable later in Settings → Devices → Configuration).
+  const [deviceName, setDeviceName] = useState('');
   // Carried from provisioning into the confirm step
   const [shellyId, setShellyId] = useState('UNKNOWN_SHELLY');
   const [detectedModel, setDetectedModel] = useState('');
@@ -267,7 +269,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       id: 'brv_sh_' + Math.random().toString(36).substr(2, 9),
       type: 'shelly_sensor',
       role: deviceRole,
-      name: deviceRole,
+      name: deviceName.trim() || deviceRole, // user's chosen name, falling back to the role
       shellyDeviceId: shellyId,
       // mDNS .local host (e.g. shellyfloodgen4-aabbcc.local) — used for reads so DHCP IP churn
       // doesn't break local connectivity. Only set when the id looks like a Shelly mDNS name.
@@ -732,6 +734,15 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
                   ✓ We identified this device as a <strong>{deviceRole}</strong>. Adjust above if that's not right.
                 </div>
               )}
+            </div>
+            <div>
+              <label className="form-label">Name this device</label>
+              <input type="text" className="form-input" value={deviceName}
+                onChange={(e) => setDeviceName(e.target.value)}
+                placeholder={deviceRole === 'Flood Sensor' ? 'e.g. Bilge Flood Sensor' : deviceRole === 'Low Power Sensor' ? 'e.g. House Battery' : 'e.g. Shore Power'} />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                How it appears in the app. Leave blank to use the sensor type. You can rename it later in Configuration.
+              </div>
             </div>
             <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
               <button className="btn-primary" onClick={finalizeAddDevice} disabled={isFinalizing}>{isFinalizing ? 'Adding…' : 'Add Device'}</button>

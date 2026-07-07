@@ -21,7 +21,11 @@ interface Props {
   // Username + password → LinkTap getApiKey (the key is fetched, never pasted by hand).
   cloudPassword: string;
   setCloudPassword: (v: string) => void;
+  showCloudPassword: boolean;
+  setShowCloudPassword: (v: boolean) => void;
   handleGetApiKey: (replace: boolean) => void;
+  /** Forget the stored API key + username and disconnect (log out of the LinkTap account). */
+  handleDisconnectAccount: () => void;
   isFetchingKey: boolean;
   keyMsg: Msg;
   handleRetrieveFromCloud: () => void;
@@ -83,10 +87,25 @@ export default function LinkTapAuthPanel(p: Props) {
                 {!p.isCloudPollingActive ? 'Connect' : '✓ Connected'}
               </button>
             </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+              <strong>Connect</strong> turns on the LinkTap cloud as a data source: it validates your
+              credentials, fetches your gateways &amp; valves, and enables cloud control when you're away
+              from the boat's network. (Alert webhooks are separate — the server manages those.)
+            </div>
             <div><label className="form-label">Cloud Username</label><input type="text" className="form-input" value={p.cloudUsername} onChange={(e) => { p.setCloudUsername(e.target.value); p.setIsCloudPollingActive(false); }} placeholder="Your LinkTap account username" autoComplete="username" /></div>
             <div>
               <label className="form-label">Cloud Password</label>
-              <input type="password" className="form-input" value={p.cloudPassword} onChange={(e) => p.setCloudPassword(e.target.value)} placeholder="Your LinkTap account password" autoComplete="current-password" autoCapitalize="off" autoCorrect="off" />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input type={p.showCloudPassword ? 'text' : 'password'} className="form-input" value={p.cloudPassword} onChange={(e) => p.setCloudPassword(e.target.value)} placeholder="Your LinkTap account password" autoComplete="current-password" autoCapitalize="off" autoCorrect="off" style={{ paddingRight: '40px' }} />
+                <button
+                  className="btn-secondary"
+                  onClick={() => p.setShowCloudPassword(!p.showCloudPassword)}
+                  title={p.showCloudPassword ? 'Hide password' : 'Show password'}
+                  style={{ position: 'absolute', right: '8px', background: 'transparent', border: 'none', padding: '4px', cursor: 'pointer', opacity: 0.6 }}
+                >
+                  {p.showCloudPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used once to fetch your API key — never stored.</div>
             </div>
             <button
@@ -118,12 +137,10 @@ export default function LinkTapAuthPanel(p: Props) {
                 </div>
                 <button
                   className="btn-secondary"
-                  onClick={() => { if (window.confirm('Generate a NEW API key? This signs out any other app using the current key (including the LinkTap app).')) p.handleGetApiKey(true); }}
-                  disabled={p.isFetchingKey || !p.cloudUsername || !p.cloudPassword}
-                  title={!p.cloudPassword ? 'Re-enter your password to regenerate' : 'Generate a new key (invalidates the old one)'}
-                  style={{ padding: '6px 12px', fontSize: '0.78rem', alignSelf: 'flex-start' }}
+                  onClick={() => { if (window.confirm('Delete the stored API key and log out of your LinkTap account? Cloud valve features stop working until you connect again.')) p.handleDisconnectAccount(); }}
+                  style={{ padding: '6px 12px', fontSize: '0.78rem', alignSelf: 'flex-start', color: '#ef4444' }}
                 >
-                  ♻️ Regenerate key
+                  🗑️ Delete API key &amp; log out
                 </button>
               </div>
             ) : (
