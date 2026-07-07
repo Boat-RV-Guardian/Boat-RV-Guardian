@@ -1,34 +1,19 @@
-// One-tap "Open valve now" cap resolution. The LinkTap valve NEVER opens without a duration + volume
-// limit (the real safety net — see the safety model in CLAUDE.md); this only decides WHICH bounded cap
-// the quick-open button uses. There is deliberately no code path here that yields an unbounded open.
+// Safety cap for an EXTERNALLY-started valve open (someone pressed the physical button on the valve,
+// or opened it from the LinkTap app). When our app detects such a run with no known limit, it applies
+// this max-volume cap so a manual open can't run unbounded — the software volume-cutoff then closes
+// the valve at the cap. Per the safety model (CLAUDE.md), the valve never runs without a limit.
 
 import type { DeviceConfig } from './VehicleManager';
 
-export const DEFAULT_QUICK_OPEN_MINS = 30;
-export const DEFAULT_QUICK_OPEN_VOLUME_L = 100;
-
-/** Round to a whole number ≥ 1, falling back to `dflt` for 0 / blank / NaN — so a cap is never 0. */
-function positive(v: number | undefined, dflt: number): number {
-  const n = Math.round(Number(v));
-  return Number.isFinite(n) && n >= 1 ? n : dflt;
-}
+/** Default max-volume cap (liters) for externally-started opens when the valve has none configured. */
+export const DEFAULT_EXTERNAL_CAP_L = 100;
 
 /**
- * Resolve the { durationMins, volumeLiters } cap for a one-tap open.
- * - `applyDefaultCap !== false` (the default): use the per-valve default cap
- *   (`defaultCapMins` / `defaultCapVolumeL`, falling back to 30 min / 100 L).
- * - `applyDefaultCap === false`: use the Normal Run Profile limit passed in (still bounded).
- * Both channels are floored to a positive value, so a zero/blank config can never mean "open forever".
+ * The max-volume cap (in liters) to enforce on an externally-started open for this valve.
+ * Uses the per-valve `defaultCapVolumeL`, falling back to DEFAULT_EXTERNAL_CAP_L. Always returns a
+ * positive value — there is no "uncapped" result.
  */
-export function resolveQuickOpenCap(
-  device: DeviceConfig,
-  normalRun: { durationMins: number; volumeLiters: number },
-): { durationMins: number; volumeLiters: number } {
-  const useDefault = device.applyDefaultCap !== false;
-  const mins = useDefault ? device.defaultCapMins : normalRun.durationMins;
-  const vol = useDefault ? device.defaultCapVolumeL : normalRun.volumeLiters;
-  return {
-    durationMins: positive(mins, DEFAULT_QUICK_OPEN_MINS),
-    volumeLiters: positive(vol, DEFAULT_QUICK_OPEN_VOLUME_L),
-  };
+export function externalOpenCapLiters(device: DeviceConfig): number {
+  const v = Math.round(Number(device.defaultCapVolumeL));
+  return Number.isFinite(v) && v >= 1 ? v : DEFAULT_EXTERNAL_CAP_L;
 }
