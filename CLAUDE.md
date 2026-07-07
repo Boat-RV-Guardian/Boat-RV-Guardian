@@ -147,6 +147,42 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-07-07 — demo site + LinkTap onboarding rework + valve UX + releases v1.0.50→v1.0.63 — READ FIRST
+
+Huge hands-on session with the owner live-testing on their **Android phone** and the **native macOS app**
+(installed each build via `adb install -r` / mounting the signed `.dmg` to `/Applications` + clearing the
+Gatekeeper quarantine — the release is Tauri-signed but not Apple-notarized). All merged to `main`, all
+gates green, **0 open PRs**, latest tag **v1.0.63**. Version lives in 7 files (bump + tag → `release.yml`
+builds Mac `.dmg` / Win / signed APK; ~5–8 min).
+
+**Shipped (see open-tasks.md "✅ Shipped 2026-07-07" for the full list):**
+- **Demo showcase** `demo.boatrvguardian.com` (mock mode) — built end-to-end + `deploy-demo.yml`
+  (gated on repo var `DEMO_DEPLOY_ENABLED`). Owner still does the Cloudflare Pages project + domain.
+- **v1.0.50 release** — `main` had drifted **68 commits past v1.0.49** with no version bump, so the whole
+  LinkTap event-driven rewrite + worker cutover had never shipped in a signed build. Cutting the release
+  was the fix. (Lesson: bump + tag after a batch, don't let main drift far past the last tag.)
+- **LinkTap cloud sign-in rework** — username+password → API key (key HIDDEN; "Sign in / Sign out of
+  LinkTap Cloud"), redundant Connect button removed, guided add configures everything up front. **Root-caused
+  the owner's login failure:** LinkTap's `getApiKey` **docs are wrong** — real success `{"key":"…"}`, error
+  bare `{"message":"…"}`; our doc-shape parser threw on success. Fixed app + brvg-cloud-server (#124/#23).
+- **Flood re-registration VERIFIED** via live `wrangler tail brvg-cloud-worker` (Task 11 done end-to-end).
+- **Shelly LAN-IP tracking** (`&ip=${status.wifi.sta_ip}`), **AP+BLE password provisioning** (#118),
+  **per-device 🩺 Scan for issues + one-tap fixes**, device-panel **toggle fixes** (async-`e.target` bug),
+  valve-page fixes (connection badge, external-open auto-cap, Auto-Restart gated to local/Free, Daily label),
+  **Systems merged into Overview**, **Android edge-to-edge tab-bar** fix, **macOS Local Network** Info.plist.
+
+**Gotchas learned this session:**
+- **LinkTap gateway moved `172.31.0.245` → `172.31.0.244`** (DHCP). The Rust subnet scanner
+  (`discover_gateway`) was fine; the macOS blocker was the missing **Local Network permission** — now
+  declared via `src-tauri/Info.plist` (`NSLocalNetworkUsageDescription` + `NSBonjourServices _http._tcp`).
+  Owner must grant Local Network in System Settings for the scan to work.
+- **Controlled-input + async write bug:** reading `e.target.checked/value` inside `import('..').then(...)`
+  reads a STALE value (React resets the controlled input before the microtask runs). Do device writes
+  SYNCHRONOUSLY (static `import { updateDevice }` + call in the handler).
+- **`window.confirm()` is a no-op in the Tauri webview** — use an inline two-tap confirm instead.
+- LinkTapWidget split (#120, Task 3 inc 5+) was done + CI-green (1553→1131) but **closed unmerged** — the
+  widget was edited too much afterward. Redo the split fresh, don't rebase #120.
+
 ## Session handoff — 2026-07-03 — SEC-7 CSP shipped + account portal + device provisioning/telemetry fixes (owner-away autonomous stretch) — READ FIRST
 
 **All 5 repos clean on `main`, `HEAD == origin/main`, 0 open PRs.** Fifth repo now: **brvg-account-site**
