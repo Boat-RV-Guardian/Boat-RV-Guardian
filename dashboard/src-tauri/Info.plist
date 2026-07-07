@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Modern macOS (Sequoia+) gates local-network access behind an explicit permission. Without
+	     these keys the app can't scan the LAN for LinkTap gateways / Shelly sensors, and mDNS returns
+	     nothing (that's why "Scan for Gateway" found nothing on macOS). Tauri merges this into the
+	     bundle's Info.plist for macOS builds. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Boat &amp; RV Guardian scans your local network to find and directly control your LinkTap valve gateway and Shelly sensors — fast, and without internet.</string>
+	<!-- mDNS/Bonjour browsing is blocked unless the service types are declared. The gateway discovery
+	     browses _http._tcp. -->
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
+</dict>
+</plist>
