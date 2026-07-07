@@ -71,15 +71,22 @@ const WEBHOOK_EVENT_RE = /flood|alarm|leak|smoke|over|under|sensor|temperature|h
 // Extra URL params that embed the event's value(s) so the worker caches real readings. SINGLE-QUOTED
 // on purpose: the ${...} are literal Shelly webhook tokens (evaluated on the device at fire time),
 // NOT JS template interpolation. ev.xvoltage is the on-device calibrated voltage (null if uncalibrated).
+//
+// EVERY event also carries &ip=${status.wifi.sta_ip} — the device's CURRENT LAN IP, evaluated per fire
+// (webhook tokens can read the whole Shelly.GetStatus object; sta_ip verified on hardware). The worker
+// stores it in sensorState, so the cloud tracks each device's LAN IP through DHCP churn and the app
+// self-heals `device.localIp` from it (ShellyWidget). If wifi status were absent the token yields the
+// literal string "null", which the worker's extractSensorStateExtras already drops.
+const WEBHOOK_IP_PARAM = '&ip=${status.wifi.sta_ip}';
 function webhookValueParams(event: string): string {
-  if (/^voltmeter\./i.test(event)) return '&v=${ev.xvoltage}&vraw=${ev.voltage}';
+  if (/^voltmeter\./i.test(event)) return '&v=${ev.xvoltage}&vraw=${ev.voltage}' + WEBHOOK_IP_PARAM;
   // Shore-power PM (e.g. PM Mini G3): pm1.voltage_change carries the AC line voltage. Send it as v so
   // the worker caches it and the High Power widget shows it off-LAN. (No xvoltage on pm1 — raw only.)
-  if (/^pm1\.voltage/i.test(event)) return '&v=${ev.voltage}';
-  if (/^temperature\./i.test(event)) return '&tC=${ev.tC}';
-  if (/^humidity\./i.test(event)) return '&rh=${ev.rh}';
-  if (/^devicepower\./i.test(event)) return '&batt=${ev.percent}';
-  return '';
+  if (/^pm1\.voltage/i.test(event)) return '&v=${ev.voltage}' + WEBHOOK_IP_PARAM;
+  if (/^temperature\./i.test(event)) return '&tC=${ev.tC}' + WEBHOOK_IP_PARAM;
+  if (/^humidity\./i.test(event)) return '&rh=${ev.rh}' + WEBHOOK_IP_PARAM;
+  if (/^devicepower\./i.test(event)) return '&batt=${ev.percent}' + WEBHOOK_IP_PARAM;
+  return WEBHOOK_IP_PARAM;
 }
 
 // Webhook.Create needs the component-instance id the event belongs to (e.g. voltmeter:100 → cid 100;

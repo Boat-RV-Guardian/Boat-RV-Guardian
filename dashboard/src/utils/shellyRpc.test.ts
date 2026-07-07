@@ -40,7 +40,7 @@ describe('registerShellyWebhooks', () => {
     expect(hook.urls[0]).toContain('&v=${ev.xvoltage}&vraw=${ev.voltage}');
   });
 
-  it('defaults cid to 0 for a flood sensor and embeds no value params', async () => {
+  it('defaults cid to 0 for a flood sensor and embeds no event value params', async () => {
     const sh = fakeShelly({
       supported: ['flood.alarm', 'flood.alarm_off'],
       status: { 'flood:0': {} },
@@ -52,6 +52,19 @@ describe('registerShellyWebhooks', () => {
     expect(alarm.cid).toBe(0);
     expect(alarm.urls[0]).not.toContain('&v=');
     expect(alarm.urls[0]).not.toContain('device='); // deviceId omitted
+  });
+
+  it('embeds the device-evaluated LAN IP (&ip=${status.wifi.sta_ip}) on EVERY event', async () => {
+    // The cloud tracks each device's current LAN IP through DHCP churn: the token is evaluated on the
+    // device per fire, and the worker stores any non-reserved param into sensorState.
+    const sh = fakeShelly({
+      supported: ['flood.alarm', 'voltmeter.measurement', 'temperature.change'],
+      status: { 'flood:0': {}, 'voltmeter:100': {}, 'temperature:0': {} },
+    });
+    await registerShellyWebhooks(sh.call, 'https://w.example.com', 'veh1');
+    for (const hook of sh.created) {
+      expect(hook.urls[0]).toContain('&ip=${status.wifi.sta_ip}');
+    }
   });
 
   it('uses the correct per-family value param for temperature', async () => {
@@ -132,6 +145,7 @@ describe('refreshCloudShellyWebhooks (voltmeter self-heal + SEC-4 secret)', () =
     expect(meas.urls[0]).toContain('v=${ev.xvoltage}');
     expect(meas.urls[0]).toContain('vraw=${ev.voltage}');
     expect(meas.urls[0]).toContain('&k=SEKRET'); // per-vehicle SEC-4 secret
+    expect(meas.urls[0]).toContain('&ip=${status.wifi.sta_ip}'); // LAN-IP tracker on the refresh path too
     // input.* is not alert/telemetry-ish → not registered when voltmeter events are present.
     expect(sh.created.some((c) => c.event === 'input.toggle_on')).toBe(false);
   });
