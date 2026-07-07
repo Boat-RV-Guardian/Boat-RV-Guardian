@@ -10,7 +10,7 @@ import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 
-const APP_VERSION = '1.0.54';
+const APP_VERSION = '1.0.55';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---
