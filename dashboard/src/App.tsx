@@ -197,7 +197,7 @@ export default function App() {
         // Desktop: a top row of pill buttons. Mobile: a bottom tab bar (icon over label) in normal flow.
         const nav = (
           <nav style={isMobile
-            ? { display: 'flex', justifyContent: 'space-around', alignItems: 'stretch', background: 'var(--bg-secondary, rgba(0,0,0,0.85))', borderTop: '1px solid rgba(255,255,255,0.12)', flexShrink: 0, zIndex: 10, paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
+            ? { display: 'flex', justifyContent: 'space-around', alignItems: 'stretch', background: 'var(--bg-secondary, rgba(0,0,0,0.85))', borderTop: '1px solid rgba(255,255,255,0.12)', flexShrink: 0, zIndex: 10 }
             : { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px', padding: '15px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, zIndex: 10 }}>
             {tabs.map((tab) => (isMobile ? (
               <button
