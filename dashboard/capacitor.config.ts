@@ -5,6 +5,13 @@ const config: CapacitorConfig = {
   appId: 'com.jgearinger.boatrvguardian',
   appName: 'Boat & RV Guardian',
   webDir: 'dist',
+  android: {
+    // Android 15+ (targetSdk 35+) forces edge-to-edge, drawing the WebView behind the system
+    // gesture/nav bar — but the WebView reports env(safe-area-inset-bottom) as 0, so the bottom
+    // tab bar was clipped by the gesture pill. 'auto' has Capacitor apply window-inset margins
+    // exactly when the OS enforces edge-to-edge (no effect on older Android).
+    adjustMarginsForEdgeToEdge: 'auto',
+  },
   server: {
     androidScheme: 'http',
     // Cleartext HTTP is required for direct LAN device RPC (LinkTap gateway / Shelly at http://<ip>).

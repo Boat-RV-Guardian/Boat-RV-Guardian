@@ -13,6 +13,9 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- With edge-to-edge margins (adjustMarginsForEdgeToEdge), the system-bar strips show the
+             window background - keep them the app's dark navy instead of the DayNight default. -->
+        <item name="android:windowBackground">#0a0f1d</item>
     </style>
 
 
