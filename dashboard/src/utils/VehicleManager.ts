@@ -31,6 +31,14 @@ export interface DeviceConfig {
   maxDuration?: number;
   autoGuardEnabled?: boolean;
 
+  // One-tap "Open valve now" default cap (LinkTap valve). Every open ALWAYS carries a limit — this is
+  // just the default used by the quick-open button. applyDefaultCap (default true) = use these values;
+  // when false the quick-open button uses the Normal Run Profile limit instead (still capped, never
+  // unbounded). Volume is stored in LITERS (unit-agnostic); the UI converts for display.
+  applyDefaultCap?: boolean;
+  defaultCapMins?: number;
+  defaultCapVolumeL?: number;
+
   // Whether the device is active. undefined === enabled (default on, backward-compatible).
   // Disabled devices are not polled and are skipped by startup auto-connect.
   enabled?: boolean;
