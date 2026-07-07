@@ -62,11 +62,15 @@ body {
   background: rgba(255, 255, 255, 0.25);
 }
 
-/* Base layout */
+/* Base layout. #root owns the viewport: fixed height with border-box so the safe-area padding
+   (see the #root rule near the bottom) is INSIDE the viewport — with content-box min-height the
+   padding grew the page past the screen and pushed the mobile bottom nav off-screen entirely. */
 #root {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  box-sizing: border-box;
+  height: 100vh;   /* fallback */
+  height: 100dvh;
 }
 
 /* Glass Card styles */
