@@ -11,7 +11,7 @@ import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSa
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { resolveQuickOpenCap } from '../utils/quickOpen';
 
-const APP_VERSION = '1.0.61';
+const APP_VERSION = '1.0.62';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---
