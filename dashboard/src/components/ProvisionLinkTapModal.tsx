@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { addDevice } from '../utils/VehicleManager';
 import { nativeFetch } from '../utils/nativeFetch';
+import { linkTapGetApiKey } from '../utils/linktapCloud';
 
 // Helper to use Tauri's fetch if available, otherwise browser fetch
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
@@ -17,84 +18,114 @@ const unifiedFetch = async (url: string, options?: any) => {
   return nativeFetch(url, options) as any;
 };
 
+type Step = 'credentials' | 'fetching' | 'device_selection' | 'completion';
+
 export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<'fetching' | 'device_selection' | 'completion'>('fetching');
+  // Guided setup: if the account isn't connected yet (no stored username + API key), start by
+  // collecting the LinkTap username + password and fetching the API key — so a first-time user never
+  // has to configure anything on a separate settings tab first.
+  const hasCreds = !!(localStorage.getItem('lt_cloud_user') && localStorage.getItem('lt_cloud_key'));
+  const [step, setStep] = useState<Step>(hasCreds ? 'fetching' : 'credentials');
   const [availableDevices, setAvailableDevices] = useState<{ id: string, name: string, gatewayId: string }[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [statusMessage, setStatusMessage] = useState<{text: string, type: 'error'|'success'|'info'} | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  // Credentials step
+  const [username, setUsername] = useState(() => localStorage.getItem('lt_cloud_user') || '');
+  const [password, setPassword] = useState('');
+  const [credBusy, setCredBusy] = useState(false);
 
-    const fetchAllDevices = async () => {
-      setStatusMessage({ text: 'Fetching your LinkTap devices...', type: 'info' });
-      
-      const devicesList: { id: string, name: string, gatewayId: string }[] = [];
-      const cloudUsername = localStorage.getItem('lt_cloud_user') || '';
-      const cloudApiKey = localStorage.getItem('lt_cloud_key') || '';
+  const fetchAllDevices = async () => {
+    setStatusMessage({ text: 'Fetching your LinkTap devices...', type: 'info' });
 
-      // Add local devices
+    const devicesList: { id: string, name: string, gatewayId: string }[] = [];
+    const cloudUsername = localStorage.getItem('lt_cloud_user') || '';
+    const cloudApiKey = localStorage.getItem('lt_cloud_key') || '';
+
+    // Add local devices
+    try {
+      const localDevicesStr = localStorage.getItem('lt_local_devices');
+      if (localDevicesStr) {
+        const localList = JSON.parse(localDevicesStr);
+        localList.forEach((d: any) => {
+          devicesList.push({ id: d.deviceId, name: d.name || d.deviceId, gatewayId: d.gatewayId });
+        });
+      }
+    } catch (e) {
+      console.error("Failed to parse local devices", e);
+    }
+
+    // Fetch cloud devices
+    if (cloudUsername && cloudApiKey) {
       try {
-        const localDevicesStr = localStorage.getItem('lt_local_devices');
-        if (localDevicesStr) {
-          const localList = JSON.parse(localDevicesStr);
-          localList.forEach((d: any) => {
-            devicesList.push({ id: d.deviceId, name: d.name || d.deviceId, gatewayId: d.gatewayId });
+        const res = await unifiedFetch('https://www.link-tap.com/api/getAllDevices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: cloudUsername, apiKey: cloudApiKey })
+        });
+
+        const rawText = await res.text();
+        const data = JSON.parse(rawText);
+
+        if (data.devices && data.devices.length > 0) {
+          data.devices.forEach((gw: any) => {
+            if (gw.taplinker && gw.taplinker.length > 0) {
+              gw.taplinker.forEach((tap: any) => {
+                // Prevent duplicates
+                if (!devicesList.find(d => d.id === tap.taplinkerId)) {
+                  devicesList.push({
+                    id: tap.taplinkerId,
+                    name: tap.taplinkerName || tap.taplinkerId,
+                    gatewayId: gw.gatewayId
+                  });
+                }
+              });
+            }
           });
         }
-      } catch (e) {
-        console.error("Failed to parse local devices", e);
+      } catch(e: any) {
+        console.error("Cloud fetch failed", e);
       }
-      
-      // Fetch cloud devices
-      if (cloudUsername && cloudApiKey) {
-        try {
-          const res = await unifiedFetch('https://www.link-tap.com/api/getAllDevices', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: cloudUsername, apiKey: cloudApiKey })
-          });
-          
-          const rawText = await res.text();
-          const data = JSON.parse(rawText);
-          
-          if (data.devices && data.devices.length > 0) {
-            data.devices.forEach((gw: any) => {
-              if (gw.taplinker && gw.taplinker.length > 0) {
-                gw.taplinker.forEach((tap: any) => {
-                  // Prevent duplicates
-                  if (!devicesList.find(d => d.id === tap.taplinkerId)) {
-                    devicesList.push({
-                      id: tap.taplinkerId,
-                      name: tap.taplinkerName || tap.taplinkerId,
-                      gatewayId: gw.gatewayId
-                    });
-                  }
-                });
-              }
-            });
-          }
-        } catch(e: any) {
-          console.error("Cloud fetch failed", e);
-        }
-      }
+    }
 
-      if (!isMounted) return;
+    if (devicesList.length > 0) {
+      setAvailableDevices(devicesList);
+      setSelectedDeviceId(devicesList[0].id);
+      setStep('device_selection');
+      setStatusMessage(null);
+    } else {
+      setStatusMessage({ text: 'No TapLinker valves found on your LinkTap account. Make sure your valve is paired to a gateway in the LinkTap app.', type: 'error' });
+    }
+  };
 
-      if (devicesList.length > 0) {
-        setAvailableDevices(devicesList);
-        setSelectedDeviceId(devicesList[0].id);
-        setStep('device_selection');
-        setStatusMessage(null);
-      } else {
-        setStatusMessage({ text: 'No TapLinker devices found. Add Cloud credentials or Local Devices in the Auth Tab.', type: 'error' });
-      }
-    };
-
-    fetchAllDevices();
-
+  // Run device discovery whenever we enter the fetching step (on mount when already connected, or
+  // right after the credentials step fetches the API key).
+  useEffect(() => {
+    if (step !== 'fetching') return;
+    let isMounted = true;
+    (async () => { if (isMounted) await fetchAllDevices(); })();
     return () => { isMounted = false; };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  // Credentials step: fetch (create/retrieve) the account API key from username + password, store the
+  // username + key, then advance to device discovery. The password is used once and never stored.
+  const handleConnectAccount = async () => {
+    setCredBusy(true);
+    setStatusMessage(null);
+    try {
+      const key = await linkTapGetApiKey(username.trim(), password, false);
+      localStorage.setItem('lt_cloud_user', username.trim());
+      localStorage.setItem('lt_cloud_key', key);
+      setPassword('');
+      window.dispatchEvent(new Event('settings_updated'));
+      setStep('fetching');
+    } catch (e: any) {
+      setStatusMessage({ text: e?.message || 'Could not connect to your LinkTap account.', type: 'error' });
+    } finally {
+      setCredBusy(false);
+    }
+  };
 
   const handleCreateDevice = () => {
     const device = availableDevices.find(d => d.id === selectedDeviceId);
@@ -110,7 +141,7 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
       maxDuration: 30,
       autoGuardEnabled: true
     });
-    
+
     setStep('completion');
   };
 
@@ -128,11 +159,43 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
 
         <h2 style={{ marginTop: 0, color: 'var(--accent-cyan)', marginBottom: '20px' }}>Add LinkTap Valve</h2>
 
+        {step === 'credentials' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+              Sign in with your LinkTap account to connect your valve. We'll fetch your API key for you —
+              no need to copy anything by hand.
+            </p>
+            <div>
+              <label className="form-label">LinkTap Username</label>
+              <input type="text" className="form-input" value={username} autoComplete="username"
+                onChange={(e) => setUsername(e.target.value)} placeholder="Your LinkTap account username" />
+            </div>
+            <div>
+              <label className="form-label">LinkTap Password</label>
+              <input type="password" className="form-input" value={password} autoComplete="current-password"
+                autoCapitalize="off" autoCorrect="off"
+                onChange={(e) => setPassword(e.target.value)} placeholder="Your LinkTap account password"
+                onKeyDown={(e) => { if (e.key === 'Enter' && username && password && !credBusy) handleConnectAccount(); }} />
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>Used once to fetch your API key — never stored.</div>
+            </div>
+            {statusMessage && <div style={{ color: statusMessage.type === 'error' ? '#ef4444' : 'var(--accent-cyan)', fontSize: '0.85rem' }}>{statusMessage.text}</div>}
+            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+              <button className="btn-secondary" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={handleConnectAccount} disabled={credBusy || !username || !password}>
+                {credBusy ? 'Connecting…' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {step === 'fetching' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', textAlign: 'center', padding: '40px 0' }}>
             {statusMessage && <div style={{ color: statusMessage.type === 'error' ? '#ef4444' : 'var(--accent-cyan)' }}>{statusMessage.text}</div>}
             {statusMessage?.type === 'error' && (
-              <button className="btn-secondary" onClick={onClose} style={{ marginTop: '20px' }}>Close</button>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '20px' }}>
+                <button className="btn-secondary" onClick={() => { setStatusMessage(null); setStep('credentials'); }}>← Re-enter account</button>
+                <button className="btn-secondary" onClick={onClose}>Close</button>
+              </div>
             )}
           </div>
         )}
@@ -141,13 +204,13 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
           <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <h3 style={{ margin: 0, color: '#fff' }}>Select a Valve</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '10px' }}>Select the valve you want to add to this vehicle.</p>
-            
+
             <select className="form-input" value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)}>
               {availableDevices.map(d => (
                 <option key={d.id} value={d.id}>{d.name} ({d.id})</option>
               ))}
             </select>
-            
+
             <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between' }}>
               <button className="btn-secondary" onClick={onClose}>Cancel</button>
               <button className="btn-primary" onClick={handleCreateDevice} disabled={!selectedDeviceId}>Add Valve</button>
