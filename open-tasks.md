@@ -8,6 +8,40 @@ Legend: `[ ]` not started · `[~]` in progress / partially done.
 
 ---
 
+## ✅ Shipped 2026-07-07 (big session — released v1.0.50 → v1.0.63)
+
+All merged to `main`, all gates green, installed + tested on the owner's **Android phone** and the
+**native macOS app** (Tauri). Notable landings:
+
+- **Demo showcase** `demo.boatrvguardian.com` (mock mode): fake fleet + deterministic telemetry through
+  the real widgets, scripted flood→auto-shutoff, `__DEMO__` build flag (tree-shaken from prod/native),
+  `deploy-demo.yml` gated on `DEMO_DEPLOY_ENABLED`. **Owner-gated:** create the Pages project + attach
+  `demo.boatrvguardian.com` + set the repo variable (see the Demo-site section below).
+- **LinkTap cloud sign-in rework:** username+password → API key (LinkTap `getApiKey`), key HIDDEN from
+  the user ("Sign in / Sign out of LinkTap Cloud"), redundant cloud "Connect" button removed (sign-in =
+  connected), password unmask, guided first-time add that also configures gateway/valve IDs up front.
+  **Bug fixed both repos:** LinkTap's getApiKey docs are WRONG — real success is `{"key":"…"}`, error is
+  a bare `{"message":"…"}` (see [[boatrvguardian-linktap-getapikey-shape]]).
+- **Flood re-registration VERIFIED** (Task 11 done): live `wrangler tail` caught flood.alarm/alarm_off
+  hitting the new worker with `&k=` and the worker relaying the shutoff.
+- **Shelly LAN-IP tracking:** webhooks carry `&ip=${status.wifi.sta_ip}`; app self-heals `localIp`.
+- **AP + BLE provisioning now set the vehicle password** (flood sensor was `auth_en:false`).
+- **Per-device "🩺 Scan for issues" + one-tap fixes** (voltmeter, password, webhook re-register, LAN
+  reachability for LinkTap).
+- **Device panel fixes:** toggles that "didn't work" (Device Enabled / Auto-Guard) — root cause was
+  reading `e.target.checked` inside an async `import().then()` (controlled input reset first); now
+  synchronous. Inline ✏️ rename. Removed the dead "Max Continuous Open" control.
+- **Valve page:** correct connection badge (local only counts with a gateway IP), `—`/`LINK OK` instead
+  of a false 0%, "Daily" label, **auto-limit externally-started opens** (physical-button open → max-volume
+  safety cap), **Auto-Restart (Loop) gated to local-only / Free plan** (app-driven loop).
+- **Nav:** Systems merged into Overview (cards drill in, ← Overview back). **Android edge-to-edge**
+  bottom-tab-bar clipping fixed (safe-area vars + border-box #root). **macOS Local Network** declared
+  (`src-tauri/Info.plist`) so LAN gateway discovery works — the LinkTap gateway moved to `172.31.0.244`.
+- **v1.0.50 release** cut so the LinkTap event-driven rewrite + worker cutover finally shipped in a
+  signed build (main had drifted 68 commits past the last tag).
+
+---
+
 ## 🔐 Account / auth
 
 - [x] **Email address verification on sign-up — DONE (2026-07-03).** Email/password sign-ups now send
@@ -114,10 +148,14 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       (`flood event flood.alarm on v_uusajkm88: shutoff {"ok":true,"valves":1}`) — the full flood → auto-shutoff
       safety chain works end-to-end on the new worker. (Off-LAN native widget display verify is still tracked
       under Task 1.)
-- [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the ~1535-line widget):
+- [ ] **Task 3 — LinkTapWidget increment 5+** (split the last risky logic out of the ~1560-line widget):
       polling loop → hook; command senders (start/stop) → hook; Flooding Sentry + auto-restart + washdown
       automation → hook. Touches the `commandersRef`/`stateRef`/`expectedWateringStateRef` state machine —
-      verify against a live gateway, not by tsc/tests alone.
+      verify against a live gateway, not by tsc/tests alone. **NOTE:** a full split was done + CI-green in
+      PR #120 (1553→1131 lines) but **closed unmerged** — the widget was heavily edited afterward
+      (external-open cap, auto-restart gating, status fixes), leaving #120 25 commits behind with conflicts
+      across the exact extracted code. **Redo the split FRESH against current `main`** when there's a live
+      gateway to smoke-test; don't try to salvage #120's branch.
 - [ ] **Task 2 follow-up — monitor-role command-gating RTL test.** The gating lives in `LinkTapWidget`,
       not Settings; cover it when that widget's logic is pulled into hooks (i.e. alongside Task 3 inc 5+).
 - [ ] **Task 4 — client wiring for `/api/control`.** Route LinkTapWidget's OFF-LAN control through the
@@ -125,14 +163,12 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       LinkTap directly. Server side is live + inert until this lands.
 - [ ] **Task 6 — off-LAN control gate.** Make LinkTapWidget honor `canRemoteControl` off-LAN (needs the
       local-vs-remote seam; pairs with Task 4).
-- [ ] **Shelly password-set during provisioning — AP & BLE paths.** Manual-IP path is done; wire the
-      Wi-Fi-AP path (ordering hazard: securing the device would 401 the subsequent unauthenticated
-      `Wifi.SetConfig`) and the BLE path (`bleProvision`) to set `sh_local_password` on pairing. See
-      [ProvisionShellyModal.tsx](dashboard/src/components/ProvisionShellyModal.tsx).
-      **Confirmed on-device 2026-07-07:** the re-added flood sensor (`shellyfloodg4-d885acea3914`, a
-      BLE-provisioned FloodSensorG4) reports `auth_en:false` via `Shelly.GetDeviceInfo` — i.e. **no local
-      password is set**, so the BLE path still isn't applying `sh_local_password`. (This is expected until
-      the BLE path is wired; recorded as the hardware baseline.)
+- [x] **Shelly password-set during provisioning — AP & BLE paths — DONE (#118, 2026-07-07).** Both paths
+      now set `sh_local_password`: the Wi-Fi-AP path secures at `192.168.33.1` BEFORE `Wifi.SetConfig`
+      (resolving the 401 ordering hazard by sending the remaining call through `shellyRpc`'s digest
+      handshake), and the BLE path sets it over HTTP right after the device joins Wi-Fi. Best-effort.
+      **Hardware verify (owner):** re-provision the flood sensor over BLE → `Shelly.GetDeviceInfo` should
+      flip from the recorded `auth_en:false` baseline to `auth_en:true`.
 - [ ] **Verify `shellyChangePassword` on hardware.** Settings "Edit→Save" pushes the new password to every
       Shelly (`Shelly.SetAuth`); the digest path in [shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) is
       untested. A wrong/failed SetAuth can lock a device out (factory reset to recover); sleeping battery
@@ -258,12 +294,20 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
         with `&k=`), then sign in and open/close the valve (cloud path) + off-LAN read + on-LAN local
         fallback. One minor on-LAN limit-supplement `getWateringStatus` fetch remains (edge case).
 
-- [x] **Auto-fetch / rotate the LinkTap API key — CLIENT DONE (brvg-cloud-server #18: `linkTapGetApiKey`).**
-      `getApiKey` (username + password, optional `replace:true`) is implemented + tested; password is
-      used for one call and never persisted. **Remaining: wire it into app onboarding** (below).
+- [x] **Auto-fetch / rotate the LinkTap API key — DONE (app-wired 2026-07-07, #114/#124/#134/#136).**
+      App `linkTapGetApiKey(username, password)` in [utils/linktapCloud.ts](dashboard/src/utils/linktapCloud.ts)
+      parses the REAL response shape (`{"key":"…"}` success / bare `{"message":"…"}` error — the docs are
+      wrong; same fix landed in brvg-cloud-server #23). Password used once, never persisted. Surfaced as
+      "Sign in / Sign out of LinkTap Cloud" (key hidden from the user); sign-in enables cloud polling.
 
-- [ ] **Guardian-native LinkTap onboarding — "no second app" (2026-07-04).** Make the LinkTap app
-      unnecessary for end users. Wire together pieces that already exist:
+- [x] **Guardian-native LinkTap onboarding — "no second app" — DONE (2026-07-07, #114/#132).** Adding a
+      LinkTap valve runs a guided flow: username+password → API key → `getAllDevices` list → pick + name the
+      valve → and it also persists the gateway/TapLinker IDs, turns cloud control on, and (Tauri) scans the
+      LAN for the gateway IP — everything the old Advanced-Options "Retrieve + Connect" did, in one pass. The
+      hard boundaries below (account creation / gateway Wi-Fi / valve↔gateway pairing — no API) remain
+      one-time in the LinkTap app.  Original design notes kept below for reference:
+
+- [ ] **~~Guardian-native LinkTap onboarding~~ (superseded — DONE above; design notes only):**
       1. **Creds:** user enters their LinkTap username+password into *Guardian* → `linkTapGetApiKey`
          → store only `lt_cloud_key` (+ offer `replace:true` "rotate / lock out other apps").
       2. **Discovery:** use the cloud **`getAllDevices`** endpoint (POST username+apiKey → gateway +
@@ -289,28 +333,25 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
 
 ---
 
-## 🎬 Demo site — `demo.boatrvguardian.com` (mock mode) + strip mock mode from the real apps
+## 🎬 Demo site — `demo.boatrvguardian.com` (mock mode) — BUILT 2026-07-07, owner deploy pending
 
-Public, no-login showcase of the full app driven by fake sensors, so new users can explore
-functionality before buying/installing anything.
+Public, no-login showcase of the full app driven by fake sensors. **Built end-to-end** (#109/#110/#112):
 
-- [ ] **Build a demo/mock data layer** — a full set of **fake sensors + valve** with simulated live
-      telemetry and working (no-op) controls, exercising every screen: a LinkTap **valve** (flow /
-      volume / battery, start/stop, plans), a **flood** sensor (with a scripted alarm → auto-shutoff
-      demo), **shore power**, **house + engine battery** voltage, **temp/humidity**. Feed it through the
-      same widgets (no forked UI): a `DEMO`-gated data source that stands in for the LinkTap/Shelly
-      poll + the Firestore `onSnapshot` reads. Seed believable history so charts/trends render.
-- [ ] **Gate it behind a build-time flag** (e.g. `VITE_DEMO=1`) so mock mode is **compiled OUT of the
-      production web app and the native apps** — the real apps never ship it. NOTE: there is **no
-      existing "mock mode"** to remove today (only `MOCK_COUPONS` in `utils/billing.ts`, which is the
-      unrelated Stripe-placeholder coupon flow) — so this is "build it demo-only-gated," not "strip an
-      existing feature." Auto-skip auth/onboarding in demo builds (drop straight into a seeded vehicle,
-      read-only-ish; controls animate but change nothing real).
-- [ ] **Deploy the demo build to `demo.boatrvguardian.com`** (Cloudflare Pages, like the marketing
-      site; owner attaches the custom domain). Add a **"Try the live demo"** link from the marketing
-      site + the login screen → `demo.boatrvguardian.com`.
-- Keep the demo pinned to a "happy path" data script (occasional alert to show notifications), and a
-  banner making clear it's a demo with simulated data.
+- [x] **Demo/mock data layer** — fake fleet "Serenity (Demo)" (valve + shore power + house/engine battery
+      + bilge flood + cabin temp) driven by pure, deterministic `fn(t)` generators emitting the SAME
+      `sensorState` doc shapes the worker writes, fed through the real widgets (no UI fork). Seeded history,
+      scripted flood → auto-shutoff → alert incident, "🎬 Demo" banner. Files: `utils/demoTelemetry.ts`,
+      `utils/demoFleet.ts`, `utils/demoSeed.ts`, `hooks/useDemoScenario.ts`.
+- [x] **Build-flag gated** — `__DEMO__` (vite `define`, `--mode demo`) constant-folds to false in every
+      normal build, so the fake fleet + generators are **tree-shaken out of the production web app and the
+      native apps** (grep-verified). `dev:demo` / `build:demo` npm scripts. "Try the live demo" link on the
+      real login screen → `demo.boatrvguardian.com`.
+- [x] **Deploy workflow** — `deploy-demo.yml` (mirrors deploy-dashboard, builds `--mode demo`, publishes to
+      a `boat-rv-guardian-demo` Pages project), **gated on repo var `DEMO_DEPLOY_ENABLED`** so it cleanly
+      skips until enabled.
+- [ ] **OWNER (Cloudflare-gated):** (1) create the `boat-rv-guardian-demo` Cloudflare Pages project;
+      (2) attach `demo.boatrvguardian.com`; (3) set repo variable `DEMO_DEPLOY_ENABLED=true`. Then every
+      dashboard change auto-deploys the demo.
 
 ## 🧊 Deferred by choice (parked with a reason — not blocked, just low value now)
 
