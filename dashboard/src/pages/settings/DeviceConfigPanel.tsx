@@ -246,8 +246,9 @@ export default function DeviceConfigPanel({
                                 <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Enable Auto-Guard Flooding Sentry for this valve</span>
                               </label>
 
-                              {/* Quick Open default cap — the limit the valve's one-tap "Open Valve Now"
-                                  uses. The valve NEVER opens without a limit; this just sets the default. */}
+                              {/* Auto-limit externally-started opens — if someone opens this valve from
+                                  its physical button (or the LinkTap app), the app caps it at this max
+                                  volume so it can't run unbounded. The valve NEVER runs without a limit. */}
                               {(() => {
                                 const imperial = volUnit === 'Gallons';
                                 const capL = device.defaultCapVolumeL ?? 100;
@@ -258,25 +259,16 @@ export default function DeviceConfigPanel({
                                       <input type="checkbox" checked={device.applyDefaultCap !== false}
                                         onChange={(e) => { updateDevice(device.id, { applyDefaultCap: e.target.checked }); setDevices(getDevices()); }}
                                         style={{ width: '18px', height: '18px', accentColor: 'var(--accent-cyan)', cursor: 'pointer' }} />
-                                      <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Apply a default limit on “Open Valve Now”</span>
+                                      <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>Auto-limit externally-started opens</span>
                                     </label>
                                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                                      {device.applyDefaultCap !== false
-                                        ? 'One-tap open uses the limit below.'
-                                        : 'One-tap open uses your Normal Run limit instead (still capped — the valve never opens without a limit).'}
+                                      When the valve is opened from its physical button or the LinkTap app, cap it at the max volume below so it can't run unbounded.
                                     </div>
                                     {device.applyDefaultCap !== false && (
-                                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                                        <div>
-                                          <label className="form-label">Max Duration (mins)</label>
-                                          <input type="number" min="1" className="form-input" value={device.defaultCapMins ?? 30}
-                                            onChange={(e) => { updateDevice(device.id, { defaultCapMins: Math.max(1, Number(e.target.value)) }); setDevices(getDevices()); }} />
-                                        </div>
-                                        <div>
-                                          <label className="form-label">Volume Limit ({volUnit})</label>
-                                          <input type="number" min="1" className="form-input" value={Number(capVolDisplay.toFixed(imperial ? 1 : 0))}
-                                            onChange={(e) => { const disp = Math.max(1, Number(e.target.value)); const liters = imperial ? disp * 3.78541 : disp; updateDevice(device.id, { defaultCapVolumeL: Math.round(liters) }); setDevices(getDevices()); }} />
-                                        </div>
+                                      <div style={{ maxWidth: '220px' }}>
+                                        <label className="form-label">Max Volume ({volUnit})</label>
+                                        <input type="number" min="1" className="form-input" value={Number(capVolDisplay.toFixed(imperial ? 1 : 0))}
+                                          onChange={(e) => { const disp = Math.max(1, Number(e.target.value)); const liters = imperial ? disp * 3.78541 : disp; updateDevice(device.id, { defaultCapVolumeL: Math.round(liters) }); setDevices(getDevices()); }} />
                                       </div>
                                     )}
                                   </div>

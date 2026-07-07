@@ -9,7 +9,8 @@ import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
-import { resolveQuickOpenCap } from '../utils/quickOpen';
+import { externalOpenCapLiters } from '../utils/quickOpen';
+import { isLocalMode } from '../utils/userScope';
 
 const APP_VERSION = '1.0.62';
 
@@ -140,6 +141,14 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const [autoRestartNormal, setAutoRestartNormal] = useState(() => localStorage.getItem(`lt_auto_restart_${deviceId}`) === 'true');
   const [targetDuration, setTargetDuration] = useState(() => Number(localStorage.getItem(`lt_target_dur_${deviceId}`) || '0'));
   const [targetVolume, setTargetVolume] = useState(() => Number(localStorage.getItem(`lt_target_vol_${deviceId}`) || '0'));
+
+  // Auto-Restart (Loop) is an APP-DRIVEN loop — the app must stay open to re-issue the run when a cycle
+  // ends. That only makes sense where there's no server-side scheduling: local-only mode and the Free
+  // plan. On paid plans it's hidden (and the loop logic is gated off) so users don't rely on a fragile
+  // app-open loop. A ref so the poll closure reads the current value.
+  const autoRestartAvailable = isLocalMode(localStorage) || (localStorage.getItem('tier') || '') === 'free';
+  const autoRestartAvailableRef = useRef(autoRestartAvailable);
+  autoRestartAvailableRef.current = autoRestartAvailable;
 
   // Listen to global settings_updated events to sync Cloud changes down to local state
   useEffect(() => {
@@ -574,7 +583,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         // NOTE: Auto-restart is driven entirely by the app — it only loops while the app is open
         // and polling. TODO(future): move this to a cloud worker so it can watch the device and
         // restart the Normal Run timer even when the app is closed.
-        if (stateRef.current.isWatering && !newIsWatering && stateRef.current.autoRestartNormal) {
+        if (stateRef.current.isWatering && !newIsWatering && stateRef.current.autoRestartNormal && autoRestartAvailableRef.current) {
           const naturalExpiration = stateRef.current.remainDuration <= (effectiveInterval + 15);
           if (manualStopTriggeredRef.current || !naturalExpiration) {
             addLog('info', 'Valve closed manually before timer expired. Auto-restart skipped.');
@@ -636,6 +645,16 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                     console.warn('Background cloud fetch for limits failed', e);
                 });
             }
+        }
+
+        // Externally-started open (physical button on the valve, or the LinkTap app): if it's watering
+        // with no volume limit we know of and WE didn't start this cycle, apply the per-valve max-volume
+        // safety cap so a manual open can't run unbounded. The software cutoff below then enforces it.
+        // (A cloud-discovered limit above would already have set targetVolume, making this a no-op.)
+        if (newIsWatering && stateRef.current.targetVolume === 0 && expectedWateringStateRef.current !== true) {
+           const capL = externalOpenCapLiters(device);
+           setTargetVolume(capL);
+           addLog('warning', `Externally-started run detected — applying a ${capL} L max-volume safety cap.`);
         }
 
         const currentVolume = Number(data.volume ?? data.vol ?? 0);
@@ -949,7 +968,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                 <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
                 <line x1="22" y1="11" x2="22" y2="13"></line>
               </svg>
-              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: battery < 15 ? 'var(--accent-red)' : '#fff' }}>{battery}%</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: battery < 15 ? 'var(--accent-red)' : '#fff' }}>{battery > 0 ? `${battery}%` : '—'}</span>
             </div>
 
             {/* Signal Strength */}
@@ -960,17 +979,21 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                 <path d="M8.58 16.14a7 7 0 0 1 6.83 0"></path>
                 <line x1="12" y1="20" x2="12.01" y2="20"></line>
               </svg>
-              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{isRfLinked ? `LINK OK (${signal}%)` : 'LINK STUCK'}</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>{isRfLinked ? (signal > 0 ? `LINK OK (${signal}%)` : 'LINK OK') : 'LINK STUCK'}</span>
             </div>
 
             {/* Connection badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.03)', padding: '6px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
               <span className={`status-dot ${connectionStatus === 'connected' ? 'online' : connectionStatus}`}></span>
               <span style={{ fontSize: '0.8rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
-                {connectionStatus === 'connected' ?
-                   (isCloudPollingActive && isLocalPollingActive ? 'CLOUD & LOCAL CONNECTED' :
-                    isCloudPollingActive ? 'CLOUD ONLY CONNECTED' :
-                    isLocalPollingActive ? 'LOCAL ONLY CONNECTED' : 'CONNECTED') :
+                {connectionStatus === 'connected' ? (() => {
+                   // "Local" only counts when a gateway IP is actually set (polling flag alone isn't a
+                   // connection); "cloud" only when we have an API key. Fixes the false
+                   // "CLOUD & LOCAL CONNECTED" when no local IP has been entered yet.
+                   const localOn = isLocalPollingActive && !!gatewayIp;
+                   const cloudOn = isCloudPollingActive && !!cloudApiKey;
+                   return cloudOn && localOn ? 'CLOUD & LOCAL CONNECTED' : cloudOn ? 'CLOUD CONNECTED' : localOn ? 'LOCAL CONNECTED' : 'CONNECTED';
+                 })() :
                  connectionStatus === 'connecting' ? 'CONNECTING...' : 'DISCONNECTED'}
               </span>
             </div>
@@ -1186,31 +1209,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
           {/* Main Controls Console */}
           <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
-            {/* One-tap Open — always capped. Uses the per-valve default limit (Settings → Devices), or
-                the Normal Run limit when the default cap is turned off. resolveQuickOpenCap guarantees
-                a positive duration+volume — there is no uncapped open. */}
-            {(() => {
-              const nrDurationMins = normalRunDaily ? 1439 : (normalRunHours * 60) + normalRunMinutes;
-              const nrVolL = unitSystem === 'imperial' ? normalRunVolume / 0.264172 : normalRunVolume;
-              const cap = resolveQuickOpenCap(device, { durationMins: nrDurationMins, volumeLiters: nrVolL });
-              const capVolDisplay = unitSystem === 'imperial' ? cap.volumeLiters * 0.264172 : cap.volumeLiters;
-              return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  <button
-                    disabled={isWatering || !!isCommandLoading}
-                    onClick={() => executeStartCommand(cap.durationMins, cap.volumeLiters)}
-                    className="btn-primary"
-                    style={{ width: '100%', padding: '14px', fontSize: '1rem', fontWeight: 700, background: isWatering ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #06b6d4, #0891b2)', color: isWatering ? '#888' : '#fff' }}
-                  >
-                    {isCommandLoading === 'start' ? '⏳ OPENING…' : (isCommandLoading === 'stop' ? '⏳ STOPPING…' : (isWatering ? '🛑 STOP CURRENT CYCLE FIRST' : '💧 Open Valve Now'))}
-                  </button>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                    Opens with a {device.applyDefaultCap !== false ? 'default' : 'Normal Run'} limit of {cap.durationMins} min / {capVolDisplay.toFixed(0)} {volUnit}. Adjust in Settings → Devices → Configuration.
-                  </div>
-                </div>
-              );
-            })()}
-
             {/* Normal Run Mode */}
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1219,20 +1217,28 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
               <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)', marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '8px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Configured Target Time:</span>
-                  <span style={{ fontWeight: 'bold' }}>{normalRunDaily ? 'Daily (23h 59m)' : `${normalRunHours} hr ${normalRunMinutes} min`}</span>
+                  <span style={{ fontWeight: 'bold' }}>{normalRunDaily ? 'Daily' : `${normalRunHours} hr ${normalRunMinutes} min`}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '8px' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Configured Volume Limit:</span>
                   <span style={{ fontWeight: 'bold' }}>{normalRunVolume} {volUnit}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>Auto Restart (Loop):</span>
-                  <button
-                    onClick={() => setShowAutoRestartModal(true)}
-                    title="Tap to change"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', color: autoRestartNormal ? 'var(--accent-cyan)' : 'var(--text-muted)' }}
-                  >{autoRestartNormal ? 'ENABLED' : 'DISABLED'} ▾</button>
-                </div>
+                {autoRestartAvailable ? (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Auto Restart (Loop):</span>
+                    <button
+                      onClick={() => setShowAutoRestartModal(true)}
+                      title="Tap to change"
+                      style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '3px 10px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', color: autoRestartNormal ? 'var(--accent-cyan)' : 'var(--text-muted)' }}
+                    >{autoRestartNormal ? 'ENABLED' : 'DISABLED'} ▾</button>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>
+                    🔁 Auto-Restart (Loop) isn't shown on your plan — it's an app-driven loop that only runs
+                    while this app stays open, so it's offered only in local-only mode and on the Free plan.
+                    To repeat a run hands-free, set a recurring schedule on the gateway in the LinkTap app.
+                  </div>
+                )}
               </div>
               <button
                 disabled={isWatering || !!isCommandLoading}
