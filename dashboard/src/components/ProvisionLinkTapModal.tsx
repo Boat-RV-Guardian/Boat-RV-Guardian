@@ -130,9 +130,32 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
     }
   };
 
-  const handleCreateDevice = () => {
+  const handleCreateDevice = async () => {
     const device = availableDevices.find(d => d.id === selectedDeviceId);
     if (!device) return;
+
+    // Configure the vehicle's LinkTap connection up front — everything the Advanced Options page's
+    // "Retrieve Devices from Cloud" + Connect would have done, so onboarding is one pass:
+    //  - gateway + TapLinker IDs (from the getAllDevices data we already fetched),
+    //  - cloud controller ON (creds were just validated by getApiKey / device fetch),
+    //  - the gateway's LAN IP via local discovery where the platform supports it (Tauri desktop;
+    //    Android has no LAN-scan path yet — the widget's cloud/server path works without it).
+    // Never overwrite values the user already set. Written to localStorage BEFORE addDevice so its
+    // settings_updated dispatch rehydrates the Settings page's state with these values.
+    if (!localStorage.getItem('lt_gateway_id')) localStorage.setItem('lt_gateway_id', device.gatewayId);
+    const primary = localStorage.getItem('lt_device_id') || '';
+    if (!primary) localStorage.setItem('lt_device_id', device.id);
+    else if (primary !== device.id && !localStorage.getItem('lt_device_id_2')) localStorage.setItem('lt_device_id_2', device.id);
+    localStorage.setItem('lt_is_cloud_polling', 'true');
+    if (isTauriEnv() && !localStorage.getItem('lt_gateway_ip')) {
+      try {
+        setStatusMessage({ text: 'Looking for your gateway on this network…', type: 'info' });
+        const { invoke } = await import('@tauri-apps/api/core');
+        const found = await invoke<string[]>('discover_gateway');
+        if (found && found[0]) localStorage.setItem('lt_gateway_ip', found[0]);
+      } catch { /* best-effort — local control can be configured later */ }
+      setStatusMessage(null);
+    }
 
     addDevice({
       id: 'brv_lt_' + Math.random().toString(36).substr(2, 9),
@@ -246,7 +269,8 @@ export default function ProvisionLinkTapModal({ onClose }: { onClose: () => void
             <div style={{ fontSize: '4rem', marginBottom: '10px' }}>✅</div>
             <h3 style={{ color: '#10b981', margin: '0 0 10px 0' }}>Valve Added!</h3>
             <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Your LinkTap Valve has been successfully added to this vehicle. You can configure its specific settings in the Configuration tab.
+              Your LinkTap Valve has been added and connected: cloud control is on and the gateway &amp;
+              valve IDs are configured. Fine-tune it any time in Settings → Devices → Configuration.
             </p>
             <button className="btn-primary" onClick={onClose} style={{ width: '100%', padding: '12px' }}>Done</button>
           </div>
