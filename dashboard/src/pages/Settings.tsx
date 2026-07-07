@@ -177,7 +177,8 @@ export default function Settings({ user }: { user: any }) {
       const key = await linkTapGetApiKey(cloudUsername.trim(), cloudPassword, replace);
       setCloudApiKey(key);
       setCloudPassword('');
-      setIsCloudPollingActive(false);
+      // Signing in IS connecting — turn the cloud data source on (no separate Connect button now).
+      setIsCloudPollingActive(true);
       setKeyMsg({ text: 'Signed in to LinkTap Cloud.', type: 'success' });
     } catch (e: any) {
       setKeyMsg({ text: e?.message || 'Could not sign in to LinkTap Cloud.', type: 'error' });
