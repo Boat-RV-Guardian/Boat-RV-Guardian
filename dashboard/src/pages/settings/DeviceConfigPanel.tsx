@@ -11,6 +11,7 @@
 
 import type { Dispatch, SetStateAction } from 'react';
 import type { DeviceConfig } from '../../utils/VehicleManager';
+import DeviceScanPanel from '../../components/DeviceScanPanel';
 
 type DevicePanelMsg = { id: string; text: string; ok: boolean } | null;
 
@@ -123,6 +124,10 @@ export default function DeviceConfigPanel({
                                 style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--accent-emerald)' }} />
                             </label>
                           </div>
+
+                          {/* Health check — scans for the misconfigurations we've hit on hardware
+                              (voltmeter missing, no password, stale webhooks/IP, LinkTap config). */}
+                          <DeviceScanPanel device={device} host={device.type === 'shelly_sensor' ? (deviceLocalHost(device) || undefined) : undefined} />
 
                           {/* Firmware (Shelly devices) */}
                           {device.type === 'shelly_sensor' && (
