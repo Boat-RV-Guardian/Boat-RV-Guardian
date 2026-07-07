@@ -1,15 +1,17 @@
 // "🩺 Scan for issues" — per-device health check inside the Configuration ⚙️ panel. Runs the
 // deviceDiagnostics scan (reachability, password, voltmeter, webhook health, IP drift, LinkTap
-// config) and renders the findings. Self-contained on purpose: the scan is device-scoped and touches
-// none of Settings' state, so DeviceConfigPanel stays presentational — it just mounts this with the
-// device + resolved local host.
+// config), renders the findings, and offers one-tap FIXES for the ones the app can remediate
+// itself (each fix maps to an existing, proven helper — no new device-mutation paths). After a fix
+// it automatically rescans so the finding visibly flips to ✅. Self-contained on purpose: the scan
+// is device-scoped and touches none of Settings' state, so DeviceConfigPanel stays presentational.
 
 import { useState } from 'react';
 import type { DeviceConfig } from '../utils/VehicleManager';
-import { scanDevice, type DeviceIssue } from '../utils/deviceDiagnostics';
-import { shellyRpc } from '../utils/shellyRpc';
-import { updateDevice } from '../utils/VehicleManager';
+import { scanDevice, type DeviceIssue, type FixAction } from '../utils/deviceDiagnostics';
+import { shellyRpc, shellyChangePassword, enableShellyVoltmeter, refreshCloudShellyWebhooks } from '../utils/shellyRpc';
+import { updateDevice, getActiveVehicleId } from '../utils/VehicleManager';
 import { DEFAULT_WORKER_URL } from '../utils/configSync';
+import { ensureWebhookSecret } from '../utils/webhookSecret';
 import { auth } from '../services/firebase';
 
 const SEVERITY_UI: Record<DeviceIssue['severity'], { icon: string; color: string }> = {
@@ -19,8 +21,12 @@ const SEVERITY_UI: Record<DeviceIssue['severity'], { icon: string; color: string
   ok: { icon: '✅', color: 'var(--accent-emerald)' },
 };
 
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export default function DeviceScanPanel({ device, host }: { device: DeviceConfig; host?: string }) {
   const [scanning, setScanning] = useState(false);
+  const [fixing, setFixing] = useState<FixAction | null>(null);
+  const [fixMsg, setFixMsg] = useState<string | null>(null);
   const [issues, setIssues] = useState<DeviceIssue[] | null>(null);
 
   const runScan = async () => {
@@ -55,7 +61,48 @@ export default function DeviceScanPanel({ device, host }: { device: DeviceConfig
     }
   };
 
+  // One-tap remediation. Each action reuses the exact helper the normal flows use (Settings
+  // password push, voltmeter enable, webhook self-heal) so a Fix can't diverge from them.
+  const runFix = async (action: FixAction) => {
+    if (!host && device.type === 'shelly_sensor') return;
+    setFixing(action);
+    setFixMsg(null);
+    const password = localStorage.getItem('sh_local_password') || undefined;
+    const call = (m: string, p: any) => shellyRpc(host!, m, p, password);
+    try {
+      let rescanDelayMs = 1500; // give the device a beat before re-probing
+      if (action === 'set_password') {
+        const vehiclePw = localStorage.getItem('sh_local_password') || '';
+        if (!vehiclePw) throw new Error('This vehicle has no Shelly local password yet — set one in Settings → General first.');
+        setFixMsg('Setting the vehicle password on the device…');
+        await shellyChangePassword(host!, device.shellyDeviceId || '', vehiclePw, vehiclePw);
+      } else if (action === 'enable_voltmeter') {
+        setFixMsg('Enabling the voltmeter — the device reboots to activate it…');
+        const { rebooted } = await enableShellyVoltmeter(call, { reboot: true });
+        if (rebooted) rescanDelayMs = 15000; // wait out the reboot before re-probing
+      } else if (action === 'reregister_webhooks') {
+        const vid = getActiveVehicleId();
+        if (!vid) throw new Error('No active vehicle.');
+        setFixMsg('Re-registering cloud webhooks…');
+        const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
+        const key = localStorage.getItem('sh_webhook_url') ? (localStorage.getItem('sh_webhook_key') || '') : '';
+        const prior = device.webhookCloudBase && device.webhookCloudBase !== base ? device.webhookCloudBase : undefined;
+        await refreshCloudShellyWebhooks(call, base, vid, device.shellyDeviceId || '', prior, key, ensureWebhookSecret());
+        if (device.webhookCloudBase !== base) updateDevice(device.id, { webhookCloudBase: base });
+      }
+      setFixMsg(action === 'enable_voltmeter' ? 'Applied — waiting for the device to reboot, then rescanning…' : 'Applied — rescanning…');
+      await wait(rescanDelayMs);
+      await runScan();
+      setFixMsg(null);
+    } catch (e: any) {
+      setFixMsg(`Fix failed: ${e?.message || e}`);
+    } finally {
+      setFixing(null);
+    }
+  };
+
   const problems = (issues || []).filter((i) => i.severity !== 'ok');
+  const busy = scanning || fixing !== null;
 
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -70,20 +117,29 @@ export default function DeviceScanPanel({ device, host }: { device: DeviceConfig
                 : `${problems.length} issue${problems.length === 1 ? '' : 's'} found.`}
           </div>
         </div>
-        <button className="btn-secondary" disabled={scanning} onClick={runScan}
+        <button className="btn-secondary" disabled={busy} onClick={runScan}
           style={{ padding: '6px 12px', fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
           {scanning ? 'Scanning…' : '🩺 Scan for issues'}
         </button>
       </div>
+      {fixMsg && (
+        <div style={{ fontSize: '0.78rem', color: fixMsg.startsWith('Fix failed') ? '#ef4444' : 'var(--accent-cyan)' }}>{fixMsg}</div>
+      )}
       {issues && issues.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {issues.map((iss, idx) => (
             <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: '0.8rem' }}>
               <span aria-hidden>{SEVERITY_UI[iss.severity].icon}</span>
-              <div>
+              <div style={{ flex: 1 }}>
                 <span style={{ fontWeight: 700, color: SEVERITY_UI[iss.severity].color }}>{iss.title}</span>
                 <span style={{ color: 'var(--text-secondary)' }}> — {iss.detail}</span>
               </div>
+              {iss.fix && iss.severity !== 'ok' && (
+                <button className="btn-primary" disabled={busy} onClick={() => runFix(iss.fix!.action)}
+                  style={{ padding: '4px 10px', fontSize: '0.72rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {fixing === iss.fix.action ? 'Fixing…' : `🔧 ${iss.fix.label}`}
+                </button>
+              )}
             </div>
           ))}
         </div>

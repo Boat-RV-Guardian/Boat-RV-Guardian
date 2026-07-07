@@ -14,11 +14,16 @@ import type { DeviceConfig } from './VehicleManager';
 
 export type IssueSeverity = 'error' | 'warn' | 'info' | 'ok';
 
+/** Auto-remediations the scan panel knows how to run (each maps to an existing, proven helper). */
+export type FixAction = 'set_password' | 'enable_voltmeter' | 'reregister_webhooks';
+
 export interface DeviceIssue {
   severity: IssueSeverity;
   title: string;
   /** One-line explanation + what to do about it. */
   detail: string;
+  /** Present when the app can fix this itself — renders a Fix button next to the finding. */
+  fix?: { action: FixAction; label: string };
 }
 
 export interface ShellyProbe {
@@ -51,7 +56,8 @@ export function classifyShellyProbe(device: DeviceConfig, probe: ShellyProbe, ct
       issues.push({
         severity: 'warn',
         title: 'No local password set',
-        detail: 'Anyone on this network can control the device. Re-provision it, or push the vehicle password from Settings → General → Shelly Local Password → Edit/Save.',
+        detail: 'Anyone on this network can control the device.',
+        fix: { action: 'set_password', label: 'Set vehicle password' },
       });
     } else if (probe.info.auth_en === true) {
       issues.push({ severity: 'ok', title: 'Local password set', detail: 'Device requires authentication on its local API.' });
@@ -65,7 +71,8 @@ export function classifyShellyProbe(device: DeviceConfig, probe: ShellyProbe, ct
       issues.push({
         severity: 'error',
         title: 'Voltmeter not enabled',
-        detail: 'The 0-30 V voltmeter peripheral is not active, so no voltage is measured. Use "🔌 Enable voltmeter" below (the device reboots to activate it).',
+        detail: 'The 0-30 V voltmeter peripheral is not active, so no voltage is measured.',
+        fix: { action: 'enable_voltmeter', label: 'Enable voltmeter (reboots device)' },
       });
     } else {
       issues.push({ severity: 'ok', title: 'Voltmeter enabled', detail: 'Voltage measurement is active.' });
@@ -98,21 +105,24 @@ export function classifyShellyProbe(device: DeviceConfig, probe: ShellyProbe, ct
       issues.push({
         severity: 'error',
         title: 'Cloud alerts not registered',
-        detail: `No webhook points at ${wantHost}, so floods/telemetry never reach the cloud. Re-add the device, or open the app on this LAN so the self-heal re-registers it.`,
+        detail: `No webhook points at ${wantHost}, so floods/telemetry never reach the cloud.`,
+        fix: { action: 'reregister_webhooks', label: 'Register cloud alerts' },
       });
     } else {
       if (ctx.webhookSecret && !cloudUrls.some((u) => u.includes('&k='))) {
         issues.push({
           severity: 'error',
           title: 'Webhooks missing the auth secret',
-          detail: 'The hosted worker rejects webhooks without the per-vehicle &k= secret (SEC-4) — events are being dropped. Re-register via re-add or the on-LAN self-heal.',
+          detail: 'The hosted worker rejects webhooks without the per-vehicle &k= secret (SEC-4) — events are being dropped.',
+          fix: { action: 'reregister_webhooks', label: 'Re-register webhooks' },
         });
       }
       if (!cloudUrls.some((u) => u.includes('&ip='))) {
         issues.push({
           severity: 'info',
           title: 'Webhooks predate the LAN-IP tracker',
-          detail: 'Hooks lack &ip=, so the cloud can\'t follow this device through DHCP changes yet. The on-LAN self-heal upgrades them automatically.',
+          detail: 'Hooks lack &ip=, so the cloud can\'t follow this device through DHCP changes yet.',
+          fix: { action: 'reregister_webhooks', label: 'Upgrade webhooks' },
         });
       }
       // A flood sensor without alarm_off never clears back to "dry" in the app.
@@ -122,7 +132,8 @@ export function classifyShellyProbe(device: DeviceConfig, probe: ShellyProbe, ct
           issues.push({
             severity: 'warn',
             title: 'No flood.alarm_off webhook',
-            detail: 'Flood alerts would never clear back to dry in the cloud. Re-register the webhooks to add it.',
+            detail: 'Flood alerts would never clear back to dry in the cloud.',
+            fix: { action: 'reregister_webhooks', label: 'Re-register webhooks' },
           });
         }
       }
