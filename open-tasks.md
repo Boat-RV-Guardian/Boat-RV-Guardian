@@ -362,9 +362,10 @@ Public, no-login showcase of the full app driven by fake sensors. **Built end-to
 - [~] **Task 16 — relocate notification toggles + SMS prefs into Alerts** and remove the Settings→Account
       sign-in/sync duplication. Blocked on the `useSettingsState` extraction above; the Alerts page already
       links to notification prefs, so the user-facing need is met.
-- [ ] **Task 14 — Account portal "sharing overview"** (read-only mirror of who has access per vehicle).
-      Redundant with Settings → Friends and would need a live Firestore listener that breaks Account's
-      deliberately Firebase-free/test-light design.
+- [~] **Task 14 — Account portal "sharing overview" — WON'T DO (owner decision 2026-07-07).** The product
+      only needs **per-vehicle sharing** (Settings → Friends: admin/control/monitor roles), NOT an
+      account-level sharing overview. Dropped, not deferred. (Also was redundant with Friends and would
+      have needed a live Firestore listener that breaks Account's deliberately Firebase-free design.)
 - [x] **Task 14 — edit password / SSO** — DONE (see the Account / auth section above; in-app + portal).
 - [ ] **Gateway-free / zero-third-party-cloud valve = Shelly + motorized ball valve.** LinkTap valves
       speak proprietary sub-GHz RF and **cannot exist without a LinkTap gateway** (hardware fact; no
