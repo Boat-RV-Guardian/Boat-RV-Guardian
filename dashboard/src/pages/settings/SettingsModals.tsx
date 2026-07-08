@@ -1,12 +1,12 @@
-// Confirmation/entry dialogs for Settings (Remove Device, New Vehicle, Stop-local-server-on-switch,
-// Change local password, Delete Vehicle). Extracted from Settings.tsx as part of the Task 3 split.
+// Confirmation/entry dialogs for Settings (Remove Device, New Vehicle, Change local password,
+// Delete Vehicle). Extracted from Settings.tsx as part of the Task 3 split.
 // Pure presentational: each dialog's open flag, state, and confirm/cancel handlers come in as props.
 // The provisioning modals (ProvisionShelly/ProvisionLinkTap) stay in Settings — they own no shared shell.
 
 import type { ReactNode } from 'react';
 import type { DeviceConfig } from '../../utils/VehicleManager';
 
-// Shared full-screen blurred overlay all five dialogs use.
+// Shared full-screen blurred overlay all the dialogs use.
 function ModalOverlay({ children }: { children: ReactNode }) {
   return (
     <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)' }}>
@@ -31,10 +31,6 @@ interface Props {
   setNewVehicleType: (v: 'boat' | 'rv') => void;
   onCancelNewVehicle: () => void;
   onConfirmNewVehicle: () => void;
-  // Switch vehicle while local server runs
-  pendingSwitchVid: string | null;
-  onCancelSwitch: () => void;
-  onConfirmSwitch: () => void;
   // Change Shelly local password
   showPwChangeModal: boolean;
   pwChangeBusy: boolean;
@@ -119,27 +115,6 @@ export default function SettingsModals(p: Props) {
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <button className="btn-secondary" onClick={p.onCancelNewVehicle} style={{ flex: 1 }}>Cancel</button>
               <button className="btn-primary" onClick={p.onConfirmNewVehicle} style={{ flex: 1 }} disabled={!p.newVehicleNameInput.trim() || !p.newVehicleType}>Create</button>
-            </div>
-          </div>
-        </ModalOverlay>
-      )}
-
-      {/* Switching vehicles while the local server runs — confirm it will be stopped */}
-      {p.pendingSwitchVid && (
-        <ModalOverlay>
-          <div className="glass-card" style={{ maxWidth: '420px', width: '90%' }}>
-            <h3 style={{ marginTop: 0, color: '#f59e0b' }}>Stop the local server?</h3>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-              The on-device local sensor server is running for this vehicle. Switching vehicles will
-              <strong> stop it</strong> — sleepy Shelly sensors won't be able to push events to this
-              device until you turn it back on. Continue?
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button className="btn-secondary" onClick={p.onCancelSwitch} style={{ flex: 1 }}>Cancel</button>
-              <button className="btn-primary" onClick={p.onConfirmSwitch}
-                style={{ flex: 1, background: '#f59e0b', borderColor: '#f59e0b' }}>
-                Stop &amp; switch
-              </button>
             </div>
           </div>
         </ModalOverlay>

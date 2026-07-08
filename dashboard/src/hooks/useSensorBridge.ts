@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { getDevices, updateDevice, getActiveVehicleId } from '../utils/VehicleManager';
 import { shellyRpc, refreshLocalShellyWebhooks } from '../utils/shellyRpc';
-import { LocalServer, isAndroidNative } from '../utils/localServer';
 
 const isTauriEnv = () =>
   typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
@@ -15,11 +14,10 @@ const invokeTauri = async (cmd: string, args?: any) => {
 /** Cache key for a Shelly's last known status — read by ShellyWidget on mount for instant state. */
 export const lastStatusKey = (deviceId: string) => `sh_last_status_${deviceId}`;
 
-/** The app's LAN IPv4 — Tauri (desktop) or the Android plugin — for building the local webhook URL. */
+/** The app's LAN IPv4 (Tauri desktop only) — for building the local webhook URL. */
 async function getAppLanIp(): Promise<string | null> {
   try {
     if (isTauriEnv()) return (await invokeTauri('get_local_ip')) as string;
-    if (isAndroidNative()) { const r = await LocalServer.getLocalIp(); return r?.ip || null; }
   } catch { /* ignore */ }
   return null;
 }
@@ -61,12 +59,13 @@ async function handleLocalEvent(p: { device?: string; event?: string; ip?: strin
 }
 
 /**
- * App-level bridge for sleepy-sensor local webhooks. Mounted once (in App) so it runs regardless of
- * which page is open. Desktop uses the Tauri axum listener; Android uses the native LocalServer
- * plugin (foreground service when "run in background" is enabled in Settings).
+ * App-level bridge for sleepy-sensor local webhooks — DESKTOP (Tauri) ONLY. Mounted once (in App) so
+ * it runs regardless of which page is open. The Tauri axum listener (always on, port 3030) emits
+ * 'shelly-local-event'; a desktop app on the boat's LAN gets sensor pushes with no internet. The
+ * Android in-app server + foreground service were removed 2026-07-08 (the phone app is a client, not
+ * a backend — Android gets alerts via FCM from the cloud worker instead).
  */
 export function useSensorBridge() {
-  // Desktop (Tauri): the axum listener emits 'shelly-local-event'.
   useEffect(() => {
     if (!isTauriEnv()) return;
     let unlisten: any;
@@ -75,44 +74,5 @@ export function useSensorBridge() {
       unlisten = await listen('shelly-local-event', (e: any) => handleLocalEvent(e?.payload || {}));
     })();
     return () => { if (unlisten) unlisten(); };
-  }, []);
-
-  // Android (Capacitor): start/stop the native LocalServer per the Settings "Local Server Options"
-  // toggles, and route its 'shellyLocalEvent' through the same handler.
-  useEffect(() => {
-    if (!isAndroidNative()) return;
-    let listenerHandle: { remove: () => void } | undefined;
-    let cancelled = false;
-    let lastEnabled: boolean | null = null;
-    let lastBackground: boolean | null = null;
-
-    const apply = async () => {
-      // Defaults OFF for new installs (opt-in local server; see open-tasks Task 5). main.tsx runs a
-      // one-time migration that sets this to 'true' for existing installs to preserve old behavior.
-      const enabled = localStorage.getItem('lt_local_server') === 'true';
-      const background = localStorage.getItem('lt_local_server_bg') === 'true';
-      if (enabled === lastEnabled && background === lastBackground) return;
-      lastEnabled = enabled; lastBackground = background;
-      try {
-        if (enabled) await LocalServer.start({ port: 3030, background });
-        else await LocalServer.stop();
-      } catch { /* plugin unavailable / start failed */ }
-    };
-
-    (async () => {
-      try {
-        const h = await LocalServer.addListener('shellyLocalEvent', (d) => handleLocalEvent(d));
-        if (cancelled) h.remove(); else listenerHandle = h;
-      } catch { /* ignore */ }
-      await apply();
-    })();
-
-    const onSettings = () => { apply(); };
-    window.addEventListener('settings_updated', onSettings);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('settings_updated', onSettings);
-      if (listenerHandle) listenerHandle.remove();
-    };
   }, []);
 }

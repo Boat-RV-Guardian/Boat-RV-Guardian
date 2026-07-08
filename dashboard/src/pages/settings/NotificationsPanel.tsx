@@ -1,6 +1,6 @@
 // Notifications & Alarms panel (Settings → General, inside Device Preferences). Extracted from
 // Settings.tsx as part of the Task 3 split. Pure presentational: state + persistence stay in
-// Settings; this takes value/onChange pairs (same pattern as LocalServerPanel).
+// Settings; this takes value/onChange pairs (same pattern as the other settings panels).
 
 export type AlarmSound = 'siren' | 'beep' | 'off';
 export type AlarmRepeat = 'once' | '5' | '15' | '30' | '60';

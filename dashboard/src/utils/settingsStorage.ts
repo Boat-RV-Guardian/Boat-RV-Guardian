@@ -18,8 +18,6 @@ export interface PersistedSettings {
   webhookUrl: string;
   webhookUser: string;
   webhookKey: string;
-  localServerEnabled: boolean;
-  localServerBackground: boolean;
   unitSystem: 'metric' | 'imperial';
   timeZone: string;
   normalRunHours: number;
@@ -94,8 +92,6 @@ export function readSettings(): PersistedSettings {
     webhookUrl: g('sh_webhook_url') || '',
     webhookUser: g('sh_webhook_user') || '',
     webhookKey: g('sh_webhook_key') || '',
-    localServerEnabled: g('lt_local_server') === 'true',
-    localServerBackground: g('lt_local_server_bg') === 'true',
     unitSystem: (g('lt_unit') as 'metric' | 'imperial') || 'imperial',
     timeZone: g('lt_tz') || resolvedDefaultTz(),
     normalRunHours: Number(g('lt_nr_hrs') || '0'),
@@ -173,8 +169,6 @@ export function writeSettings(s: PersistedSettings): void {
   localStorage.setItem('sh_webhook_url', s.webhookUrl.trim());
   localStorage.setItem('sh_webhook_user', s.webhookUser.trim());
   localStorage.setItem('sh_webhook_key', s.webhookKey.trim());
-  localStorage.setItem('lt_local_server', s.localServerEnabled.toString());
-  localStorage.setItem('lt_local_server_bg', s.localServerBackground.toString());
   localStorage.setItem('lt_unit', s.unitSystem);
   localStorage.setItem('lt_tz', s.timeZone);
   localStorage.setItem('lt_nr_hrs', s.normalRunHours.toString());
