@@ -106,7 +106,7 @@ const cidFor = (event: string, cidMap: Record<string, number>): number => cidMap
  * BLE), so this is transport-agnostic. Discovers supported events and points the relevant ones at
  * `${baseUrl}/api/shelly?vid=…&event=…` with the event's value(s) embedded. Returns the events created.
  */
-export async function registerShellyWebhooks(
+export function registerShellyWebhooks(
   call: (method: string, params: any) => Promise<any>,
   baseUrl: string,
   vid: string,
@@ -114,33 +114,10 @@ export async function registerShellyWebhooks(
   key = '',
   secret = '',
 ): Promise<string[]> {
-  let supported: string[] = [];
-  try {
-    const sup = await call('Webhook.ListSupported', {});
-    supported = sup?.hook_types || (sup?.types ? Object.keys(sup.types) : []) || [];
-  } catch { /* device may not support discovery */ }
-
-  const alertish = supported.filter((e) => WEBHOOK_EVENT_RE.test(e));
-  const events = (alertish.length ? alertish : supported).slice(0, 10);
-  const root = baseUrl.replace(/\/$/, '');
-  const dev = deviceId ? `&device=${encodeURIComponent(deviceId)}` : '';
-  // Instance API key for a self-hosted cloud server (?key=), and the per-vehicle webhook bearer secret
-  // (?k=, SEC-4) the hosted worker verifies. Both optional; a device may carry either/both.
-  const auth = key ? `&key=${encodeURIComponent(key)}` : '';
-  const perVehicle = secret ? `&k=${encodeURIComponent(secret)}` : '';
-
-  let cidMap: Record<string, number> = {};
-  try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
-
-  const created: string[] = [];
-  for (const event of events) {
-    const url = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${dev}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}${perVehicle}`;
-    try {
-      await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, urls: [url] });
-      created.push(event);
-    } catch { /* skip events that need a different cid/format */ }
-  }
-  return created;
+  // Same merge/cleanup engine as the poll self-heal (alertish-only, junk-hook cleanup, update-in-place
+  // on a re-provision instead of piling duplicates). Was a parallel Create-only copy that also carried
+  // the register-everything fallback bug.
+  return mergeShellyWebhooks(call, baseUrl, vid, deviceId, undefined, key, secret);
 }
 
 /**
@@ -159,7 +136,7 @@ async function mergeShellyWebhooks(
   priorBase: string | undefined,
   key: string,
   secret: string,
-): Promise<void> {
+): Promise<string[]> {
   const root = base.replace(/\/$/, '');
   const hostOf = (u: string) => { try { return new URL(u).host; } catch { return ''; } };
   const myHost = hostOf(root);
@@ -178,9 +155,13 @@ async function mergeShellyWebhooks(
     const sup = await call('Webhook.ListSupported', {});
     supported = sup?.hook_types || (sup?.types ? Object.keys(sup.types) : []) || [];
   } catch { /* device may not support discovery */ }
-  const alertish = supported.filter((e) => WEBHOOK_EVENT_RE.test(e));
-  const events = (alertish.length ? alertish : supported).slice(0, 10);
-  if (events.length === 0) return;
+  // ONLY alertish events — never a register-everything fallback. Every supported sensor exposes at
+  // least one alertish event once configured (flood.*, pm1.voltage_change, voltmeter.*, btn); a Uni
+  // whose voltmeter peripheral isn't live yet exposes ONLY input.* — the old "register all supported"
+  // fallback stuffed all 10 webhook slots with that junk (live hardware, 2026-07-08), leaving no room
+  // for the real hooks once the voltmeter appeared. Nothing alertish → register nothing (the poll
+  // self-heal re-runs this once the peripheral is enabled).
+  const events = supported.filter((e) => WEBHOOK_EVENT_RE.test(e)).slice(0, 10);
 
   let cidMap: Record<string, number> = {};
   try { cidMap = buildCidMap(await call('Shelly.GetStatus', {})); } catch { /* default cid 0 */ }
@@ -188,6 +169,21 @@ async function mergeShellyWebhooks(
   let hooks: any[] = [];
   try { const list = await call('Webhook.List', {}); hooks = list?.hooks || []; } catch { /* none */ }
 
+  // Cleanup pass: strip OUR urls from hooks for non-alertish events (the junk the old fallback
+  // registered), deleting a hook outright when no other listener's url remains — so devices already
+  // damaged in the field self-repair on their next poll/scan. Other listeners' urls are preserved.
+  for (const h of hooks) {
+    if (!h || WEBHOOK_EVENT_RE.test(h.event || '')) continue;
+    const urls: string[] = h.urls || [];
+    const others = urls.filter((u) => { const host = hostOf(u); return host && host !== myHost && host !== priorHost; });
+    if (others.length === urls.length) continue; // none of the urls are ours — not our hook to touch
+    try {
+      if (others.length === 0) await call('Webhook.Delete', { id: h.id });
+      else await call('Webhook.Update', { id: h.id, enable: true, event: h.event, name: h.name || 'brvg-local', urls: others });
+    } catch { /* leave it */ }
+  }
+
+  const ensured: string[] = [];
   for (const event of events) {
     const myUrl = `${root}/api/shelly?vid=${encodeURIComponent(vid)}${deviceId ? `&device=${encodeURIComponent(deviceId)}` : ''}&event=${encodeURIComponent(event)}${webhookValueParams(event)}${auth}${perVehicle}`;
     // Match our own prior entry for this event by HOST (query params like &k= rotate), so we update
@@ -205,8 +201,10 @@ async function mergeShellyWebhooks(
       } else {
         await call('Webhook.Create', { cid: cidFor(event, cidMap), enable: true, event, name: 'brvg-local', urls: [myUrl] });
       }
+      ensured.push(event);
     } catch { /* skip events that reject the cid/shape */ }
   }
+  return ensured;
 }
 
 // Ensure this app instance is a LOCAL-webhook target (the device pushes events straight to us over the
@@ -218,7 +216,7 @@ export const refreshLocalShellyWebhooks = (
   vid: string,
   deviceId = '',
   priorBase?: string,
-): Promise<void> => mergeShellyWebhooks(call, localBase, vid, deviceId, priorBase, '', '');
+): Promise<string[]> => mergeShellyWebhooks(call, localBase, vid, deviceId, priorBase, '', '');
 
 // Ensure the hosted/self-host WORKER is a webhook target (for off-LAN alerts + telemetry). Same merge
 // semantics; adds the self-host ?key= and per-vehicle SEC-4 ?k= secret. Re-running this on each poll is
@@ -231,7 +229,7 @@ export const refreshCloudShellyWebhooks = (
   priorBase?: string,
   key = '',
   secret = '',
-): Promise<void> => mergeShellyWebhooks(call, cloudBase, vid, deviceId, priorBase, key, secret);
+): Promise<string[]> => mergeShellyWebhooks(call, cloudBase, vid, deviceId, priorBase, key, secret);
 
 /**
  * Enable the Shelly Plus Uni's 0-30 V DC voltmeter. The Uni's onboard ADC has NO Voltmeter

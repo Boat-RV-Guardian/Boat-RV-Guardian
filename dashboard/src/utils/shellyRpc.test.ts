@@ -97,6 +97,37 @@ describe('registerShellyWebhooks', () => {
   });
 });
 
+describe('alertish-only registration + junk-hook cleanup (2026-07-08 Uni regression)', () => {
+  it('registers NOTHING on a pre-voltmeter Uni (only input.* supported) instead of filling slots', async () => {
+    const sh = fakeShelly({
+      supported: ['input.toggle_on', 'input.toggle_off', 'input.button_push', 'input.analog_change', 'input.count_measurement'],
+      status: { 'input:0': {}, sys: {} },
+    });
+    const events = await registerShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'veh1', 'uni1');
+    expect(events).toEqual([]);
+    expect(sh.created).toHaveLength(0); // the old fallback registered ALL supported events here
+  });
+
+  it('deletes OUR junk input.* hooks (old fallback damage) but keeps other listeners on them', async () => {
+    const sh = fakeShelly({
+      supported: ['voltmeter.measurement'], // voltmeter now live
+      status: { 'voltmeter:100': {} },
+      existingHooks: [
+        { id: 1, event: 'input.toggle_on', urls: ['https://api.boatrvguardian.com/api/shelly?vid=veh1&event=input.toggle_on'] }, // all ours → delete
+        { id: 2, event: 'input.button_push', urls: ['https://api.boatrvguardian.com/api/shelly?vid=veh1', 'http://10.0.0.9/api/shelly'] }, // shared → strip ours only
+        { id: 3, event: 'input.analog_change', urls: ['http://10.0.0.9/api/shelly'] }, // not ours → untouched
+      ],
+    });
+    await registerShellyWebhooks(sh.call, 'https://api.boatrvguardian.com', 'veh1', 'uni1');
+    expect(sh.deleted.map((d) => d.id)).toEqual([1]);
+    const stripped = sh.updated.find((u) => u.id === 2);
+    expect(stripped.urls).toEqual(['http://10.0.0.9/api/shelly']);
+    expect(sh.updated.find((u) => u.id === 3)).toBeUndefined();
+    // and the real voltmeter hook still gets created
+    expect(sh.created.find((c) => c.event === 'voltmeter.measurement')).toBeTruthy();
+  });
+});
+
 describe('refreshLocalShellyWebhooks merge semantics', () => {
   it('keeps other listeners but replaces our own stale (current+prior host) url', async () => {
     const sh = fakeShelly({

@@ -147,6 +147,51 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-07-08 — sites live + local-server removal + Uni provisioning saga (UNFINISHED — READ FIRST)
+
+Owner-present session, ended mid-hardware-repair. **All repos clean on `main`, 0 open PRs**, latest tag
+**v1.0.65** — ⚠️ but `main` is AHEAD of it (the webhook alertish-only fix is unreleased; cut **v1.0.66**
+after the Uni verify). **The immediate next action is in open-tasks.md → "🚨 ACTIVE — finish the Attic
+test Uni setup"** (device is mid-repair: no voltmeter, no hooks, no password; exact steps + manual
+fallback there).
+
+**Shipped this session:**
+- **account.boatrvguardian.com LIVE** (Pages project created + deployed; owner attached domain + Firebase
+  authorized domain). **demo.boatrvguardian.com LIVE** (same; repo var `DEMO_DEPLOY_ENABLED=true` set —
+  demo auto-deploys on every dashboard change now).
+- **SEC-4 CLOSED**: hosted worker was already permanently strict (multiTenant branch ignores the flag);
+  flipped self-host `WEBHOOK_AUTH_REQUIRED=true` (cloud-server, owner OK'd — no self-host users yet).
+- **Android in-app local server REMOVED** (#151, owner decision): phone = pure client (FCM alerts only);
+  the desktop Tauri listener (port 3030) stays — it's the offline flood-alert path. Java server/plugin/
+  foreground-service + Settings panel + `lt_local_server*` keys all deleted.
+- **BLE provisioning regression — three rounds on live hardware:** (1) #152 ported the #95 ordering to
+  BLE but enabling the voltmeter OVER BLE backfired two ways (pending-restart reboot killed the BLE
+  session before IP-learn; big GetStatus unreliable over GATT chunking); (2) #154 corrected it — BLE does
+  ONLY info/Wi-Fi/IP-learn (+ reconnect-up-to-3x on drop), Uni voltmeter/hooks/password happen post-join
+  over HTTP, failures show a "setup incomplete → 🩺 Scan" banner; (3) the webhook **alertish-only +
+  junk-cleanup** fix — the "no alertish events → register ALL supported" fallback filled all 10 slots
+  with input.* junk on a voltmeter-less Uni, from provisioning AND the poll self-heal. Now: only
+  WEBHOOK_EVENT_RE events are registered, and a cleanup pass strips our junk hooks (VERIFIED live:
+  10 → 0 after one poll). `registerShellyWebhooks` now delegates to `mergeShellyWebhooks` (was a
+  duplicate with the same bug). v1.0.64 + v1.0.65 released along the way.
+- **Backlog pruned** (#150): 30 → 19 open items; superseded/deferred-dead tasks deleted.
+
+**Gotchas learned (expensive — don't relearn):**
+- **THE big one: the owner's phone had Wi-Fi OFF the whole time** (LTE only). Every "device unreachable"
+  / silent provisioning failure / failed scan traced to this. Check `adb shell cmd wifi status` FIRST
+  when phone↔device HTTP fails; `adb shell svc wifi enable` fixes it. Consider an app-side "you're not
+  on Wi-Fi" check when local actions fail (discussed, not built).
+- **Local Android build pipeline (owner: STOP cutting GitHub releases per iteration)** — full commands in
+  the memory note [[brvg-local-android-build]]: Android Studio JBR as JAVA_HOME (no system JDK), gradle
+  `assembleRelease`, sign with `~/Documents/release.keystore` (SAME cert as CI — SHA-256 matches, so
+  `adb install -r` upgrades in place), `adb install -r`. ~2-3 min/iteration. `android/local.properties`
+  (gitignored) holds the SDK path. Release WebView logs NO JS console to logcat — debug via device
+  probes (curl the Shelly) + `wrangler tail brvg-cloud-worker` instead.
+- **Never do device RPCs over BLE beyond the minimum** — GATT framing chokes on big payloads
+  (GetStatus) and pending-restart flags turn Wifi.SetConfig into an instant reboot that kills the session.
+- The direct-push-to-main path is classifier-blocked in this environment — release bumps go branch→PR→
+  merge, then tag the squash commit.
+
 ## Session handoff — 2026-07-07 — demo site + LinkTap onboarding rework + valve UX + releases v1.0.50→v1.0.63 — READ FIRST
 
 Huge hands-on session with the owner live-testing on their **Android phone** and the **native macOS app**
