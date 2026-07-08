@@ -107,6 +107,9 @@ export async function bleScanWifi(deviceId: string): Promise<{ ssid: string; rss
   }
 }
 
+/** A Plus Uni needs its voltmeter PERIPHERAL linked before webhooks make sense (see bleProvision). */
+export const isShellyUni = (info: any): boolean => /uni/i.test(String(info?.app || info?.model || ''));
+
 /**
  * Provision a Shelly over BLE: read device info, (optionally) create the cloud webhook, then push
  * Wi-Fi credentials so it joins the user's network. Returns Shelly.GetDeviceInfo for type detection.
@@ -120,8 +123,27 @@ export async function bleProvision(
   try {
     const info = await rpcOnConnected(BleClient, deviceId, 'Shelly.GetDeviceInfo', {});
 
+    // Plus Uni: link the 0-30 V voltmeter PERIPHERAL over BLE, BEFORE the Wi-Fi join — the join's
+    // reboot activates it (reboot:false here, same as the Wi-Fi-AP path). This is the #95 ordering
+    // ported to BLE: previously the BLE path never enabled the voltmeter and registered webhooks
+    // against a device whose only events were input.* — which filled all 10 webhook slots with junk
+    // and left the device with no voltage telemetry (seen on live hardware 2026-07-08).
+    const uni = isShellyUni(info);
+    if (uni) {
+      opts.onProgress?.('Enabling voltmeter…');
+      try {
+        const { enableShellyVoltmeter } = await import('./shellyRpc');
+        await enableShellyVoltmeter((m, p) => rpcOnConnected(BleClient, deviceId, m, p), { reboot: false });
+      } catch (e) { console.log('[shellyBle] voltmeter enable over BLE failed (retried over HTTP after the join)', e); }
+    }
+
     // Register cloud-alert webhooks over BLE (while still connected) if configured + signed in.
-    if (opts.webhookBase && opts.vid) {
+    // NOT for a Uni — its voltmeter.* events don't exist until the post-join reboot activates the
+    // peripheral, so registering now would fill the slots with input.* junk. The modal registers the
+    // Uni's hooks over HTTP after the join instead. Flood sensors (which deep-sleep once provisioning
+    // ends, making post-join HTTP unreliable) keep this BLE-time registration — flood.* events exist
+    // out of the box.
+    if (opts.webhookBase && opts.vid && !uni) {
       opts.onProgress?.('Setting up cloud alerts…');
       try {
         const { registerShellyWebhooks } = await import('./shellyRpc');

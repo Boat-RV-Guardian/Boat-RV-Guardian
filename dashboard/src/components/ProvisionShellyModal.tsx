@@ -284,14 +284,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       ...(method === 'bluetooth' && bleLocalIp ? { localIp: bleLocalIp } : {}),
       ...(method === 'bluetooth' && selectedBleDevice ? { bleMac: selectedBleDevice } : {}),
     });
-    // Bluetooth path: the Plus Uni joined Wi-Fi during provisioning, so its voltmeter is enabled
-    // here (once) over its learned local IP. Wi-Fi/Manual-IP paths already did this while reachable.
-    if (method === 'bluetooth' && bleLocalIp && deviceRole === 'Low Power Sensor') {
-      try {
-        const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
-        await enableShellyVoltmeter((m, p) => shellyRpc(bleLocalIp, m, p));
-      } catch { /* best-effort — re-runnable after onboarding */ }
-    }
+    // (Bluetooth path: the Uni's voltmeter + webhooks + password are handled in
+    // executeBluetoothProvisioning, in the #95 order — no per-role work left here.)
     setStep('completion');
     } finally {
       setIsFinalizing(false);
@@ -409,20 +403,62 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       const { info, localIp, lastStatus } = await bleProvision(selectedDev.deviceId, { ssid, password, webhookBase: webhookBase || undefined, vid, onProgress: setStatusMessage });
       setBleLocalIp(localIp || '');
       setBleJoinStatus(localIp ? '' : (lastStatus || ''));
-
-      // Secure the just-provisioned device with the vehicle's local password now that it's on the
-      // LAN. BLE RPC can't do the HTTP digest handshake, so the password is set over HTTP right
-      // after the Wi-Fi join — while the device (even a sleepy flood sensor, fresh off pairing) is
-      // still awake. Best-effort: an unsecured device still works; the fields below aren't blocked.
-      const blePw = localStorage.getItem('sh_local_password') || '';
       const bleDevId = info?.id || info?.mac || '';
+
+      // Plus Uni: webhook registration was DEFERRED past the join (bleProvision) because its
+      // voltmeter.* events only exist once the join's reboot activates the peripheral. Now that
+      // it's on the LAN: confirm the voltmeter is live (idempotent — adds + reboots + waits if the
+      // BLE-time link didn't take), then register the cloud hooks over HTTP. #95 ordering for BLE.
+      const { isShellyUni } = await import('../utils/shellyBle');
+      let httpFinishFailed = false;
+      if (isShellyUni(info) && localIp && bleDevId) {
+        try {
+          const { shellyRpc, enableShellyVoltmeter } = await import('../utils/shellyRpc');
+          setStatusMessage('Confirming voltmeter…');
+          const { rebooted } = await enableShellyVoltmeter((m, p) => shellyRpc(localIp, m, p));
+          if (rebooted) {
+            setStatusMessage('Waiting for the device to restart…');
+            const deadline = Date.now() + 30000;
+            while (Date.now() < deadline) {
+              await new Promise((r) => setTimeout(r, 2000));
+              try { await shellyRpc(localIp, 'Shelly.GetDeviceInfo', {}); break; } catch { /* still rebooting */ }
+            }
+          }
+          if (webhookBase && vid) {
+            setStatusMessage('Setting up cloud alerts…');
+            const { registerShellyWebhooks } = await import('../utils/shellyRpc');
+            const webhookKey = localStorage.getItem('sh_webhook_url') ? (localStorage.getItem('sh_webhook_key') || '') : '';
+            const webhookSecret = (await import('../utils/webhookSecret')).ensureWebhookSecret();
+            await registerShellyWebhooks((m, p) => shellyRpc(localIp, m, p), webhookBase, vid, bleDevId, webhookKey, webhookSecret);
+          }
+        } catch (e) {
+          console.log('[provision] Uni post-join HTTP setup failed', e);
+          httpFinishFailed = true;
+        }
+      } else if (isShellyUni(info) && !localIp) {
+        httpFinishFailed = true; // joined Wi-Fi but we never learned its IP → couldn't finish
+      }
+
+      // Secure the just-provisioned device with the vehicle's local password — LAST, after any
+      // voltmeter reboot has settled (#95 ordering). BLE RPC can't do the HTTP digest handshake, so
+      // the password is set over HTTP while the device (even a sleepy flood sensor, fresh off
+      // pairing) is still awake. Best-effort: an unsecured device still works.
+      const blePw = localStorage.getItem('sh_local_password') || '';
       if (localIp && blePw && bleDevId) {
         try {
           setStatusMessage('Securing with vehicle password…');
           const { shellyChangePassword } = await import('../utils/shellyRpc');
           // vehiclePw as the old password too, so a re-provision of an already-secured device works.
           await shellyChangePassword(localIp, bleDevId, blePw, blePw);
-        } catch { /* best-effort */ }
+        } catch (e) {
+          console.log('[provision] securing failed', e);
+          httpFinishFailed = true;
+        }
+      }
+      // Surface an incomplete setup instead of swallowing it (the 2026-07-08 regression was silent):
+      // the device panel's 🩺 Scan for issues can finish voltmeter/webhooks/password later on-LAN.
+      if (httpFinishFailed) {
+        setBleJoinStatus('setup-incomplete');
       }
 
       // Auto-identify from the device's reported info (fall back to the advertised name).
@@ -713,7 +749,10 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
                 Detected hardware: <strong style={{ color: 'var(--accent-cyan)' }}>{detectedModel}</strong>
               </p>
             )}
-            {method === 'bluetooth' && (
+            {method === 'bluetooth' && bleJoinStatus === 'setup-incomplete' && (
+              <p style={{ color: '#fde68a', margin: 0, fontSize: '0.85rem' }}>⚠️ The device joined Wi-Fi but this phone couldn't reach it to finish setup (voltmeter / cloud alerts / password). When you're on the same network as the device, open its panel in Settings and run <strong>🩺 Scan for issues</strong> to finish.</p>
+            )}
+            {method === 'bluetooth' && bleJoinStatus !== 'setup-incomplete' && (
               bleLocalIp
                 ? <p style={{ color: '#10b981', margin: 0, fontSize: '0.85rem' }}>✓ Joined Wi-Fi — local IP <strong>{bleLocalIp}</strong> (will poll locally).</p>
                 : bleJoinStatus === 'connecting'
