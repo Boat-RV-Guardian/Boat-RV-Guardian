@@ -94,13 +94,16 @@ below with why.
       [website #8](https://github.com/Boat-RV-Guardian/website-boatrvguardian/pull/8). Pages auto-deploy succeeded.
 
 ### 🧊 Deferred / partially done
-- [~] **SEC-4 — unauthenticated hosted webhook `/api/shelly?vid=`. Phase 1 IMPLEMENTED.** Per-vehicle
-      webhook secret (`&k=`), accept-or-report in Phase 1 → `WEBHOOK_AUTH_REQUIRED` flip for Phase 2.
-      Design: [docs/SEC4_WEBHOOK_AUTH.md](docs/SEC4_WEBHOOK_AUTH.md). Shipped: worker-side classifier
-      (brvg-cloud-server #8), app emits `&k=` + syncs `sh_webhook_secret` (#82), FirestoreStorage reads the
-      secret (brvg-cloud-server #11), self-host admin can set it (brvg-cloud-server #12).
-      **Remaining (owner + hardware):** the worker cutover ([docs/WORKER_CUTOVER.md](docs/WORKER_CUTOVER.md)),
-      re-register devices so they emit `&k=`, then flip to Phase 2. (SEC-5 path-injection already fixed.)
+- [x] **SEC-4 — hosted webhook `/api/shelly?vid=` authentication — DONE (2026-07-08).** Per-vehicle webhook
+      secret (`&k=`), verified constant-time. **Hosted (`api.boatrvguardian.com`) is permanently STRICT** —
+      the multi-tenant worker rejects any request that isn't `ok` (no instance key, no phase flag; shipped
+      with the 2026-07-04 cutover, cloud-server #20). All active devices re-registered emitting `&k=` (flood +
+      valve verified live 2026-07-07; owner confirmed the rest 2026-07-08). **Self-host advanced to Phase 2**
+      — `WEBHOOK_AUTH_REQUIRED = true` (brvg-cloud-server #24): an `unauthenticated` request (secret set, wrong/
+      missing `k`) is now rejected; a `legacy` vehicle with no secret is still accepted. Shipped: classifier
+      (cloud-server #8), app emits `&k=` + syncs `sh_webhook_secret` (#82), FirestoreStorage reads it
+      (cloud-server #11), self-host admin can set it (cloud-server #12). Design:
+      [docs/SEC4_WEBHOOK_AUTH.md](docs/SEC4_WEBHOOK_AUTH.md). (SEC-5 path-injection already fixed.)
 - [x] **SEC-7 — Tauri CSP** ([tauri.conf.json](dashboard/src-tauri/tauri.conf.json)) — **DONE, merged
       [#76](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/76) (2026-07-02).** Replaced
       `"csp": null` with a real allowlist. Native debug-bundle verification found + fixed two origins the
