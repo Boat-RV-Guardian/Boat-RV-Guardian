@@ -11,7 +11,6 @@ import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import DeleteAccountButton from '../components/DeleteAccountButton';
 import { auth } from '../services/firebase';
-import LocalServerPanel from './settings/LocalServerPanel';
 import VehiclesPanel from './settings/VehiclesPanel';
 import AccountPanel from './settings/AccountPanel';
 import DeviceConfigPanel from './settings/DeviceConfigPanel';
@@ -133,8 +132,6 @@ export default function Settings({ user }: { user: any }) {
   // Defaults OFF for new installs (hosted cloud is the default path; the local server is an opt-in
   // for self-host — see open-tasks Task 5). A one-time migration in main.tsx preserves the old
   // default-ON for EXISTING installs, so this `=== 'true'` read is safe.
-  const [localServerEnabled, setLocalServerEnabled] = useState(() => localStorage.getItem('lt_local_server') === 'true');
-  const [localServerBackground, setLocalServerBackground] = useState(() => localStorage.getItem('lt_local_server_bg') === 'true');
 
   // Normal Run Profile Config
   const [normalRunHours, setNormalRunHours] = useState(() => Number(localStorage.getItem('lt_nr_hrs') || '0'));
@@ -298,8 +295,6 @@ export default function Settings({ user }: { user: any }) {
         webhookUrl: setWebhookUrl,
         webhookUser: setWebhookUser,
         webhookKey: setWebhookKey,
-        localServerEnabled: setLocalServerEnabled,
-        localServerBackground: setLocalServerBackground,
         unitSystem: setUnitSystem,
         timeZone: setTimeZone,
         normalRunHours: setNormalRunHours,
@@ -379,7 +374,7 @@ export default function Settings({ user }: { user: any }) {
   useEffect(() => {
     writeSettings({
       syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword,
-      webhookUrl, webhookUser, webhookKey, localServerEnabled, localServerBackground,
+      webhookUrl, webhookUser, webhookKey,
       unitSystem, timeZone, normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
       isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
       gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
@@ -397,7 +392,7 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
     syncDispatchRef.current = false;
   }, [
-    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, webhookUser, webhookKey, localServerEnabled, localServerBackground, unitSystem, timeZone,
+    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, webhookUser, webhookKey, unitSystem, timeZone,
     normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
     isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
     gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
@@ -487,31 +482,9 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
   };
 
-  // Switching vehicles while the on-device local server is running would leave it serving the wrong
-  // vehicle, so we confirm first and stop it on the way out (it's device-global, off by default).
-  const [pendingSwitchVid, setPendingSwitchVid] = useState<string | null>(null);
-
-  const doSwitchVehicle = (vid: string) => {
+  const handleSwitchVehicle = (vid: string) => {
     switchVehicle(vid);
     // State will naturally update via the settings_updated event listener
-  };
-
-  const handleSwitchVehicle = (vid: string) => {
-    if (localStorage.getItem('lt_local_server') === 'true') {
-      setPendingSwitchVid(vid); // ask before stopping the running local server
-      return;
-    }
-    doSwitchVehicle(vid);
-  };
-
-  const confirmSwitchAndStopLocalServer = () => {
-    const vid = pendingSwitchVid;
-    // Stop the local server before switching: persist OFF + notify useSensorBridge to tear it down.
-    localStorage.setItem('lt_local_server', 'false');
-    setLocalServerEnabled(false);
-    window.dispatchEvent(new Event('settings_updated'));
-    setPendingSwitchVid(null);
-    if (vid) doSwitchVehicle(vid);
   };
 
   const handleAddNewVehicle = () => {
@@ -715,14 +688,6 @@ export default function Settings({ user }: { user: any }) {
             defaultVidSaving={defaultVidSaving} setDefaultVidSaving={setDefaultVidSaving}
           />
 
-          {/* Local Server (moved above Notifications, below Account Info) */}
-          <LocalServerPanel
-            enabled={localServerEnabled}
-            onEnabledChange={setLocalServerEnabled}
-            background={localServerBackground}
-            onBackgroundChange={setLocalServerBackground}
-          />
-
           {/* Device Preferences — local to this device, not synced to cloud */}
           <DevicePreferencesPanel
             unitSystem={unitSystem} setUnitSystem={setUnitSystem}
@@ -894,8 +859,6 @@ export default function Settings({ user }: { user: any }) {
         setNewVehicleNameInput={setNewVehicleNameInput}
         newVehicleType={newVehicleType} setNewVehicleType={setNewVehicleType}
         onCancelNewVehicle={() => setShowNewVehicleModal(false)} onConfirmNewVehicle={confirmAddNewVehicle}
-        pendingSwitchVid={pendingSwitchVid}
-        onCancelSwitch={() => setPendingSwitchVid(null)} onConfirmSwitch={confirmSwitchAndStopLocalServer}
         showPwChangeModal={showPwChangeModal} pwChangeBusy={pwChangeBusy}
         onCancelPwChange={() => setShowPwChangeModal(false)} onConfirmPwChange={confirmChangeShellyPw}
         showDeleteModal={showDeleteModal} vesselNickname={vesselNickname}

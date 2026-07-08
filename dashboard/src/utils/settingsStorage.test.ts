@@ -23,8 +23,6 @@ const SAMPLE: PersistedSettings = {
   webhookUrl: 'https://example.com',
   webhookUser: 'user',
   webhookKey: 'key',
-  localServerEnabled: true,
-  localServerBackground: true,
   unitSystem: 'metric',
   timeZone: 'America/New_York',
   normalRunHours: 3,
@@ -86,7 +84,6 @@ describe('settingsStorage', () => {
     expect(s.syncSettingsCloud).toBe(true);       // absent !== 'false'
     expect(s.storeHistoryCloud).toBe(false);
     expect(s.unitSystem).toBe('imperial');
-    expect(s.localServerEnabled).toBe(false);      // off-by-default (Task 5)
     expect(s.shellyServer).toBe('shelly-1-eu.shelly.cloud');
     expect(s.alarmSound).toBe('siren');
     expect(s.alarmRepeatInterval).toBe('30');
