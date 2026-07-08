@@ -2,7 +2,7 @@
 
 Working backlog for Boat & RV Guardian — **open action items only**. Completed work and its history
 live in git and in the CLAUDE.md session handoffs; this file is intentionally pruned to what's still
-to do. Last pruned 2026-07-02.
+to do. Last pruned 2026-07-08.
 
 Legend: `[ ]` not started · `[~]` in progress / partially done.
 
@@ -182,15 +182,13 @@ the devices are reachable and the app can be smoke-tested against them, not unat
 ## 🖥️ Native-app verification queue (merged + gate-green, not yet runtime-verified)
 
 Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway account. These are behavior
-/ Firebase-coupled changes the CI gates can't fully catch.
+/ Firebase-coupled changes the CI gates can't fully catch. (Pruned 2026-07-08 as sufficiently verified in
+prior live sessions: cross-account isolation #33, admin-delete stickiness #34, new-vehicle sync.)
 
 - [ ] **Trial opt-in flow.** Signed-in + Free vehicle → "Start free trial" grants Basic + ~30 days; an
       already-trialed vehicle is declined (anti-abuse rule).
 - [ ] **Delete-account.** Esp. the Firebase `requires-recent-login` re-auth path (executor surfaces it +
       signs out; confirm the UX). Confirm no orphaned data if a Firestore delete fails (#32).
-- [ ] **Cross-account isolation (#33).** A new-user login shows no prior account's boats.
-- [ ] **Admin-delete stickiness (#34).** Admin-delete a vehicle, then re-login → it stays gone (no resurrection).
-- [ ] **New-vehicle sync.** A freshly-created boat appears in the admin Vehicles tab.
 - [ ] **Local → cloud transitions.** (a) Rebuild: sign in from local mode → wipe + reload, vehicles rebuilt
       clean. (b) Migrate: "Migrate my vehicles to the cloud" uploads local vehicles to the new cloud account.
 - [ ] **SyncModal silent cloud-wins.** Edit a setting offline on one device → sign in → cloud silently wins,
@@ -218,9 +216,6 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
       service** in the stack (see the sharing model). Blocks billing emails; Stripe can send receipts.
 - [ ] **SMS end-to-end delivery test-fire.** Twilio is live (trial acct) but delivery hasn't been fired
       end to end — needs a Twilio-**verified** destination cell.
-- [ ] **Task 11 — `app.` (web app) + `admin.` Cloudflare Pages custom domains.** Attach in the Cloudflare
-      dashboard (Pages custom domains; `wrangler` has no domain command). Lower priority; both already work
-      at their current URLs.
 - [ ] **Worker FCM/SMS send-success status.** Worker writes a `lastSend` field to `sensorState/{device}`
       (implemented in [#42](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/42)) — if that PR is
       still open, it needs an explicit owner OK to merge (`worker/**` auto-deploys to prod). Low priority.
@@ -309,27 +304,10 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
       LinkTap valve runs a guided flow: username+password → API key → `getAllDevices` list → pick + name the
       valve → and it also persists the gateway/TapLinker IDs, turns cloud control on, and (Tauri) scans the
       LAN for the gateway IP — everything the old Advanced-Options "Retrieve + Connect" did, in one pass. The
-      hard boundaries below (account creation / gateway Wi-Fi / valve↔gateway pairing — no API) remain
-      one-time in the LinkTap app.  Original design notes kept below for reference:
-
-- [ ] **~~Guardian-native LinkTap onboarding~~ (superseded — DONE above; design notes only):**
-      1. **Creds:** user enters their LinkTap username+password into *Guardian* → `linkTapGetApiKey`
-         → store only `lt_cloud_key` (+ offer `replace:true` "rotate / lock out other apps").
-      2. **Discovery:** use the cloud **`getAllDevices`** endpoint (POST username+apiKey → gateway +
-         taplinker IDs, names, online status, battery, signal, work mode, `vel`/`noWater`/`valveBroken`
-         flags; rate-limited to 1 call / 5 min — fine for a one-shot onboarding fetch). CORRECTION
-         2026-07-07: an earlier note here claimed there is no cloud list-devices endpoint — wrong; it's
-         in the official API doc (V1.6, verified against the live page). So discovery works off-LAN;
-         keep LAN `useLinkTapDiscovery` + webhook `gatewayId`/`deviceId` as fallback/cross-check.
-      3. **Webhook:** auto-register `setWebHookUrl` for the account.
-      **Hard boundary (no API for these — one-time, in LinkTap's app):** account creation, gateway
-      Wi-Fi onboarding, and **valve↔gateway pairing**. Re-verified against the full API page 2026-07-07
-      (the SPA's `api.client.view.html` template): the complete public surface is the 6 mode-activation
-      calls, `pauseWateringPlan`, `dismissAlarm`, `getAllDevices`, `getWateringStatus`,
-      `getWateringHistory`, `setWebHookUrl`/`deleteWebHookUrl`, and `getApiKey` — nothing for
-      provisioning/pairing, so the support email below stays the only path. Cover them by
-      **pre-provisioning hardware kits at fulfillment** (customer never installs the LinkTap app) and a
-      one-time "install LinkTap, pair, come back" screen for BYO-hardware users.
+      hard boundaries (account creation / gateway Wi-Fi / valve↔gateway pairing — no API; full public
+      API surface re-verified against LinkTap's live doc 2026-07-07) remain one-time in the LinkTap app.
+      Cover them by **pre-provisioning hardware kits at fulfillment** (customer never installs the LinkTap
+      app) and a one-time "install LinkTap, pair, come back" screen for BYO-hardware users.
 
 - [ ] **Owner action — email support@link-tap.com for a provisioning/pairing API.** Their API page
       invites "further requirements." Ask whether they expose gateway onboarding + valve pairing to
@@ -365,17 +343,12 @@ Public, no-login showcase of the full app driven by fake sensors. **Built end-to
 
 ## 🧊 Deferred by choice (parked with a reason — not blocked, just low value now)
 
-- [~] **Task 3 — `useSettingsState` hook extraction** (Settings.tsx). The ~56 synced `useState` + the two
-      coupled effects are scattered/interleaved across the 800-line file; attempted 2026-06-30 and reverted
-      as high-risk for the just-stabilized sync layer and low value (pure internal cleanup). Do only as a
-      dedicated, native-verified pass.
-- [~] **Task 16 — relocate notification toggles + SMS prefs into Alerts** and remove the Settings→Account
-      sign-in/sync duplication. Blocked on the `useSettingsState` extraction above; the Alerts page already
-      links to notification prefs, so the user-facing need is met.
-- [ ] **Task 14 — Account portal "sharing overview"** (read-only mirror of who has access per vehicle).
-      Redundant with Settings → Friends and would need a live Firestore listener that breaks Account's
-      deliberately Firebase-free/test-light design.
-- [x] **Task 14 — edit password / SSO** — DONE (see the Account / auth section above; in-app + portal).
+Dropped 2026-07-08 (owner prune; retrievable from git history if ever wanted): `useSettingsState`
+extraction + the Task 16 notification-toggle relocation (attempted + reverted, high-risk / low value —
+if Settings.tsx internals ever need a rework, do it then as a dedicated native-verified pass), the
+Account-portal "sharing overview" (redundant with Settings → Friends), and the `app.`/`admin.` Pages
+custom domains (both sites work fine at their current URLs).
+
 - [ ] **Gateway-free / zero-third-party-cloud valve = Shelly + motorized ball valve.** LinkTap valves
       speak proprietary sub-GHz RF and **cannot exist without a LinkTap gateway** (hardware fact; no
       pairing API). For a truly gateway-free, no-LinkTap-account valve, use a **Shelly switch (Gen3/Plus)
