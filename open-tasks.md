@@ -200,11 +200,13 @@ Run in the native app (`cd dashboard && npm run tauri dev`) with a throwaway acc
 
 ## 💳 Owner / external-gated (need Stripe, DNS, an email provider, or an owner-confirmed prod merge)
 
-- [ ] **Deploy the account portal → `account.boatrvguardian.com`.** NEW repo `brvg-account-site` (Astro +
-      React islands; profile / telemetry / subscription) is built + pushed but **not deployed**. Owner:
-      (1) create the `brvg-account-site` Cloudflare Pages project (`npm run build && wrangler pages deploy`
-      or connect the repo); (2) attach custom domain `account.boatrvguardian.com`; (3) add that domain to
-      Firebase Auth → Authorized domains. No Pages secrets needed (client-only). Steps in the repo README.
+- [x] **Deploy the account portal → `account.boatrvguardian.com` — DONE (2026-07-08).** `brvg-account-site`
+      (Astro + React islands; profile / telemetry / subscription) is LIVE. Created the `brvg-account-site`
+      Cloudflare Pages project + deployed via `wrangler pages deploy` (sc4tech account
+      `9b75e814c0fc254c910fd1afc3c88028`; canonical `brvg-account-site.pages.dev`). Owner attached the custom
+      domain `account.boatrvguardian.com` (Pages custom domain — needs DNS write the CI token lacks) + added it
+      to Firebase Auth → Authorized domains. Verified live: `https://account.boatrvguardian.com` → HTTP 200,
+      correct title. No Pages secrets needed (client-only public Firebase web config).
 - [ ] **Stripe integration (deferred per owner).** The entitlement layer is provider-agnostic and
       `setActiveVehicleTier` is the drop-in seam (Stripe webhook → `setActiveVehicleTier`). Scope: real
       upgrade/downgrade/cancel, monthly⇄yearly, payment method, invoices/receipts, billing history (Stripe
@@ -333,7 +335,7 @@ cause was device-/instance-side, not our worker. LinkTap's own API gives us a mu
 
 ---
 
-## 🎬 Demo site — `demo.boatrvguardian.com` (mock mode) — BUILT 2026-07-07, owner deploy pending
+## 🎬 Demo site — `demo.boatrvguardian.com` (mock mode) — LIVE 2026-07-08
 
 Public, no-login showcase of the full app driven by fake sensors. **Built end-to-end** (#109/#110/#112):
 
@@ -349,9 +351,14 @@ Public, no-login showcase of the full app driven by fake sensors. **Built end-to
 - [x] **Deploy workflow** — `deploy-demo.yml` (mirrors deploy-dashboard, builds `--mode demo`, publishes to
       a `boat-rv-guardian-demo` Pages project), **gated on repo var `DEMO_DEPLOY_ENABLED`** so it cleanly
       skips until enabled.
-- [ ] **OWNER (Cloudflare-gated):** (1) create the `boat-rv-guardian-demo` Cloudflare Pages project;
-      (2) attach `demo.boatrvguardian.com`; (3) set repo variable `DEMO_DEPLOY_ENABLED=true`. Then every
-      dashboard change auto-deploys the demo.
+- [x] **Pages project created + first deploy — DONE (2026-07-08).** `boat-rv-guardian-demo` Pages project
+      created + deployed via `BRVG_TARGET=web npm run build:demo` → `wrangler pages deploy` (sc4tech account
+      `9b75e814c0fc254c910fd1afc3c88028`). Live at `boat-rv-guardian-demo.pages.dev` (HTTP 200).
+- [x] **Repo variable `DEMO_DEPLOY_ENABLED=true` set — DONE (2026-07-08, via `gh variable set`).** So every
+      dashboard change now auto-deploys the demo via `deploy-demo.yml`.
+- [x] **Custom domain `demo.boatrvguardian.com` attached — DONE (2026-07-08, owner).** Verified live:
+      `https://demo.boatrvguardian.com` → HTTP 200. No Firebase authorized-domain step needed (mock mode,
+      no auth). The full demo showcase is now public + auto-deploying on every dashboard change.
 
 ## 🧊 Deferred by choice (parked with a reason — not blocked, just low value now)
 
