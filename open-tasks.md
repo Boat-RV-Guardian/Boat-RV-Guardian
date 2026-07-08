@@ -121,6 +121,30 @@ below with why.
 These touch live Shelly / LinkTap hardware and the safety-critical poll/command path — do them when
 the devices are reachable and the app can be smoke-tested against them, not unattended.
 
+- [~] **🚨 ACTIVE — finish the "Attic test" Uni setup (2026-07-08 session ended mid-repair).** The Uni
+      (`shellyplusuni-f8b3b7fcfb74`, `192.168.86.170`, SSID "Mila") was factory-reset + re-provisioned
+      several times chasing the BLE provisioning regression. **Current device state (probed at close):
+      on Wi-Fi + reachable, `auth_en:false`, voltmeter peripheral ABSENT, 0 webhooks.** The widget shows
+      "0 V critical" because there is literally no voltmeter component. What's left, in order:
+      1. Phone ON the 192.168.86.x Wi-Fi (its Wi-Fi was OFF all session — the root cause of every
+         "unreachable"/silent-failure symptom; enabled via `adb shell svc wifi enable` at 10:5x).
+      2. App → Uni panel → 🩺 Scan for issues → **"Enable voltmeter (reboots device)"** fix → wait ~20s
+         → re-scan → **"Register cloud alerts"** + **"Set vehicle password"** fixes. Owner ran out of
+         time before confirming these fixes work — **if the scan fixes fail, debug DeviceScanPanel's
+         fix path next.** Manual fallback (proven 2026-07-08 01:4x): POST `SensorAddon.AddPeripheral
+         {type:'voltmeter'}` + `Shelly.Reboot`, then `Voltmeter.SetConfig {id:100,config:{xvoltage:
+         {expr:"x",unit:"V"}}}`; hooks then self-register on the next app poll (see fix below).
+      3. Verify: `Webhook.List` shows voltmeter.measurement/.change (cid 100, `&v=`/`&k=`),
+         `wrangler tail brvg-cloud-worker` shows `v=~14.7` (battery is on a charger — 14.7 V is REAL).
+      **Landed on the way (all merged):** #152 + #154 (BLE provisioning: #95 ordering ported, then
+      corrected — BLE now does ONLY info/Wi-Fi/IP-learn with reconnect-on-drop; Uni voltmeter/hooks/
+      password all happen post-join over HTTP; failures surface a "setup incomplete → 🩺 Scan" banner),
+      and the **webhook alertish-only + junk-cleanup fix** (no more "register all 10 input.* events"
+      fallback; cleanup pass VERIFIED live — the device's 10 junk hooks went to 0 after one app poll).
+      ⚠️ `main` is ahead of **v1.0.65** (the alertish fix is unreleased; the owner's phone runs a local
+      build of it — see the CLAUDE.md 2026-07-08 handoff for the local-build pipeline). Cut **v1.0.66**
+      once the Uni verify passes.
+
 - [x] **Task 1 — Shelly Plus Uni remote telemetry — ROOT-CAUSED + FIXED 2026-07-03.** It never worked
       because provisioning enabled the voltmeter peripheral (which reboots the device) AFTER registering
       webhooks + securing — so `voltmeter.*` events didn't exist when webhooks registered (the 10-hook
