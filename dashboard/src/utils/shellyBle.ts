@@ -123,19 +123,15 @@ export async function bleProvision(
   try {
     const info = await rpcOnConnected(BleClient, deviceId, 'Shelly.GetDeviceInfo', {});
 
-    // Plus Uni: link the 0-30 V voltmeter PERIPHERAL over BLE, BEFORE the Wi-Fi join — the join's
-    // reboot activates it (reboot:false here, same as the Wi-Fi-AP path). This is the #95 ordering
-    // ported to BLE: previously the BLE path never enabled the voltmeter and registered webhooks
-    // against a device whose only events were input.* — which filled all 10 webhook slots with junk
-    // and left the device with no voltage telemetry (seen on live hardware 2026-07-08).
+    // Plus Uni: do NOTHING device-specific over BLE. Enabling the voltmeter here (tried 2026-07-08)
+    // broke provisioning both ways on live hardware: AddPeripheral leaves a pending restart, so
+    // Wifi.SetConfig reports restart_required and the immediate reboot kills the BLE session before
+    // the IP is learned; and on a re-provision, its Shelly.GetStatus probe (a large payload) is
+    // unreliable over the 20-byte GATT chunking. The Uni's voltmeter + webhooks + password are all
+    // handled over HTTP after the join (ProvisionShellyModal), in the #95 order — idempotent and on
+    // a transport that can actually carry them. A mains-powered Uni stays awake, so post-join HTTP
+    // is dependable for it (unlike battery sleepers).
     const uni = isShellyUni(info);
-    if (uni) {
-      opts.onProgress?.('Enabling voltmeter…');
-      try {
-        const { enableShellyVoltmeter } = await import('./shellyRpc');
-        await enableShellyVoltmeter((m, p) => rpcOnConnected(BleClient, deviceId, m, p), { reboot: false });
-      } catch (e) { console.log('[shellyBle] voltmeter enable over BLE failed (retried over HTTP after the join)', e); }
-    }
 
     // Register cloud-alert webhooks over BLE (while still connected) if configured + signed in.
     // NOT for a Uni — its voltmeter.* events don't exist until the post-join reboot activates the
@@ -162,11 +158,15 @@ export async function bleProvision(
     }
 
     // Wait for it to actually join Wi-Fi and get a real DHCP address. 0.0.0.0 / empty means it's
-    // still connecting, so keep polling (up to ~45s) until a real IP appears.
+    // still connecting, so keep polling (up to ~60s) until a real IP appears. The BLE link can DROP
+    // mid-poll — a restart_required reboot, or the radio switching to STA — so on an error we
+    // RECONNECT (up to 3 times) and resume polling instead of giving up: losing the IP here used to
+    // skip the whole post-join HTTP finish (webhooks/password) on 2026-07-08 live hardware.
     opts.onProgress?.('Waiting for the device to join Wi-Fi…');
     let localIp: string | undefined;
     let lastErr = '';
-    for (let i = 0; i < 18; i++) {
+    let reconnects = 0;
+    for (let i = 0; i < 24; i++) {
       await wait(2500);
       try {
         const st = await rpcOnConnected(BleClient, deviceId, 'Wifi.GetStatus', {});
@@ -175,7 +175,12 @@ export async function bleProvision(
         lastErr = st?.status || '';
         if (ip && ip !== '0.0.0.0') { localIp = ip; break; } // got a real address
       } catch {
-        break; // BLE may drop once the radio switches to STA — that's fine
+        if (reconnects >= 3) break;
+        reconnects++;
+        opts.onProgress?.('Reconnecting to the device…');
+        try { await BleClient.disconnect(deviceId); } catch { /* already gone */ }
+        await wait(4000); // give a rebooting device time to come back up + advertise
+        try { await BleClient.connect(deviceId, undefined, { timeout: 12000 }); } catch { break; }
       }
     }
     if (!localIp && lastErr) console.log('[shellyBle] no IP yet, last status:', lastErr);
