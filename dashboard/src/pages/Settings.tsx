@@ -29,7 +29,7 @@ import { linkTapGetApiKey } from '../utils/linktapCloud';
 import { isLocalMode } from '../utils/userScope';
 import { useAppUpdater } from '../hooks/useAppUpdater';
 
-const APP_VERSION = '1.0.63';
+const APP_VERSION = '1.0.64';
 
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
