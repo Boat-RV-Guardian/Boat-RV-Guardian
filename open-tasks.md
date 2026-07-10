@@ -6,6 +6,10 @@ to do. Last pruned 2026-07-08.
 
 Legend: `[ ]` not started · `[~]` in progress / partially done.
 
+**Feature requests** (new-capability / future ideas, as opposed to active build/verify/bug work) are
+tracked as GitHub issues labeled `enhancement`, not here:
+https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/issues?q=is%3Aissue+label%3Aenhancement
+
 ---
 
 ## ✅ Shipped 2026-07-07 (big session — released v1.0.50 → v1.0.63)
@@ -274,12 +278,6 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
       publishes alerts to it. Wired on self-host + hosted, FirestoreStorage carries the fields, tested +
       documented (brvg-cloud-server #14). Optional follow-up: an app-side UI to set an ntfy topic for
       **hosted** vehicles (hosted already has FCM, so low priority).
-- [ ] **Home Assistant integration (free + paid) — second integration alongside API tokens/webhooks.**
-      **Free:** basic HA visibility — expose Guardian sensors (flood, voltage, shore power, flow) + alerts to
-      HA (e.g. MQTT discovery or a REST/webhook bridge) so HA can display them and automate on a flood.
-      **Paid (Premium `canIntegrations`):** two-way control — HA can open/close the valve + richer entities.
-      Decide transport (MQTT discovery vs REST/long-poll vs an HA custom component / HACS). Works on hosted +
-      self-host. (Mirror the entitlement gate used by the existing integrations toggle.)
 
 ---
 
