@@ -6,6 +6,7 @@ import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
 import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
+import { useAlarmNotifications } from '../hooks/useAlarmNotifications';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { normalRunCommand, commandLockMs, autoRestartDecision, washdownTick } from '../utils/valveAutomation';
@@ -62,21 +63,9 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Local Safety  // Auto-Guard settings
   const autoGuardEnabled = device.autoGuardEnabled !== false;
 
-  const handleTestAlert = () => triggerAlert('Test Alert', 'This is a test of the Boat & RV Guardian alert system.');
-  
-  useEffect(() => {
-    window.addEventListener('test_alert', handleTestAlert);
-    return () => window.removeEventListener('test_alert', handleTestAlert);
-  }, []);
   // --- User Preferences ---
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
 
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem('lt_notifications') === 'true');
-  const [alarmSound, setAlarmSound] = useState<'siren' | 'beep' | 'off'>(() => (localStorage.getItem('lt_alarm_sound') as any) || 'beep');
-  const [alarmVolume, setAlarmVolume] = useState(() => Number(localStorage.getItem('lt_alarm_vol') || '1.0'));
-  const [alarmRepeatInterval, setAlarmRepeatInterval] = useState<'once' | '5' | '15' | '30' | '60'>(() => (localStorage.getItem('lt_alarm_repeat') as any) || 'once');
-  const [activeAlarmSound, setActiveAlarmSound] = useState<string | null>(null);
-  
   const [notifyAutoGuard, setNotifyAutoGuard] = useState(() => localStorage.getItem('lt_notif_autoguard') !== 'false');
 
   const [notifyLowBattery, setNotifyLowBattery] = useState(() => localStorage.getItem('lt_notif_battery') === 'true');
@@ -101,6 +90,8 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const [storeHistoryCloud, setStoreHistoryCloud] = useState(() => localStorage.getItem('lt_store_history_cloud') === 'true');
   // Usage history + Event Sentry Log state, persistence, and cloud mirroring live in this hook.
   const { usageHistory, setUsageHistory, logs, addLog } = useDeviceHistory(deviceId, storeHistoryCloud);
+  // Alarm sound + alert notifications (prefs, repeat loop, WebAudio alarm, web/Tauri/Capacitor notify).
+  const { triggerAlert, playSynthesizedAlarm, activeAlarmSound, setActiveAlarmSound, alarmRepeatInterval } = useAlarmNotifications(addLog);
   // Sharing role for the active vehicle ('admin' | 'control' | 'monitor'); monitor = view only.
   const [myRole, setMyRole] = useState(() => localStorage.getItem('lt_my_role') || 'admin');
   const canControl = myRole !== 'monitor';
@@ -162,10 +153,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       setRefreshInterval(Number(localStorage.getItem('lt_refresh') || '5'));
       setUnitSystem(localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
       setDisplayTz(getDisplayTimeZone());
-      setNotificationsEnabled(localStorage.getItem('lt_notifications') === 'true');
-      setAlarmSound((localStorage.getItem('lt_alarm_sound') as any) || 'beep');
-      setAlarmVolume(Number(localStorage.getItem('lt_alarm_vol') || '1.0'));
-      setAlarmRepeatInterval((localStorage.getItem('lt_alarm_repeat') as any) || 'once');
       setNotifyAutoGuard(localStorage.getItem('lt_notif_autoguard') !== 'false');
       setNotifyLowBattery(localStorage.getItem('lt_notif_battery') === 'true');
       setNotifyWatering(localStorage.getItem('lt_notif_watering') === 'true');
@@ -255,116 +242,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     deviceId,
     notifyLowBattery, notifyWatering
   ]);
-
-  useEffect(() => {
-    if (activeAlarmSound && alarmRepeatInterval !== 'once') {
-      const interval = setInterval(() => {
-        playSynthesizedAlarm(activeAlarmSound);
-      }, Number(alarmRepeatInterval) * 1000);
-      return () => clearInterval(interval);
-    }
-  }, [activeAlarmSound, alarmRepeatInterval]);
-
-  const playSynthesizedAlarm = (soundOverride?: string) => {
-    const soundToPlay = soundOverride || alarmSound;
-    if (soundToPlay === 'off') return;
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      if (soundToPlay === 'siren') {
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.5);
-        osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 1.0);
-        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 1.5);
-        osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 2.0);
-        
-        gainNode.gain.setValueAtTime(0.5 * alarmVolume, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01 * alarmVolume, ctx.currentTime + 2.0);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 2.0);
-      } else if (soundToPlay === 'beep') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1000, ctx.currentTime);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.3);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime + 0.4);
-        gainNode.gain.exponentialRampToValueAtTime(0.01 * alarmVolume, ctx.currentTime + 0.5);
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.5);
-      }
-    } catch (e) {
-      console.error('AudioContext failed:', e);
-    }
-  };
-
-  const triggerAlert = async (title: string, message: string, silent: boolean = false) => {
-    if (!silent && alarmSound !== 'off') {
-      playSynthesizedAlarm(alarmSound);
-      setActiveAlarmSound(alarmSound);
-    }
-    addLog(silent ? 'info' : 'danger', `${title}: ${message}`);
-    
-    if (!notificationsEnabled) return;
-    
-    if ('Notification' in window && typeof (window as any).Capacitor === 'undefined' && !isTauriEnv()) {
-      if (Notification.permission === 'granted') {
-        new Notification(title, { body: message });
-      } else if (Notification.permission !== 'denied') {
-        const p = await Notification.requestPermission();
-        if (p === 'granted') new Notification(title, { body: message });
-      }
-    }
-    
-    if (isTauriEnv()) {
-      try {
-        const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
-        let permissionGranted = await isPermissionGranted();
-        if (!permissionGranted) {
-          const permission = await requestPermission();
-          permissionGranted = permission === 'granted';
-        }
-        if (permissionGranted) {
-          sendNotification({ title, body: message });
-        }
-      } catch (e) {
-        console.error('Tauri notification failed:', e);
-      }
-    }
-
-    if (typeof (window as any).Capacitor !== 'undefined') {
-      const Cap = (window as any).Capacitor;
-      if (Cap.isNativePlatform() && Cap.Plugins && Cap.Plugins.LocalNotifications) {
-        try {
-          const LN = Cap.Plugins.LocalNotifications;
-          let p = await LN.checkPermissions();
-          if (p.display !== 'granted') {
-             p = await LN.requestPermissions();
-          }
-          if (p.display === 'granted') {
-            await LN.schedule({
-              notifications: [{
-                  title,
-                  body: message,
-                  id: Math.floor(Math.random() * 100000),
-                  schedule: { at: new Date(Date.now() + 1000) }
-              }]
-            });
-          }
-        } catch (e) {
-          console.error('Capacitor notification failed:', e);
-        }
-      }
-    }
-  };
 
   useEffect(() => {
     let unlisten: any;
