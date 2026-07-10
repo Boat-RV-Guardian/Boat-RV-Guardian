@@ -1,13 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { type DeviceConfig } from '../utils/VehicleManager';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
-import { listenTauri } from '../utils/linktapHttp';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { useAlarmNotifications } from '../hooks/useAlarmNotifications';
 import { useLinkTapCommands } from '../hooks/useLinkTapCommands';
 import { useLinkTapPolling } from '../hooks/useLinkTapPolling';
+import { useValveSentries } from '../hooks/useValveSentries';
 import { drawFlowChart } from '../utils/flowChart';
-import { evaluateSafetyGuard } from '../utils/valveSafety';
 import { normalRunCommand } from '../utils/valveAutomation';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { isLocalMode } from '../utils/userScope';
@@ -65,7 +64,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
   const [notifyLowBattery, setNotifyLowBattery] = useState(() => localStorage.getItem('lt_notif_battery') === 'true');
   const [notifyWatering, setNotifyWatering] = useState(() => localStorage.getItem('lt_notif_watering') === 'true');
-  const hasNotifiedBattery = useRef(false);
 
   // Session volume (set by both the poll and the command senders; telemetry lives in useLinkTapPolling)
   const [volume, setVolume] = useState(0.0);
@@ -152,8 +150,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     return () => window.removeEventListener('settings_updated', handleSettingsUpdate);
   }, []);
   // --- App State ---
-  const [isFloodAlarmActive, setIsFloodAlarmActive] = useState<boolean>(false);
-
   const [volumeOffset, setVolumeOffset] = useState(0);
   const [durationOffset, setDurationOffset] = useState(0);
 
@@ -220,6 +216,13 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     window.dispatchEvent(event);
   }, [connectionStatus, errorMsg]);
 
+  // Flooding Sentry + safety guard + offline / low-battery / watering-transition alerts.
+  const { isFloodAlarmActive, setIsFloodAlarmActive } = useValveSentries({
+    autoGuardEnabled, isBroken, isLeak, isWatering, isRfLinked, battery,
+    alertOffline, notifyAutoGuard, notifyLowBattery, notifyWatering,
+    triggerAlert, playSynthesizedAlarm, executeStopCommand, commandersRef,
+  });
+
   // Cache settings on change
   useEffect(() => {
     localStorage.setItem(`lt_input_dur_${deviceId}`, inputDuration.toString());
@@ -250,26 +253,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     notifyLowBattery, notifyWatering
   ]);
 
-  useEffect(() => {
-    let unlisten: any;
-    const setupFloodListener = async () => {
-      try {
-        unlisten = await listenTauri('flood-alarm', () => {
-          setIsFloodAlarmActive(true);
-          playSynthesizedAlarm('siren');
-          triggerAlert('CRITICAL', 'Flood Sensor Triggered! Instantly closing the valve.', false);
-          if (commandersRef.current.stop) commandersRef.current.stop('limit');
-        });
-      } catch (e) {
-        console.error('Failed to setup flood listener:', e);
-      }
-    };
-    setupFloodListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
-
   // Listen for PWA Install Prompt
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -289,49 +272,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     setDeferredPrompt(null);
     setShowInstallBanner(false);
   };
-
-  // --- Local Safety Guard Auto-Monitoring ---
-  useEffect(() => {
-    const { shutOff, cause } = evaluateSafetyGuard({
-      autoGuardEnabled,
-      isBroken,
-      isLeak,
-      isWatering,
-    });
-
-    if (shutOff) {
-      if (notifyAutoGuard) triggerAlert('Safety Sentry Triggered', `${cause} Shutting down valve...`);
-      executeStopCommand('limit');
-    }
-  }, [isBroken, isLeak, isWatering, autoGuardEnabled]);
-
-  useEffect(() => {
-    if (alertOffline && !isRfLinked && autoGuardEnabled) {
-      triggerAlert('Device Offline', 'The LinkTap gateway is offline or disconnected.');
-    }
-  }, [alertOffline, isRfLinked, autoGuardEnabled]);
-
-  // Low battery trigger
-  useEffect(() => {
-    if (notifyLowBattery && battery > 0 && battery <= 20) {
-      if (!hasNotifiedBattery.current) {
-        triggerAlert('Low Battery', `Gateway battery is low (${battery}%).`, true);
-        hasNotifiedBattery.current = true;
-      }
-    } else if (battery > 20) {
-      hasNotifiedBattery.current = false;
-    }
-  }, [battery, notifyLowBattery]);
-
-  // Water start/stop trigger
-  const previousWatering = useRef(isWatering);
-  useEffect(() => {
-    if (notifyWatering && isWatering !== previousWatering.current) {
-      if (isWatering) triggerAlert('Water Valve Opened', 'Water flow has started.', true);
-      else triggerAlert('Water Valve Closed', 'Water flow has stopped.', true);
-    }
-    previousWatering.current = isWatering;
-  }, [isWatering, notifyWatering]);
 
   // --- HTML5 Canvas History Graph Rendering ---
   useEffect(() => {
