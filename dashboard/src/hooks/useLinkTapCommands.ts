@@ -25,6 +25,12 @@ export interface LinkTapCommandsConfig {
   effectiveIntervalSecs: number;
   /** sharing-role gate: monitor-only users can view but not operate */
   canControl: boolean;
+  /**
+   * Entitlement gate (Task 6): remote (off-LAN) control is a paid feature — when false the
+   * cloud /api/control path is skipped and commands go to the LAN gateway only (local control
+   * is always free). SAFETY 'limit' stops are exempt: a shutoff always tries every channel.
+   */
+  canRemoteControl: boolean;
   addLog: (type: AlertLog['type'], message: string) => void;
   setErrorMsg: (msg: string | null) => void;
   setTargetDuration: (secs: number) => void;
@@ -68,7 +74,7 @@ export function useLinkTapCommands(cfg: LinkTapCommandsConfig): LinkTapCommands 
   const manualStopTriggeredRef = useRef<boolean>(false);
   const commandersRef = useRef({ start: null as any, stop: null as any });
 
-  const { gatewayIp, gatewayId, deviceId, effectiveIntervalSecs, canControl, addLog, setErrorMsg, requestRefresh } = cfg;
+  const { gatewayIp, gatewayId, deviceId, effectiveIntervalSecs, canControl, canRemoteControl, addLog, setErrorMsg, requestRefresh } = cfg;
 
   // cmd 6: Start watering
   const executeStartCommandRaw = async (durationMins: number, volumeLimitLiters: number) => {
@@ -96,7 +102,12 @@ export function useLinkTapCommands(cfg: LinkTapCommandsConfig): LinkTapCommands 
       // 1. Prefer the worker's role-checked /api/control — the app no longer calls LinkTap cloud
       // directly, so a stale signed-in copy can't fight over the valve (retires the multi-instance
       // race). Signed-in only; local-only users skip straight to the LAN gateway below.
-      if (auth.currentUser) {
+      // Task 6: remote (off-LAN) control is entitlement-gated — without canRemoteControl the cloud
+      // relay is skipped and the command is LAN-only (local control is always free).
+      if (auth.currentUser && !canRemoteControl) {
+        addLog('info', '🔒 Remote (off-LAN) control isn\'t included in your plan — sending via the local gateway only.');
+      }
+      if (auth.currentUser && canRemoteControl) {
         try {
           const vid = getActiveVehicleId();
           const token = await auth.currentUser.getIdToken();
@@ -186,7 +197,12 @@ export function useLinkTapCommands(cfg: LinkTapCommandsConfig): LinkTapCommands 
 
       // 1. Prefer the worker's role-checked /api/control (retires the direct-LinkTap race).
       // Signed-in only; local-only users skip to the LAN gateway below.
-      if (auth.currentUser) {
+      // Task 6: gated by canRemoteControl for MANUAL stops — but a SAFETY 'limit' stop
+      // (flood shutoff, volume cutoff) always tries every channel regardless of plan.
+      if (auth.currentUser && !canRemoteControl && reason !== 'limit') {
+        addLog('info', '🔒 Remote (off-LAN) control isn\'t included in your plan — sending via the local gateway only.');
+      }
+      if (auth.currentUser && (canRemoteControl || reason === 'limit')) {
         try {
           const vid = getActiveVehicleId();
           const token = await auth.currentUser.getIdToken();
