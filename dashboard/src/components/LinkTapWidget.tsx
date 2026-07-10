@@ -1,22 +1,20 @@
 import { useState, useEffect, useRef } from 'react';
-import { type DeviceConfig, getActiveVehicleId } from '../utils/VehicleManager';
-import { auth } from '../services/firebase';
-import { sendLinkTapControl } from '../utils/linktapControl';
+import { type DeviceConfig } from '../utils/VehicleManager';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
-import { isTauriEnv, listenTauri, unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool } from '../utils/linktapHttp';
-import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
-import { drawFlowChart, type FlowData } from '../utils/flowChart';
-import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
+import { useAlarmNotifications } from '../hooks/useAlarmNotifications';
+import { useLinkTapCommands } from '../hooks/useLinkTapCommands';
+import { useLinkTapPolling } from '../hooks/useLinkTapPolling';
+import { useValveSentries } from '../hooks/useValveSentries';
+import { drawFlowChart } from '../utils/flowChart';
+import { normalRunCommand } from '../utils/valveAutomation';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
-import { externalOpenCapLiters } from '../utils/quickOpen';
 import { isLocalMode } from '../utils/userScope';
 
 const APP_VERSION = '1.0.65';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---
-  const [isSoftwareCutoffActive, setIsSoftwareCutoffActive] = useState(false);
   const [cloudUsername, setCloudUsername] = useState(() => localStorage.getItem('lt_cloud_user') || '');
   const [cloudApiKey, setCloudApiKey] = useState(() => localStorage.getItem('lt_cloud_key') || '');
   const [alertOffline, setAlertOffline] = useState(() => localStorage.getItem('lt_alert_offline') !== 'false');
@@ -27,8 +25,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // used as the OFF-LAN source (replacing the app's direct LinkTap-cloud getWateringStatus poll) — the
   // read half of retiring the multi-instance race. serverStateRef gives the poll closure a live handle.
   const serverState = useLinkTapCloudState(deviceId);
-  const serverStateRef = useRef(serverState);
-  serverStateRef.current = serverState;
   const [refreshInterval, setRefreshInterval] = useState(() => Number(localStorage.getItem('lt_refresh') || '5'));
   const effectiveInterval = refreshInterval;
 
@@ -61,45 +57,24 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Local Safety  // Auto-Guard settings
   const autoGuardEnabled = device.autoGuardEnabled !== false;
 
-  const handleTestAlert = () => triggerAlert('Test Alert', 'This is a test of the Boat & RV Guardian alert system.');
-  
-  useEffect(() => {
-    window.addEventListener('test_alert', handleTestAlert);
-    return () => window.removeEventListener('test_alert', handleTestAlert);
-  }, []);
   // --- User Preferences ---
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
 
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem('lt_notifications') === 'true');
-  const [alarmSound, setAlarmSound] = useState<'siren' | 'beep' | 'off'>(() => (localStorage.getItem('lt_alarm_sound') as any) || 'beep');
-  const [alarmVolume, setAlarmVolume] = useState(() => Number(localStorage.getItem('lt_alarm_vol') || '1.0'));
-  const [alarmRepeatInterval, setAlarmRepeatInterval] = useState<'once' | '5' | '15' | '30' | '60'>(() => (localStorage.getItem('lt_alarm_repeat') as any) || 'once');
-  const [activeAlarmSound, setActiveAlarmSound] = useState<string | null>(null);
-  
   const [notifyAutoGuard, setNotifyAutoGuard] = useState(() => localStorage.getItem('lt_notif_autoguard') !== 'false');
 
   const [notifyLowBattery, setNotifyLowBattery] = useState(() => localStorage.getItem('lt_notif_battery') === 'true');
   const [notifyWatering, setNotifyWatering] = useState(() => localStorage.getItem('lt_notif_watering') === 'true');
-  const hasNotifiedBattery = useRef(false);
 
-  // --- Real-time API States (matched to G2S Gateway Schema) ---
-  const [isRfLinked, setIsRfLinked] = useState(true);
-
-  const [isBroken, setIsBroken] = useState(false);
-    const [isLeak, setIsLeak] = useState(false);
-  const [isClog, setIsClog] = useState(false);
-  const [signal, setSignal] = useState(85);
-  const [battery, setBattery] = useState(95);
-  const [isWatering, setIsWatering] = useState(false);
-  const [speed, setSpeed] = useState(0.0);
+  // Session volume (set by both the poll and the command senders; telemetry lives in useLinkTapPolling)
   const [volume, setVolume] = useState(0.0);
-  const [remainDuration, setRemainDuration] = useState(0);
 
   // --- Historical Data Tracking ---
   const [enableHistory, setEnableHistory] = useState(() => localStorage.getItem('lt_enable_history') !== 'false');
   const [storeHistoryCloud, setStoreHistoryCloud] = useState(() => localStorage.getItem('lt_store_history_cloud') === 'true');
   // Usage history + Event Sentry Log state, persistence, and cloud mirroring live in this hook.
   const { usageHistory, setUsageHistory, logs, addLog } = useDeviceHistory(deviceId, storeHistoryCloud);
+  // Alarm sound + alert notifications (prefs, repeat loop, WebAudio alarm, web/Tauri/Capacitor notify).
+  const { triggerAlert, playSynthesizedAlarm, activeAlarmSound, setActiveAlarmSound, alarmRepeatInterval } = useAlarmNotifications(addLog);
   // Sharing role for the active vehicle ('admin' | 'control' | 'monitor'); monitor = view only.
   const [myRole, setMyRole] = useState(() => localStorage.getItem('lt_my_role') || 'admin');
   const canControl = myRole !== 'monitor';
@@ -109,20 +84,10 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     window.addEventListener('settings_updated', sync);
     return () => { window.removeEventListener('role_updated', sync); window.removeEventListener('settings_updated', sync); };
   }, []);
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'connecting'>('disconnected');
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // Re-render trigger so already-rendered timestamps reformat when the user changes lt_tz.
   const [displayTz, setDisplayTz] = useState(getDisplayTimeZone());
   // Modal UI state is handled elsewhere now
-  
-  // Dispatch connection state to external listeners (Settings.tsx)
-  useEffect(() => {
-    const event = new CustomEvent('connection_state_change', {
-      detail: { status: connectionStatus, error: errorMsg }
-    });
-    window.dispatchEvent(event);
-  }, [connectionStatus, errorMsg]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [historyTab, setHistoryTab] = useState<'hourly'|'daily'|'weekly'|'monthly'>('daily');
   const [showAutoRestartModal, setShowAutoRestartModal] = useState(false);
@@ -147,8 +112,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // plan. On paid plans it's hidden (and the loop logic is gated off) so users don't rely on a fragile
   // app-open loop. A ref so the poll closure reads the current value.
   const autoRestartAvailable = isLocalMode(localStorage) || (localStorage.getItem('tier') || '') === 'free';
-  const autoRestartAvailableRef = useRef(autoRestartAvailable);
-  autoRestartAvailableRef.current = autoRestartAvailable;
 
   // Listen to global settings_updated events to sync Cloud changes down to local state
   useEffect(() => {
@@ -161,10 +124,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       setRefreshInterval(Number(localStorage.getItem('lt_refresh') || '5'));
       setUnitSystem(localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
       setDisplayTz(getDisplayTimeZone());
-      setNotificationsEnabled(localStorage.getItem('lt_notifications') === 'true');
-      setAlarmSound((localStorage.getItem('lt_alarm_sound') as any) || 'beep');
-      setAlarmVolume(Number(localStorage.getItem('lt_alarm_vol') || '1.0'));
-      setAlarmRepeatInterval((localStorage.getItem('lt_alarm_repeat') as any) || 'once');
       setNotifyAutoGuard(localStorage.getItem('lt_notif_autoguard') !== 'false');
       setNotifyLowBattery(localStorage.getItem('lt_notif_battery') === 'true');
       setNotifyWatering(localStorage.getItem('lt_notif_watering') === 'true');
@@ -191,23 +150,56 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     return () => window.removeEventListener('settings_updated', handleSettingsUpdate);
   }, []);
   // --- App State ---
-  const [isFloodAlarmActive, setIsFloodAlarmActive] = useState<boolean>(false);
-  const [isCommandLoading, setIsCommandLoading] = useState<boolean | 'start' | 'stop'>(false);
-  const lastCommandTimeRef = useRef<number>(0);
-  const expectedWateringStateRef = useRef<boolean | null>(null);
-  const commandTimeoutRef = useRef<any>(null);
-  const previousVolumeRef = useRef<number>(0);
-  const washDownTransitionTimeRef = useRef<number | null>(null);
-  const lastPollTimeRef = useRef<number>(0);
-  const manualStopTriggeredRef = useRef<boolean>(false);
-
   const [volumeOffset, setVolumeOffset] = useState(0);
   const [durationOffset, setDurationOffset] = useState(0);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // --- PWA Installation Support ---
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [manualRefresh, setManualRefresh] = useState(0);
+
+  // Valve command senders + optimistic command lock + washdown transition ref.
+  const {
+    executeStartCommand, executeStopCommand,
+    commandersRef, lastCommandTimeRef, expectedWateringStateRef, commandTimeoutRef,
+    washDownTransitionTimeRef, manualStopTriggeredRef,
+    isCommandLoading, setIsCommandLoading,
+    isSoftwareCutoffActive,
+  } = useLinkTapCommands({
+    gatewayIp, gatewayId, deviceId,
+    effectiveIntervalSecs: effectiveInterval,
+    canControl,
+    addLog,
+    setErrorMsg,
+    setTargetDuration, setTargetVolume, setVolume, setVolumeOffset, setDurationOffset,
+    requestRefresh: () => setManualRefresh(Date.now()),
+  });
+
+  // Real-time polling loop: owns the valve telemetry (LAN-first, server-observed off-LAN)
+  // and drives the software volume cutoff / external-open cap / auto-restart / washdown resume.
+  const {
+    isRfLinked, isBroken, setIsBroken, isLeak, setIsLeak, isClog, setIsClog,
+    signal, battery, setBattery, isWatering, speed, remainDuration,
+    connectionStatus, lastUpdated, flowHistory,
+  } = useLinkTapPolling({
+    device, gatewayIp, gatewayId, deviceId,
+    isCloudPollingActive, isLocalPollingActive,
+    refreshInterval, effectiveIntervalSecs: effectiveInterval, pollIntervalSecs: pollInterval,
+    manualRefresh, cloudUsername, cloudApiKey,
+    serverState,
+    autoRestartAvailable,
+    profile: { autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration },
+    commands: { commandersRef, expectedWateringStateRef, commandTimeoutRef, lastCommandTimeRef, manualStopTriggeredRef, washDownTransitionTimeRef, setIsCommandLoading },
+    setTargetVolume, setTargetDuration, setVolume, setVolumeOffset, setDurationOffset,
+    setUsageHistory, addLog, setErrorMsg,
+  });
 
   // --- Display Computed Values ---
   const displaySpeed = unitSystem === 'imperial' ? speed * 0.264172 : speed;
   // "Volume Consumed" is the CURRENT session's usage, so show 0 when the valve is idle — mirroring how
-  // speed is 0 when not watering (line ~596). The device's `vol` field returns a large/garbage value
+  // speed is 0 when not watering. The device's `vol` field returns a large/garbage value
   // when closed, which previously rendered as the raw total (e.g. ~95M gallons on a closed valve).
   // (volumeOffset is retained for the existing tare hook but is currently always 0.)
   const sessionVolume = isWatering ? Math.max(0, volume - volumeOffset) : 0;
@@ -216,14 +208,20 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const speedUnit = unitSystem === 'imperial' ? 'Gal/min' : 'L/min';
   const volUnit = unitSystem === 'imperial' ? 'Gallons' : 'Liters';
 
-  // --- Historic Stats for Chart ---
-  const [flowHistory, setFlowHistory] = useState<FlowData[]>([]);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Dispatch connection state to external listeners (Settings.tsx)
+  useEffect(() => {
+    const event = new CustomEvent('connection_state_change', {
+      detail: { status: connectionStatus, error: errorMsg }
+    });
+    window.dispatchEvent(event);
+  }, [connectionStatus, errorMsg]);
 
-  // --- PWA Installation Support ---
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [manualRefresh, setManualRefresh] = useState(0);
+  // Flooding Sentry + safety guard + offline / low-battery / watering-transition alerts.
+  const { isFloodAlarmActive, setIsFloodAlarmActive } = useValveSentries({
+    autoGuardEnabled, isBroken, isLeak, isWatering, isRfLinked, battery,
+    alertOffline, notifyAutoGuard, notifyLowBattery, notifyWatering,
+    triggerAlert, playSynthesizedAlarm, executeStopCommand, commandersRef,
+  });
 
   // Cache settings on change
   useEffect(() => {
@@ -255,136 +253,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     notifyLowBattery, notifyWatering
   ]);
 
-  useEffect(() => {
-    if (activeAlarmSound && alarmRepeatInterval !== 'once') {
-      const interval = setInterval(() => {
-        playSynthesizedAlarm(activeAlarmSound);
-      }, Number(alarmRepeatInterval) * 1000);
-      return () => clearInterval(interval);
-    }
-  }, [activeAlarmSound, alarmRepeatInterval]);
-
-  const playSynthesizedAlarm = (soundOverride?: string) => {
-    const soundToPlay = soundOverride || alarmSound;
-    if (soundToPlay === 'off') return;
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      
-      osc.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      
-      if (soundToPlay === 'siren') {
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(400, ctx.currentTime);
-        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 0.5);
-        osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 1.0);
-        osc.frequency.linearRampToValueAtTime(800, ctx.currentTime + 1.5);
-        osc.frequency.linearRampToValueAtTime(400, ctx.currentTime + 2.0);
-        
-        gainNode.gain.setValueAtTime(0.5 * alarmVolume, ctx.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01 * alarmVolume, ctx.currentTime + 2.0);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 2.0);
-      } else if (soundToPlay === 'beep') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(1000, ctx.currentTime);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime);
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime + 0.2);
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + 0.3);
-        gainNode.gain.setValueAtTime(1.0 * alarmVolume, ctx.currentTime + 0.4);
-        gainNode.gain.exponentialRampToValueAtTime(0.01 * alarmVolume, ctx.currentTime + 0.5);
-        
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.5);
-      }
-    } catch (e) {
-      console.error('AudioContext failed:', e);
-    }
-  };
-
-  const triggerAlert = async (title: string, message: string, silent: boolean = false) => {
-    if (!silent && alarmSound !== 'off') {
-      playSynthesizedAlarm(alarmSound);
-      setActiveAlarmSound(alarmSound);
-    }
-    addLog(silent ? 'info' : 'danger', `${title}: ${message}`);
-    
-    if (!notificationsEnabled) return;
-    
-    if ('Notification' in window && typeof (window as any).Capacitor === 'undefined' && !isTauriEnv()) {
-      if (Notification.permission === 'granted') {
-        new Notification(title, { body: message });
-      } else if (Notification.permission !== 'denied') {
-        const p = await Notification.requestPermission();
-        if (p === 'granted') new Notification(title, { body: message });
-      }
-    }
-    
-    if (isTauriEnv()) {
-      try {
-        const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
-        let permissionGranted = await isPermissionGranted();
-        if (!permissionGranted) {
-          const permission = await requestPermission();
-          permissionGranted = permission === 'granted';
-        }
-        if (permissionGranted) {
-          sendNotification({ title, body: message });
-        }
-      } catch (e) {
-        console.error('Tauri notification failed:', e);
-      }
-    }
-
-    if (typeof (window as any).Capacitor !== 'undefined') {
-      const Cap = (window as any).Capacitor;
-      if (Cap.isNativePlatform() && Cap.Plugins && Cap.Plugins.LocalNotifications) {
-        try {
-          const LN = Cap.Plugins.LocalNotifications;
-          let p = await LN.checkPermissions();
-          if (p.display !== 'granted') {
-             p = await LN.requestPermissions();
-          }
-          if (p.display === 'granted') {
-            await LN.schedule({
-              notifications: [{
-                  title,
-                  body: message,
-                  id: Math.floor(Math.random() * 100000),
-                  schedule: { at: new Date(Date.now() + 1000) }
-              }]
-            });
-          }
-        } catch (e) {
-          console.error('Capacitor notification failed:', e);
-        }
-      }
-    }
-  };
-
-  useEffect(() => {
-    let unlisten: any;
-    const setupFloodListener = async () => {
-      try {
-        unlisten = await listenTauri('flood-alarm', () => {
-          setIsFloodAlarmActive(true);
-          playSynthesizedAlarm('siren');
-          triggerAlert('CRITICAL', 'Flood Sensor Triggered! Instantly closing the valve.', false);
-          if (commandersRef.current.stop) commandersRef.current.stop('limit');
-        });
-      } catch (e) {
-        console.error('Failed to setup flood listener:', e);
-      }
-    };
-    setupFloodListener();
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, []);
-
   // Listen for PWA Install Prompt
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -404,508 +272,6 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     setDeferredPrompt(null);
     setShowInstallBanner(false);
   };
-
-  // --- Local Safety Guard Auto-Monitoring ---
-  useEffect(() => {
-    const { shutOff, cause } = evaluateSafetyGuard({
-      autoGuardEnabled,
-      isBroken,
-      isLeak,
-      isWatering,
-    });
-
-    if (shutOff) {
-      if (notifyAutoGuard) triggerAlert('Safety Sentry Triggered', `${cause} Shutting down valve...`);
-      executeStopCommand('limit');
-    }
-  }, [isBroken, isLeak, isWatering, autoGuardEnabled]);
-
-  useEffect(() => {
-    if (alertOffline && !isRfLinked && autoGuardEnabled) {
-      triggerAlert('Device Offline', 'The LinkTap gateway is offline or disconnected.');
-    }
-  }, [alertOffline, isRfLinked, autoGuardEnabled]);
-
-  // Low battery trigger
-  useEffect(() => {
-    if (notifyLowBattery && battery > 0 && battery <= 20) {
-      if (!hasNotifiedBattery.current) {
-        triggerAlert('Low Battery', `Gateway battery is low (${battery}%).`, true);
-        hasNotifiedBattery.current = true;
-      }
-    } else if (battery > 20) {
-      hasNotifiedBattery.current = false;
-    }
-  }, [battery, notifyLowBattery]);
-
-  // Water start/stop trigger
-  const previousWatering = useRef(isWatering);
-  useEffect(() => {
-    if (notifyWatering && isWatering !== previousWatering.current) {
-      if (isWatering) triggerAlert('Water Valve Opened', 'Water flow has started.', true);
-      else triggerAlert('Water Valve Closed', 'Water flow has stopped.', true);
-    }
-    previousWatering.current = isWatering;
-  }, [isWatering, notifyWatering]);
-
-  const commandersRef = useRef({ start: null as any, stop: null as any });
-  const stateRef = useRef({ isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration });
-  useEffect(() => {
-    stateRef.current = { isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration };
-  }, [isWatering, remainDuration, speed, autoRestartNormal, normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem, enableHistory, targetVolume, targetDuration]);
-
-  // --- Real-time Polling Logic ---
-  useEffect(() => {
-    setConnectionStatus('disconnected');
-
-    const poll = async () => {
-      // DEMO: no network — mirror the deterministic server-observed valve state (fed by
-      // useLinkTapCloudState's generator) into the display, always "connected", never errors.
-      if (__DEMO__) {
-        const ss = serverStateRef.current;
-        if (ss && ss.at > 0) {
-          setIsRfLinked(true); setIsBroken(false); setIsLeak(false); setIsClog(false);
-          setBattery(ss.battery ?? 0);
-          setSignal(ss.signal ?? 0);
-          setIsWatering(!!ss.isWatering);
-          setSpeed(ss.isWatering && ss.flow != null ? ss.flow : 0);
-          setLastUpdated(ss.at);
-          setConnectionStatus('connected');
-          setErrorMsg(null);
-        }
-        return;
-      }
-      if (device.enabled === false || (!isLocalPollingActive && !isCloudPollingActive)) {
-        setConnectionStatus('disconnected');
-        return;
-      }
-
-      // Real network requests
-      try {
-        setErrorMsg(null);
-        let data: any = null;
-        let usedCloud = false;
-
-        // 1. Try Local API first (for extremely fast, real-time telemetry)
-        if (isLocalPollingActive && gatewayIp) {
-           try {
-             const localRes = await unifiedFetch(`http://${gatewayIp}/api.shtml`, {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ cmd: 3, gw_id: gatewayId, dev_id: deviceId }),
-               timeout: 4000 // Short timeout so it falls back to cloud quickly if off-net
-             });
-             const rawText = await localRes.text();
-             data = JSON.parse(extractJsonFromMaybeHtml(rawText));
-             
-             if (data.ret !== undefined && data.ret !== 0) {
-               throw new Error(`Local API Error Code ${data.ret}`);
-             }
-           } catch (e) {
-             console.warn("Local API poll failed, falling back to Cloud API", e);
-             data = null;
-           }
-        }
-
-        // 2. Off-LAN: use the SERVER-observed state (worker cache from LinkTap's pushed webhooks)
-        //    instead of polling LinkTap's cloud directly. The app no longer reads LinkTap cloud, so a
-        //    stale copy can't add polling load / race. Values are already clean (no swap/normalize).
-        //    We set the basic display state and return — the local-only logic (volume cutoff / history /
-        //    auto-restart) needs continuous LAN data and is skipped off-LAN (it was unreliable via the
-        //    old cloud poll too). Signed-in only; local-only users have no server cache.
-        if (!data && auth.currentUser) {
-           const ss = serverStateRef.current;
-           if (ss && ss.at > 0) {
-             const wat = !!ss.isWatering;
-             setIsRfLinked(true);
-             setIsBroken(false); setIsLeak(false); setIsClog(false);
-             setBattery(ss.battery ?? 0);
-             setSignal(ss.signal ?? 0);
-             setIsWatering(wat);
-             setSpeed(wat && ss.flow != null ? ss.flow : 0);
-             setLastUpdated(ss.at);
-             setConnectionStatus('connected');
-             // Clear the optimistic command lock once the server reflects the commanded state.
-             if (expectedWateringStateRef.current !== null && wat === expectedWateringStateRef.current) {
-               expectedWateringStateRef.current = null;
-               setIsCommandLoading(false);
-               if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-             }
-           }
-           return; // no LAN data + no direct-cloud read — done for this tick
-        }
-
-        if (!data) {
-           throw new Error("Polling failed: Ensure Local IP or Cloud Credentials are configured correctly and network is reachable.");
-        }
-
-        // 3. Parse format based on source. Cloud responses get folded into the native shape;
-        //    local responses already match it.
-        if (usedCloud) {
-           try {
-             data = normalizeCloudStatus(data, {
-               battery: (window as any).cachedCloudBattery,
-               signal: (window as any).cachedCloudSignal,
-               status: (window as any).cachedCloudStatus,
-             });
-           } catch (e) {
-             console.warn('Cloud API parsing issue', e);
-           }
-        }
-
-        // LinkTap firmware reports battery and signal swapped (both APIs); swap them back.
-        swapBatterySignal(data);
-
-        const newIsWatering = coerceWateringBool(data.is_watering);
-
-        if (expectedWateringStateRef.current !== null) {
-          if (newIsWatering === expectedWateringStateRef.current) {
-            // Physical valve has successfully reached the target state!
-            expectedWateringStateRef.current = null;
-            setIsCommandLoading(false);
-            if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-          } else {
-            const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
-            if (Date.now() - lastCommandTimeRef.current < lockDuration) {
-              // Still waiting for valve to move. Ignore this old state so UI doesn't flicker!
-              setIsRfLinked(data.is_rf_linked ?? true);
-              setSignal(data.signal ?? 0);
-              setBattery(data.battery ?? 0);
-              return;
-            } else {
-              // Timeout expired, give up and accept current state
-              expectedWateringStateRef.current = null;
-              setIsCommandLoading(false);
-            }
-          }
-        }
-        
-        // NOTE: Auto-restart is driven entirely by the app — it only loops while the app is open
-        // and polling. TODO(future): move this to a cloud worker so it can watch the device and
-        // restart the Normal Run timer even when the app is closed.
-        if (stateRef.current.isWatering && !newIsWatering && stateRef.current.autoRestartNormal && autoRestartAvailableRef.current) {
-          const naturalExpiration = stateRef.current.remainDuration <= (effectiveInterval + 15);
-          if (manualStopTriggeredRef.current || !naturalExpiration) {
-            addLog('info', 'Valve closed manually before timer expired. Auto-restart skipped.');
-            manualStopTriggeredRef.current = false;
-          } else {
-            addLog('info', 'Timer expired. Auto-restart is ON. Restarting Normal Run profile in 5 seconds...');
-            setTimeout(() => {
-               let vol = stateRef.current.normalRunVolume;
-               if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-               const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-               if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-            }, 5000);
-          }
-        }
-        
-        if (stateRef.current.isWatering && !newIsWatering) {
-            setVolumeOffset(0);
-            setDurationOffset(0);
-        }
-
-        setIsRfLinked(data.is_rf_linked ?? true);
-
-        setIsBroken(data.is_broken ?? false);
-        setIsLeak(data.is_leak ?? false);
-        setIsClog(data.is_clog ?? false);
-        setSignal(data.signal ?? 0);
-        setBattery(data.battery ?? 0);
-        setIsWatering(newIsWatering);
-        setSpeed(newIsWatering ? Number(data.speed ?? data.vel ?? 0) : 0);
-
-        // If targetVolume is 0 (app launched mid-cycle), try to extract it from the API
-        const apiTargetVol = pickTargetVolume(data);
-        if (apiTargetVol > 0 && stateRef.current.targetVolume === 0) setTargetVolume(apiTargetVol);
-
-        const apiTargetDur = pickTargetDuration(data);
-        if (apiTargetDur > 0 && stateRef.current.targetDuration === 0) setTargetDuration(apiTargetDur * 60); // assume minutes from API
-
-        // If we are using Local API (meaning usedCloud is false) and we just discovered watering is active, 
-        // the Local API often does not provide the duration/volume limits.
-        // We can asynchronously poll the Cloud API specifically for this limit data to populate the UI.
-        if (newIsWatering && stateRef.current.targetVolume === 0 && stateRef.current.targetDuration === 0 && !usedCloud && isCloudPollingActive && cloudUsername && cloudApiKey) {
-            if (!(window as any).fetchingLimits) {
-                (window as any).fetchingLimits = true;
-                unifiedFetch('https://www.link-tap.com/api/getWateringStatus', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: cloudUsername, apiKey: cloudApiKey, taplinkerId: deviceId })
-                }).then(r => r.json()).then(cloudData => {
-                    (window as any).fetchingLimits = false;
-                    if (cloudData.result !== 'error') {
-                        const st = cloudData.status || cloudData;
-                        const cVol = Number(st.limit || st.target_vol || (st.watering ? st.watering.vol : 0) || 0);
-                        const cDur = Number(st.totalDuration || st.total || (st.watering ? st.watering.duration : 0) || 0);
-                        if (cVol > 0 && stateRef.current.targetVolume === 0) setTargetVolume(cVol);
-                        if (cDur > 0 && stateRef.current.targetDuration === 0) setTargetDuration(cDur * 60);
-                    }
-                }).catch(e => {
-                    (window as any).fetchingLimits = false;
-                    console.warn('Background cloud fetch for limits failed', e);
-                });
-            }
-        }
-
-        // Externally-started open (physical button on the valve, or the LinkTap app): if it's watering
-        // with no volume limit we know of and WE didn't start this cycle, apply the per-valve max-volume
-        // safety cap so a manual open can't run unbounded. The software cutoff below then enforces it.
-        // (A cloud-discovered limit above would already have set targetVolume, making this a no-op.)
-        if (newIsWatering && stateRef.current.targetVolume === 0 && expectedWateringStateRef.current !== true) {
-           const capL = externalOpenCapLiters(device);
-           setTargetVolume(capL);
-           addLog('warning', `Externally-started run detected — applying a ${capL} L max-volume safety cap.`);
-        }
-
-        const currentVolume = Number(data.volume ?? data.vol ?? 0);
-
-        // Software-enforced volume cutoff
-        // LinkTap hardware often ignores volume limits passed to cmd: 6, so we must enforce it here!
-        // Read targetVolume from the ref (not the render closure) so a limit discovered mid-cycle
-        // via setTargetVolume above is honored on the same poll.
-        if (shouldEnforceVolumeCutoff(newIsWatering, stateRef.current.targetVolume, currentVolume)) {
-           if (commandersRef.current.stop && expectedWateringStateRef.current !== false) {
-              addLog('success', `Target volume limit reached. Sending software-enforced stop command.`);
-              commandersRef.current.stop('limit');
-              expectedWateringStateRef.current = false;
-              setIsCommandLoading('stop');
-           }
-        }
-
-        if (stateRef.current.enableHistory) {
-          const delta = currentVolume < previousVolumeRef.current 
-              ? currentVolume // cycle restarted, add new volume
-              : currentVolume - previousVolumeRef.current;
-          
-          if (delta > 0) {
-            const now = new Date();
-            now.setMinutes(0, 0, 0); // floor to hour
-            const bucket = now.toISOString();
-            setUsageHistory(prev => ({ ...prev, [bucket]: (prev[bucket] || 0) + delta }));
-          }
-        }
-        previousVolumeRef.current = currentVolume;
-        setVolume(currentVolume);
-
-        if (washDownTransitionTimeRef.current) {
-          const remainingMs = washDownTransitionTimeRef.current - Date.now();
-          if (remainingMs <= 0) {
-            // Washdown timer expired! Reprogram to Normal Cycle!
-            addLog('info', 'Washdown complete! Resuming Normal Run profile without shutting off valve...');
-            washDownTransitionTimeRef.current = null;
-            let vol = stateRef.current.normalRunVolume;
-            if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-            const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-            if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-          } else {
-            // Override UI remain duration so it shows the exact Washdown time instead of Washdown + Buffer
-            data.remain_duration = Math.round(remainingMs / 1000);
-          }
-        }
-
-        setRemainDuration(Number(data.remain_duration ?? 0));
-        
-        setConnectionStatus('connected');
-        setLastUpdated(Date.now());
-
-        setFlowHistory((prev) => {
-          const next = [...prev, { ts: Date.now(), speed: Number(data.speed) }];
-          return next.slice(-20);
-        });
-
-      } catch (err: any) {
-        setConnectionStatus('disconnected');
-        const env = isTauriEnv() ? '(Native Proxy)' : '(Browser)';
-        const errMsg = err instanceof Error ? err.message : (err && err.message ? err.message : String(err));
-        setErrorMsg(`Failed to connect to gateway ${env}: ${errMsg}`);
-      } finally {
-        lastPollTimeRef.current = Date.now();
-      }
-    };
-
-    const timeSinceLastPoll = Date.now() - lastPollTimeRef.current;
-    if (timeSinceLastPoll >= pollInterval * 1000 - 1000 || Date.now() - manualRefresh < 1000 || lastPollTimeRef.current === 0) {
-      poll();
-    }
-    
-    const timer = setInterval(poll, pollInterval * 1000);
-    return () => clearInterval(timer);
-  }, [gatewayIp, gatewayId, deviceId, isCloudPollingActive, isLocalPollingActive, refreshInterval, effectiveInterval, pollInterval, manualRefresh, cloudUsername, cloudApiKey, device.enabled]);
-
-  // --- API Action Commanders ---
-  
-  // cmd 6: Start watering
-  const executeStartCommandRaw = async (durationMins: number, volumeLimitLiters: number) => {
-    setTargetDuration(durationMins * 60);
-    setTargetVolume(volumeLimitLiters);
-    setVolume(0);
-    setVolumeOffset(0);
-    setDurationOffset(0);
-
-    // Optimistically lock the buttons so they react immediately
-    lastCommandTimeRef.current = Date.now();
-    expectedWateringStateRef.current = true;
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('start');
-
-    addLog('info', `Sending API command: START watering. Duration: ${durationMins}m, Limit: ${volumeLimitLiters}L`);
-
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('start');
-    try {
-      setErrorMsg(null);
-      let success = false;
-      let usedLocal = false;
-
-      // 1. Prefer the worker's role-checked /api/control — the app no longer calls LinkTap cloud
-      // directly, so a stale signed-in copy can't fight over the valve (retires the multi-instance
-      // race). Signed-in only; local-only users skip straight to the LAN gateway below.
-      if (auth.currentUser) {
-        try {
-          const vid = getActiveVehicleId();
-          const token = await auth.currentUser.getIdToken();
-          if (vid && token) {
-            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
-            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
-            const r = await sendLinkTapControl(base, token, vid, 'open', durationMins * 60);
-            if (r.ok) { success = true; addLog('success', 'Open command relayed via cloud server.'); }
-            else addLog('warning', `Cloud control failed: ${r.error}. Falling back to Local API...`);
-          }
-        } catch (e: any) {
-          addLog('warning', `Cloud control error: ${e.message}. Falling back to Local API...`);
-        }
-      }
-
-      // 2. Fallback to Local API
-      if (!success) {
-        if (!gatewayIp) throw new Error("Cloud API failed and no Local Gateway IP configured for fallback.");
-        
-        const localRes = await unifiedFetch(`http://${gatewayIp}/api.shtml`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cmd: 6,
-            gw_id: gatewayId,
-            dev_id: deviceId,
-            duration: Math.round(durationMins * 60), // Local API expects SECONDS
-            volume_limit: Math.round(volumeLimitLiters), // Local API expects 'volume_limit' not 'vol'
-            vol: Math.round(volumeLimitLiters) // Fallback just in case
-          }),
-        });
-        
-        if (!localRes.ok) throw new Error(`Local HTTP Error ${localRes.status}`);
-        // Local API usually returns JSON or HTML. Assume success if reached.
-        success = true;
-        usedLocal = true;
-        addLog('success', 'Local API Start command received by Gateway.');
-      }
-
-      // 3. UI State Management
-      if (usedLocal && volumeLimitLiters > 0) {
-        setIsSoftwareCutoffActive(true);
-      } else {
-        setIsSoftwareCutoffActive(false);
-      }
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
-      commandTimeoutRef.current = setTimeout(() => {
-         if (expectedWateringStateRef.current !== null) {
-             expectedWateringStateRef.current = null;
-             setIsCommandLoading(false);
-         }
-      }, lockDuration);
-      
-      const refreshDelay = 2500;
-      setTimeout(() => setManualRefresh(Date.now()), refreshDelay); // Speed up next poll to detect change faster
-    } catch (err: any) {
-      addLog('danger', `API Start command failed: ${err.message}`);
-      setErrorMsg(err.message);
-      expectedWateringStateRef.current = null;
-      setIsCommandLoading(false);
-    }
-  };
-
-  // Automation (auto-restart, washdown) uses the raw command; user buttons use the gated wrapper.
-  commandersRef.current.start = executeStartCommandRaw;
-
-  // Monitor-only users can view but not operate the valve.
-  const executeStartCommand = (durationMins: number, volumeLimitLiters: number) => {
-    if (!canControl) { addLog('warning', '🔒 Monitor-only access — controls are disabled for your account.'); return; }
-    executeStartCommandRaw(durationMins, volumeLimitLiters);
-  };
-
-  // cmd 7: Stop watering (Emergency Button)
-  const executeStopCommand = async (reason: 'manual' | 'limit' = 'manual') => {
-    if (reason === 'manual' && !canControl) { addLog('warning', '🔒 Monitor-only access — controls are disabled for your account.'); return; }
-    addLog('warning', reason === 'limit' ? `⚠️ Valve turned off due to limit reached.` : `⚠️ Manual valve turn off initiated.`);
-
-    lastCommandTimeRef.current = Date.now();
-    expectedWateringStateRef.current = false;
-    washDownTransitionTimeRef.current = null;
-    
-    if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
-    setIsCommandLoading('stop');
-    try {
-      setErrorMsg(null);
-      let success = false;
-
-      // 1. Prefer the worker's role-checked /api/control (retires the direct-LinkTap race).
-      // Signed-in only; local-only users skip to the LAN gateway below.
-      if (auth.currentUser) {
-        try {
-          const vid = getActiveVehicleId();
-          const token = await auth.currentUser.getIdToken();
-          if (vid && token) {
-            const { DEFAULT_WORKER_URL } = await import('../utils/configSync');
-            const base = localStorage.getItem('sh_webhook_url') || DEFAULT_WORKER_URL;
-            const r = await sendLinkTapControl(base, token, vid, 'close');
-            if (r.ok) { success = true; addLog('success', 'Stop command relayed via cloud server.'); }
-            else addLog('warning', `Cloud control stop failed: ${r.error}. Falling back to Local API...`);
-          }
-        } catch (e: any) {
-          addLog('warning', `Cloud control stop error: ${e.message}. Falling back to Local API...`);
-        }
-      }
-
-      // 2. Fallback to Local API
-      if (!success) {
-        if (!gatewayIp) throw new Error("Cloud API failed and no Local Gateway IP configured for fallback.");
-        const localRes = await unifiedFetch(`http://${gatewayIp}/api.shtml`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            cmd: 7,
-            gw_id: gatewayId,
-            dev_id: deviceId,
-          }),
-        });
-        
-        if (!localRes.ok) throw new Error(`Local HTTP Error ${localRes.status}`);
-        success = true;
-        addLog('success', 'Local API Stop command received by Gateway.');
-      }
-
-      // 3. UI State Management
-      setIsSoftwareCutoffActive(false);
-      
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
-      commandTimeoutRef.current = setTimeout(() => {
-         if (expectedWateringStateRef.current !== null) {
-             expectedWateringStateRef.current = null;
-             setIsCommandLoading(false);
-         }
-      }, lockDuration);
-      
-      const refreshDelay = 2500;
-      setTimeout(() => setManualRefresh(Date.now()), refreshDelay); // Speed up next poll to detect change faster
-    } catch (err: any) {
-      addLog('danger', `API Stop command failed: ${err.message}`);
-      setErrorMsg(err.message);
-      expectedWateringStateRef.current = null;
-      setIsCommandLoading(false);
-    }
-  };
-
-  commandersRef.current.stop = executeStopCommand;
 
   // --- HTML5 Canvas History Graph Rendering ---
   useEffect(() => {
@@ -1243,10 +609,8 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
               <button
                 disabled={isWatering || !!isCommandLoading}
                 onClick={() => {
-                   let vol = normalRunVolume;
-                   if (unitSystem === 'imperial') vol = vol / 0.264172; // Convert to liters for API
-                   const durationMins = normalRunDaily ? 1439 : (normalRunHours * 60) + normalRunMinutes;
-                   executeStartCommand(durationMins, vol);
+                   const cmd = normalRunCommand({ normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem });
+                   executeStartCommand(cmd.durationMins, cmd.volumeLiters);
                 }}
                 className="btn-primary"
                 style={{ marginTop: '12px', width: '100%', padding: '12px', fontSize: '0.95rem', background: isWatering ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #10b981, #059669)', color: isWatering ? '#888' : '#fff' }}
