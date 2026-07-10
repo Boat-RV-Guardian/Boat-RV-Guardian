@@ -195,9 +195,14 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       in [#106](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/106) (see the LinkTap redesign
       section): open/close route through the worker's role-checked `/api/control` with the Firebase ID
       token, LAN gateway as fallback. Now lives in `hooks/useLinkTapCommands.ts`.
-- [ ] **Task 6 — off-LAN control gate.** Make LinkTapWidget honor `canRemoteControl` off-LAN (the
-      local-vs-remote seam now exists in `hooks/useLinkTapCommands.ts` — gate the cloud `/api/control`
-      path by entitlement, keep the LAN path for Free/local users; never gate safety stops).
+- [x] **Task 6 — off-LAN control gate — DONE (2026-07-10).** `useLinkTapCommands` now skips the cloud
+      `/api/control` relay when the vehicle's plan lacks `canRemoteControl` (via `useEntitlements`) —
+      commands go LAN-only (local control is always free), with an explanatory Event-Sentry log and a
+      plan banner in the widget when signed-in off-LAN without a LAN gateway. **SAFETY `'limit'` stops
+      (flood shutoff / volume cutoff) are exempt and always try every channel.** Covered by 3 hook tests.
+      **Follow-up (server-side, AGENTS rule 5):** the worker's `/api/control` enforces ROLE but not TIER —
+      add a `canRemoteControl` tier check in brvg-cloud-server so a Free-plan client can't bypass the
+      client gate (needs an owner-OK'd worker deploy).
 - [x] **Shelly password-set during provisioning — AP & BLE paths — DONE (#118, 2026-07-07).** Both paths
       now set `sh_local_password`: the Wi-Fi-AP path secures at `192.168.33.1` BEFORE `Wifi.SetConfig`
       (resolving the 401 ordering hazard by sending the remaining call through `shellyRpc`'s digest

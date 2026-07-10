@@ -23,6 +23,7 @@ function makeCfg(over: Partial<LinkTapCommandsConfig> = {}): LinkTapCommandsConf
     deviceId: 'DEV1',
     effectiveIntervalSecs: 5,
     canControl: true,
+    canRemoteControl: true,
     addLog: vi.fn(),
     setErrorMsg: vi.fn(),
     setTargetDuration: vi.fn(),
@@ -105,6 +106,36 @@ describe('useLinkTapCommands — command routing', () => {
     expect(mocks.unifiedFetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse((mocks.unifiedFetch.mock.calls[0] as any)[1].body);
     expect(body.cmd).toBe(7);
+  });
+
+  it('Task 6: without canRemoteControl a signed-in start skips the cloud relay (LAN only)', async () => {
+    mocks.auth.currentUser = { getIdToken: async () => 'tok' };
+    const cfg = makeCfg({ canRemoteControl: false });
+    const { result } = renderHook(() => useLinkTapCommands(cfg));
+    await act(async () => { await result.current.executeStartCommandRaw(15, 50); });
+    expect(mocks.sendLinkTapControl).not.toHaveBeenCalled();
+    expect(cfg.addLog).toHaveBeenCalledWith('info', expect.stringContaining('Remote (off-LAN) control'));
+    expect(mocks.unifiedFetch).toHaveBeenCalledTimes(1); // LAN path still works (local is free)
+    expect(JSON.parse((mocks.unifiedFetch.mock.calls[0] as any)[1].body).cmd).toBe(6);
+  });
+
+  it('Task 6: without canRemoteControl a MANUAL stop skips the cloud relay (LAN only)', async () => {
+    mocks.auth.currentUser = { getIdToken: async () => 'tok' };
+    const cfg = makeCfg({ canRemoteControl: false });
+    const { result } = renderHook(() => useLinkTapCommands(cfg));
+    await act(async () => { await result.current.executeStopCommand('manual'); });
+    expect(mocks.sendLinkTapControl).not.toHaveBeenCalled();
+    expect(JSON.parse((mocks.unifiedFetch.mock.calls[0] as any)[1].body).cmd).toBe(7);
+  });
+
+  it("Task 6: a SAFETY 'limit' stop still uses the cloud relay even without canRemoteControl", async () => {
+    mocks.auth.currentUser = { getIdToken: async () => 'tok' };
+    const cfg = makeCfg({ canRemoteControl: false });
+    const { result } = renderHook(() => useLinkTapCommands(cfg));
+    await act(async () => { await result.current.executeStopCommand('limit'); });
+    expect(mocks.sendLinkTapControl).toHaveBeenCalledTimes(1); // safety tries every channel
+    const [, , , action] = mocks.sendLinkTapControl.mock.calls[0] as any;
+    expect(action).toBe('close');
   });
 
   it('surfaces an error (and unlocks) when cloud fails and no gateway IP is configured', async () => {

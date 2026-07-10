@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { type DeviceConfig } from '../utils/VehicleManager';
 import { formatTime, formatDate, getDisplayTimeZone } from '../utils/time';
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
+import { useEntitlements } from '../hooks/useEntitlements';
 import { useAlarmNotifications } from '../hooks/useAlarmNotifications';
 import { useLinkTapCommands } from '../hooks/useLinkTapCommands';
 import { useLinkTapPolling } from '../hooks/useLinkTapPolling';
@@ -160,6 +161,9 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [manualRefresh, setManualRefresh] = useState(0);
 
+  // Per-vehicle plan entitlements — remote (off-LAN) control is a paid feature (Task 6).
+  const entitlements = useEntitlements();
+
   // Valve command senders + optimistic command lock + washdown transition ref.
   const {
     executeStartCommand, executeStopCommand,
@@ -171,6 +175,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
     gatewayIp, gatewayId, deviceId,
     effectiveIntervalSecs: effectiveInterval,
     canControl,
+    canRemoteControl: entitlements.canRemoteControl,
     addLog,
     setErrorMsg,
     setTargetDuration, setTargetVolume, setVolume, setVolumeOffset, setDurationOffset,
@@ -433,6 +438,12 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
                 {!canControl && (
                   <p style={{ fontSize: '0.78rem', color: '#fde68a', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px', padding: '6px 10px', marginTop: '6px', display: 'inline-block' }}>
                     🔒 Monitor-only access — you can view status but not operate this device.
+                  </p>
+                )}
+                {canControl && !entitlements.canRemoteControl && !isLocalMode(localStorage) && !(isLocalPollingActive && gatewayIp) && (
+                  <p style={{ fontSize: '0.78rem', color: '#fde68a', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px', padding: '6px 10px', marginTop: '6px', display: 'inline-block' }}>
+                    🔒 Remote control isn't included in your plan — controls work when this device is on
+                    the gateway's network. Upgrade to Basic for away control.
                   </p>
                 )}
               </div>
