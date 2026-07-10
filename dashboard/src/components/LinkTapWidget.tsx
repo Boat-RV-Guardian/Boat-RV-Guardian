@@ -8,6 +8,7 @@ import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDu
 import { useDeviceHistory } from '../hooks/useDeviceHistory';
 import { drawFlowChart, type FlowData } from '../utils/flowChart';
 import { evaluateSafetyGuard, shouldEnforceVolumeCutoff } from '../utils/valveSafety';
+import { normalRunCommand, commandLockMs, autoRestartDecision, washdownTick } from '../utils/valveAutomation';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { externalOpenCapLiters } from '../utils/quickOpen';
 import { isLocalMode } from '../utils/userScope';
@@ -565,7 +566,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
             setIsCommandLoading(false);
             if (commandTimeoutRef.current) clearTimeout(commandTimeoutRef.current);
           } else {
-            const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
+            const lockDuration = commandLockMs(effectiveInterval);
             if (Date.now() - lastCommandTimeRef.current < lockDuration) {
               // Still waiting for valve to move. Ignore this old state so UI doesn't flicker!
               setIsRfLinked(data.is_rf_linked ?? true);
@@ -583,20 +584,24 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         // NOTE: Auto-restart is driven entirely by the app — it only loops while the app is open
         // and polling. TODO(future): move this to a cloud worker so it can watch the device and
         // restart the Normal Run timer even when the app is closed.
-        if (stateRef.current.isWatering && !newIsWatering && stateRef.current.autoRestartNormal && autoRestartAvailableRef.current) {
-          const naturalExpiration = stateRef.current.remainDuration <= (effectiveInterval + 15);
-          if (manualStopTriggeredRef.current || !naturalExpiration) {
-            addLog('info', 'Valve closed manually before timer expired. Auto-restart skipped.');
-            manualStopTriggeredRef.current = false;
-          } else {
-            addLog('info', 'Timer expired. Auto-restart is ON. Restarting Normal Run profile in 5 seconds...');
-            setTimeout(() => {
-               let vol = stateRef.current.normalRunVolume;
-               if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-               const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-               if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-            }, 5000);
-          }
+        const restart = autoRestartDecision({
+          wasWatering: stateRef.current.isWatering,
+          isWatering: newIsWatering,
+          autoRestartEnabled: stateRef.current.autoRestartNormal,
+          autoRestartAvailable: autoRestartAvailableRef.current,
+          lastRemainDuration: stateRef.current.remainDuration,
+          effectiveIntervalSecs: effectiveInterval,
+          manualStopTriggered: manualStopTriggeredRef.current,
+        });
+        if (restart === 'skip-manual-stop') {
+          addLog('info', 'Valve closed manually before timer expired. Auto-restart skipped.');
+          manualStopTriggeredRef.current = false;
+        } else if (restart === 'restart') {
+          addLog('info', 'Timer expired. Auto-restart is ON. Restarting Normal Run profile in 5 seconds...');
+          setTimeout(() => {
+             const cmd = normalRunCommand(stateRef.current);
+             if (commandersRef.current.start) commandersRef.current.start(cmd.durationMins, cmd.volumeLiters);
+          }, 5000);
         }
         
         if (stateRef.current.isWatering && !newIsWatering) {
@@ -687,20 +692,16 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
         previousVolumeRef.current = currentVolume;
         setVolume(currentVolume);
 
-        if (washDownTransitionTimeRef.current) {
-          const remainingMs = washDownTransitionTimeRef.current - Date.now();
-          if (remainingMs <= 0) {
-            // Washdown timer expired! Reprogram to Normal Cycle!
-            addLog('info', 'Washdown complete! Resuming Normal Run profile without shutting off valve...');
-            washDownTransitionTimeRef.current = null;
-            let vol = stateRef.current.normalRunVolume;
-            if (stateRef.current.unitSystem === 'imperial') vol = vol / 0.264172;
-            const durationMins = stateRef.current.normalRunDaily ? 1439 : (stateRef.current.normalRunHours * 60) + stateRef.current.normalRunMinutes;
-            if (commandersRef.current.start) commandersRef.current.start(durationMins, vol);
-          } else {
-            // Override UI remain duration so it shows the exact Washdown time instead of Washdown + Buffer
-            data.remain_duration = Math.round(remainingMs / 1000);
-          }
+        const wd = washdownTick(washDownTransitionTimeRef.current, Date.now());
+        if (wd.phase === 'expired') {
+          // Washdown timer expired! Reprogram to Normal Cycle!
+          addLog('info', 'Washdown complete! Resuming Normal Run profile without shutting off valve...');
+          washDownTransitionTimeRef.current = null;
+          const cmd = normalRunCommand(stateRef.current);
+          if (commandersRef.current.start) commandersRef.current.start(cmd.durationMins, cmd.volumeLiters);
+        } else if (wd.phase === 'running') {
+          // Override UI remain duration so it shows the exact Washdown time instead of Washdown + Buffer
+          data.remain_duration = wd.remainSecs;
         }
 
         setRemainDuration(Number(data.remain_duration ?? 0));
@@ -806,7 +807,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       } else {
         setIsSoftwareCutoffActive(false);
       }
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
+      const lockDuration = commandLockMs(effectiveInterval);
       commandTimeoutRef.current = setTimeout(() => {
          if (expectedWateringStateRef.current !== null) {
              expectedWateringStateRef.current = null;
@@ -887,7 +888,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       // 3. UI State Management
       setIsSoftwareCutoffActive(false);
       
-      const lockDuration = Math.max(30000, effectiveInterval * 1000 + 5000);
+      const lockDuration = commandLockMs(effectiveInterval);
       commandTimeoutRef.current = setTimeout(() => {
          if (expectedWateringStateRef.current !== null) {
              expectedWateringStateRef.current = null;
@@ -1243,10 +1244,8 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
               <button
                 disabled={isWatering || !!isCommandLoading}
                 onClick={() => {
-                   let vol = normalRunVolume;
-                   if (unitSystem === 'imperial') vol = vol / 0.264172; // Convert to liters for API
-                   const durationMins = normalRunDaily ? 1439 : (normalRunHours * 60) + normalRunMinutes;
-                   executeStartCommand(durationMins, vol);
+                   const cmd = normalRunCommand({ normalRunDaily, normalRunHours, normalRunMinutes, normalRunVolume, unitSystem });
+                   executeStartCommand(cmd.durationMins, cmd.volumeLiters);
                 }}
                 className="btn-primary"
                 style={{ marginTop: '12px', width: '100%', padding: '12px', fontSize: '0.95rem', background: isWatering ? 'rgba(255,255,255,0.1)' : 'linear-gradient(135deg, #10b981, #059669)', color: isWatering ? '#888' : '#fff' }}
