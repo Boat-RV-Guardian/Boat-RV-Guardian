@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeCloudStatus,
-  swapBatterySignal,
   pickTargetVolume,
   pickTargetDuration,
 } from './linktapStatus';
@@ -59,16 +58,6 @@ describe('normalizeCloudStatus', () => {
     expect(out.is_watering).toBe(false);
     expect(out.speed).toBe(0);
     expect(out.remain_duration).toBe(0);
-  });
-});
-
-describe('swapBatterySignal', () => {
-  it('swaps battery and signal in place', () => {
-    const data: any = { battery: 90, signal: 40, other: 'x' };
-    swapBatterySignal(data);
-    expect(data.battery).toBe(40);
-    expect(data.signal).toBe(90);
-    expect(data.other).toBe('x'); // unrelated fields untouched
   });
 });
 
