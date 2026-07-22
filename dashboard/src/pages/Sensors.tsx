@@ -9,9 +9,10 @@ const CATEGORY: Record<string, { role: string; title: string; color: string }> =
   shore_power: { role: 'High Power Sensor', title: 'Shore Power (120v/240v)', color: '#f59e0b' },
   batteries:   { role: 'Low Power Sensor',  title: 'Batteries (10-26v)',      color: '#10b981' },
   flood:       { role: 'Flood Sensor',      title: 'High Water / Flood Sensors', color: '#3b82f6' },
+  environment: { role: 'Environmental Sensor', title: 'Environment (Temp / Humidity)', color: '#a78bfa' },
 };
 
-export default function Sensors({ category }: { category: 'flood' | 'batteries' | 'shore_power' }) {
+export default function Sensors({ category }: { category: 'flood' | 'batteries' | 'shore_power' | 'environment' }) {
   const [devices, setDevices] = useState<DeviceConfig[]>(() => getDevices());
 
   useEffect(() => {

@@ -42,6 +42,7 @@ export function mapCloudSensorDoc(role: string, d: Record<string, any>): Record<
     else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
   }
   if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
+  if (d.rh != null) remote['humidity:0'] = { rh: n(d.rh) };
   if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
   const ev = String(d.event || '');
   if (/flood|alarm|leak/i.test(ev)) remote['flood:0'] = { alarm: !/off|clear|inactive|dry/i.test(ev) };
@@ -102,9 +103,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
     .filter((h, i, a): h is string => !!h && a.indexOf(h) === i);
   const localIp = localHosts[0]; // "do we have a local address?" + primary host for reads
 
-  // Flood sensors are inherently sleepy/battery, even if added before the batteryPowered flag was
-  // stored — treat the role as battery-powered so they're never polled or shown as "unreachable".
-  const isBattery = device.batteryPowered === true || device.role === 'Flood Sensor';
+  // Flood + H&T environmental sensors are inherently sleepy/battery, even if added before the
+  // batteryPowered flag was stored — never polled and never shown as "unreachable".
+  const isBattery = device.batteryPowered === true || device.role === 'Flood Sensor' || device.role === 'Environmental Sensor';
 
 
   // Worker-cached remote state (vehicles/{vid}/sensorState/{deviceId}): the device pushes alerts AND
@@ -195,6 +196,8 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       return d['voltmeter:0']?.xvoltage ?? d['voltmeter:0']?.voltage
         ?? d['voltmeter:100']?.xvoltage ?? d['voltmeter:100']?.voltage
         ?? d.adcs?.[0]?.voltage ?? uniAnalogVolts(d);
+    // Environmental: trend the temperature (°C internally; converted at display time).
+    if (device.role === 'Environmental Sensor') return d['temperature:0']?.tC ?? d.tmp?.tC ?? null;
     return null; // flood is binary — no continuous trend
   };
 
@@ -348,6 +351,31 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
           <Sparkline points={history} color={status.c} min={crit - 0.4} max={over + 0.4}
             thresholds={[{ v: crit, color: '#ef4444' }, { v: low, color: '#f59e0b' }, { v: normal, color: '#94a3b8' }, { v: charge, color: '#22d3ee' }, { v: over, color: '#ef4444' }]} />
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Voltage trend · nominal {normal} V · thresholds {crit} / {low} / {charge} / {over} V</div>
+        </div>
+      );
+    } else if (device.role === 'Environmental Sensor') {
+      const tC = data['temperature:0']?.tC ?? data.tmp?.tC ?? null;
+      const rh = data['humidity:0']?.rh ?? data.hum?.value ?? null;
+      const battery = data['devicepower:0']?.battery?.percent ?? data.device_power?.battery?.percent ?? data.bat?.value ?? null;
+      const imperial = (localStorage.getItem('lt_unit') || 'imperial') === 'imperial';
+      const displayT = tC == null ? null : imperial ? tC * 9 / 5 + 32 : tC;
+      const unit = imperial ? '°F' : '°C';
+      // Freeze warning matters on a boat/RV (water lines); everything else is informational.
+      const badge = tC == null ? null : tC <= 1 ? { t: 'FREEZE RISK', c: '#ef4444' } : { t: 'NORMAL', c: '#10b981' };
+      content = (
+        <div style={{ width: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+            <span style={{ fontSize: '1.8rem', fontWeight: 700, color: '#a78bfa' }}>
+              {displayT != null ? displayT.toFixed(1) : '—'} <span style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>{unit}</span>
+            </span>
+            {badge && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: badge.c, background: `${badge.c}22`, padding: '2px 8px', borderRadius: '10px' }}>{badge.t}</span>}
+          </div>
+          <div style={{ display: 'flex', gap: '14px', fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+            {rh != null && <span>💧 {Number(rh).toFixed(0)}% RH</span>}
+            {battery != null && <span>🔋 {battery}%</span>}
+          </div>
+          <Sparkline points={history} color="#a78bfa" />
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>Temperature trend (°C)</div>
         </div>
       );
     } else if (device.role === 'Flood Sensor') {

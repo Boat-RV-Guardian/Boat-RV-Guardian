@@ -18,6 +18,10 @@ describe('parseViewTarget', () => {
     expect(parseViewTarget('shore_power')).toEqual({ view: 'systems', section: 'power' });
   });
 
+  it('maps the environment category to its Systems section', () => {
+    expect(parseViewTarget('environment')).toEqual({ view: 'systems', section: 'environment' });
+  });
+
   it('returns null for unknown/empty', () => {
     expect(parseViewTarget(null)).toBeNull();
     expect(parseViewTarget('')).toBeNull();
@@ -31,5 +35,6 @@ describe('sectionForCategory', () => {
     expect(sectionForCategory('high_water')).toBe('flood');
     expect(sectionForCategory('batteries')).toBe('power');
     expect(sectionForCategory('shore_power')).toBe('power');
+    expect(sectionForCategory('environment')).toBe('environment');
   });
 });

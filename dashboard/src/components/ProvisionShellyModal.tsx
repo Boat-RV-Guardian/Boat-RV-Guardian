@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { nativeFetch } from '../utils/nativeFetch';
+import { detectRole } from '../utils/shellyDevice';
 import { auth } from '../services/firebase';
 import { DEFAULT_WORKER_URL } from '../utils/configSync';
 
@@ -19,15 +20,7 @@ const unifiedFetch = async (url: string, options?: any) => {
   return nativeFetch(url, options) as any;
 };
 
-// Map a Shelly device's reported identity to one of our sensor roles. Returns null when we
-// can't confidently tell (the user then keeps whatever they picked).
-const detectRole = (info: any): string | null => {
-  const hay = `${info?.app || ''} ${info?.model || ''} ${info?.id || ''}`.toLowerCase();
-  if (hay.includes('flood')) return 'Flood Sensor';
-  if (hay.includes('uni')) return 'Low Power Sensor';                 // Plus Uni → DC 12-24V monitoring
-  if (hay.includes('em') || hay.includes('pm')) return 'High Power Sensor'; // mains energy/power meter
-  return null;
-};
+// Role detection lives in utils/shellyDevice (detectRole) so it's unit-testable.
 
 export default function ProvisionShellyModal({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<'selection' | 'ble_scanning' | 'ap_connect' | 'credentials' | 'ip_entry' | 'provisioning' | 'confirm_type' | 'completion'>('selection');
@@ -277,8 +270,8 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
       // Firmware captured at onboarding (current version + any available update).
       ...(fwVersion ? { fwVersion } : {}),
       ...(fwUpdateVersion ? { fwUpdateVersion } : {}),
-      // Flood sensors are battery/sleepy → don't poll them (toggle in device settings for others).
-      batteryPowered: deviceRole === 'Flood Sensor',
+      // Flood + H&T environmental sensors are battery/sleepy → don't poll them.
+      batteryPowered: deviceRole === 'Flood Sensor' || deviceRole === 'Environmental Sensor',
       // Manual-IP knows the address directly; BLE learns it from Wifi.GetStatus after the join.
       ...(method === 'manual_ip' && localIp ? { localIp } : {}),
       ...(method === 'bluetooth' && bleLocalIp ? { localIp: bleLocalIp } : {}),
@@ -767,6 +760,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
                 <option value="High Power Sensor">High Power Sensor (120v/240v)</option>
                 <option value="Low Power Sensor">Low Power Sensor (10-26v)</option>
                 <option value="Flood Sensor">Flood Sensor</option>
+                <option value="Environmental Sensor">Environmental (Temp / Humidity)</option>
               </select>
               {roleAutoDetected && (
                 <div style={{ color: '#a7f3d0', fontSize: '0.78rem', marginTop: '6px' }}>
@@ -778,7 +772,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
               <label className="form-label">Name this device</label>
               <input type="text" className="form-input" value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
-                placeholder={deviceRole === 'Flood Sensor' ? 'e.g. Bilge Flood Sensor' : deviceRole === 'Low Power Sensor' ? 'e.g. House Battery' : 'e.g. Shore Power'} />
+                placeholder={deviceRole === 'Flood Sensor' ? 'e.g. Bilge Flood Sensor' : deviceRole === 'Low Power Sensor' ? 'e.g. House Battery' : deviceRole === 'Environmental Sensor' ? 'e.g. Cabin Climate' : 'e.g. Shore Power'} />
               <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 How it appears in the app. Leave blank to use the sensor type. You can rename it later in Configuration.
               </div>

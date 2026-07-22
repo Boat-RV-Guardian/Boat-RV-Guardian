@@ -4,7 +4,7 @@
 // forward so existing deep links / the web `?view=account` portal keep working.
 
 export type AppView = 'overview' | 'systems' | 'alerts' | 'settings' | 'account';
-export type SystemsSection = 'water' | 'power' | 'flood';
+export type SystemsSection = 'water' | 'power' | 'flood' | 'environment';
 
 export interface ViewTarget {
   view: AppView;
@@ -25,6 +25,7 @@ export function parseViewTarget(raw: string | null | undefined): ViewTarget | nu
     case 'high_water':  return { view: 'systems', section: 'flood' };
     case 'batteries':
     case 'shore_power': return { view: 'systems', section: 'power' };
+    case 'environment': return { view: 'systems', section: 'environment' };
     case 'alerts':      return { view: 'alerts' };
     case 'settings':    return { view: 'settings' };
     case 'account':     return { view: 'account' };
@@ -36,5 +37,6 @@ export function parseViewTarget(raw: string | null | undefined): ViewTarget | nu
 export function sectionForCategory(cat: string): SystemsSection {
   if (cat === 'high_water') return 'flood';
   if (cat === 'fresh_water') return 'water';
+  if (cat === 'environment') return 'environment';
   return 'power'; // batteries + shore_power
 }

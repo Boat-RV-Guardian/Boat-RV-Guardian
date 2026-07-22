@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { getDevices, type DeviceConfig } from '../utils/VehicleManager';
 import { useShellyStatus } from '../hooks/useShellyStatus';
 
-type CatKey = 'fresh_water' | 'high_water' | 'batteries' | 'shore_power';
+type CatKey = 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'environment';
 
 interface HomeProps {
   onNavigate: (view: CatKey) => void;
@@ -13,6 +13,7 @@ const CATEGORIES: { key: CatKey; icon: string; title: string; color: string; mat
   { key: 'high_water',  icon: '🚨', title: 'High Water / Flood', color: '#3b82f6',            match: (d) => d.role === 'Flood Sensor' },
   { key: 'batteries',   icon: '🔋', title: 'Batteries',          color: '#10b981',            match: (d) => d.role === 'Low Power Sensor' },
   { key: 'shore_power', icon: '⚡', title: 'Shore Power',        color: '#f59e0b',            match: (d) => d.role === 'High Power Sensor' },
+  { key: 'environment', icon: '🌡️', title: 'Environment',        color: '#a78bfa',            match: (d) => d.role === 'Environmental Sensor' },
 ];
 
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
@@ -27,7 +28,7 @@ const uniAnalogVolts = (d: any): number | null => {
   return null;
 };
 
-const DEFAULT_ORDER: CatKey[] = ['fresh_water', 'high_water', 'batteries', 'shore_power'];
+const DEFAULT_ORDER: CatKey[] = ['fresh_water', 'high_water', 'batteries', 'shore_power', 'environment'];
 const loadOrder = (): CatKey[] => {
   try {
     const saved = JSON.parse(localStorage.getItem('lt_dash_order') || 'null');
@@ -65,6 +66,13 @@ function ShellyTile({ device }: { device: DeviceConfig }) {
       primary = wet ? '🚨 Wet' : '✅ Dry';
       const batt = data['devicepower:0']?.battery?.percent ?? data.device_power?.battery?.percent ?? data.bat?.value ?? null;
       secondary = batt != null ? `🔋 ${batt}%` : '';
+    } else if (device.role === 'Environmental Sensor') {
+      const tC = data['temperature:0']?.tC ?? data.tmp?.tC ?? null;
+      const rh = data['humidity:0']?.rh ?? data.hum?.value ?? null;
+      const imperial = (localStorage.getItem('lt_unit') || 'imperial') === 'imperial';
+      badge = tC != null && tC <= 1 ? { t: 'FREEZE RISK', c: '#ef4444' } : null;
+      primary = tC != null ? `${(imperial ? tC * 9 / 5 + 32 : tC).toFixed(1)} ${imperial ? '°F' : '°C'}` : '—';
+      secondary = rh != null ? `💧 ${Number(rh).toFixed(0)}% RH` : 'Climate';
     }
   }
 
