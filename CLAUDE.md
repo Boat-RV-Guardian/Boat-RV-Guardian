@@ -147,6 +147,29 @@ vehicles); a mode switch is total (rebuild or migrate, then wipe the other side)
 wipes on an identity change to enforce this. (The explicit local→cloud switch/migrate from inside the app
 is tracked in open-tasks Task 15.)
 
+## Session handoff — 2026-07-22 — onsite troubleshooting + hook-split smoke test PASSED — READ FIRST
+
+Owner back onsite after 12 days ("things are not working"); this machine is now the dedicated onsite
+dev/test box (boat LAN 172.31.0.x + a 10.32.203.x uplink; home LAN 192.168.86.x NOT reachable from here).
+All repos were already in sync (nothing changed since 2026-07-10); the problems were operational:
+
+- **ROOT CAUSE of "stale/not working" on this Mac: the LinkTap GATEWAY IP was EMPTY** in Advanced
+  Options → Local Gateway Control — so the app ran cloud-only against a server cache that only updates
+  on valve events (looked hours/days stale). Set to `172.31.0.244` → LOCAL CONNECTED, 5s live telemetry.
+  The per-device 🩺 Health Check did NOT flag the missing IP ("No issues found") — consider adding a
+  "local gateway IP unset/unreachable while on a LAN" check to DeviceScanPanel.
+- **Task 3/6 hook-split smoke test PASSED** (see open-tasks Task 3 for the full evidence): opens +
+  manual mid-run Stop via `/api/control`, hardware-timer closes, LinkTap event pipeline live, and a
+  real `flood.alarm` → worker auto-shutoff (`valves:1`) at 5:58 PM. **v1.0.66 is now unblocked.**
+- **⚠️ Hosted worker still runs 2026-07-04 code** (missing cloud-server #21 vel-unit fix / #23 / #25
+  tier gate) — deploy needs owner OK (open-tasks Owner section, top item).
+- **PM Mini G3 (shore power) dark ~15 days** + no longer in the vehicle's device list — home-LAN fix
+  (open-tasks Owner section). Uni voltmeter still unplugged (Attic-test item stays parked).
+- Method notes: probe order that worked — `api/health` → LAN curl the gateway (cmd 3) → Firestore
+  sensorState freshness via the SA key (`~/Downloads/boat-rv-guardian-…json`, jose-signed JWT) →
+  `wrangler tail brvg-cloud-worker` while driving the installed `/Applications` app via computer-use.
+  `linktap_unknown` sensorState doc = gateway-level events (gatewayOnline, no taplinkerId) — normal.
+
 ## Session handoff — 2026-07-08 — sites live + local-server removal + Uni provisioning saga (UNFINISHED — READ FIRST)
 
 Owner-present session, ended mid-hardware-repair. **All repos clean on `main`, 0 open PRs**, latest tag
