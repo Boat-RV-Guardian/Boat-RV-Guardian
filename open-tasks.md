@@ -120,6 +120,21 @@ below with why.
 
 ---
 
+## 🧩 App features (buildable anytime; verify with a device provisioning pass)
+
+- [ ] **Save the vehicle's Wi-Fi credentials to the vehicle (owner request, 2026-07-22).** Option to
+      store the boat/RV network's SSID + password as per-vehicle config so device provisioning (BLE and
+      Wi-Fi-AP `Wifi.SetConfig`) prefills them instead of retyping on every sensor add — retyping (and
+      an autocapitalized password) has been a real provisioning failure mode. Design notes:
+      opt-in save (e.g. a "remember for this vehicle" checkbox on the provisioning SSID/password step +
+      an editable field in Settings → Vehicles); store in the synced per-vehicle config (`sh_*`/`lt_*`
+      namespace, so `applyUserScope` wipes it on identity change like the other per-vehicle secrets);
+      masked display with reveal, like the LinkTap password field. ⚠️ Synced config is readable by ALL
+      vehicle members (monitor included) — either accept that (documented) or gate the reveal/prefill
+      to admin/control roles. Verify with a real provisioning pass on a device.
+
+---
+
 ## 🔧 Hardware-gated (needs the physical devices / boat / home LAN)
 
 These touch live Shelly / LinkTap hardware and the safety-critical poll/command path — do them when
