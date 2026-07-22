@@ -12,7 +12,7 @@ import { normalRunCommand } from '../utils/valveAutomation';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { isLocalMode } from '../utils/userScope';
 
-const APP_VERSION = '1.0.65';
+const APP_VERSION = '1.0.66';
 
 export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
   // --- Persistent Gateway & Device Configuration ---
