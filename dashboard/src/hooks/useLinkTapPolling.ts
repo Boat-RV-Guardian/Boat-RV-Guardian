@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { auth } from '../services/firebase';
 import { unifiedFetch, extractJsonFromMaybeHtml, coerceWateringBool, isTauriEnv } from '../utils/linktapHttp';
-import { normalizeCloudStatus, swapBatterySignal, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
+import { normalizeCloudStatus, pickTargetVolume, pickTargetDuration } from '../utils/linktapStatus';
 import { shouldEnforceVolumeCutoff } from '../utils/valveSafety';
 import { normalRunCommand, commandLockMs, autoRestartDecision, washdownTick } from '../utils/valveAutomation';
 import { externalOpenCapLiters } from '../utils/quickOpen';
@@ -225,8 +225,8 @@ export function useLinkTapPolling(cfg: LinkTapPollingConfig): LinkTapTelemetry {
            }
         }
 
-        // LinkTap firmware reports battery and signal swapped (both APIs); swap them back.
-        swapBatterySignal(data);
+        // battery/signal are read as-labeled — the old swapBatterySignal "firmware swap" belief
+        // was disproven against the live valve (see utils/linktapStatus.ts note, 2026-07-22).
 
         const newIsWatering = coerceWateringBool(data.is_watering);
 

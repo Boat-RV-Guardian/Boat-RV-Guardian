@@ -54,16 +54,13 @@ export function normalizeCloudStatus(cloudData: any, cached: CachedDeviceInfo): 
   };
 }
 
-/**
- * LinkTap's firmware reports battery and signal swapped internally, and that propagates to BOTH the
- * local and cloud APIs — so the widget swaps them back on every poll. Mutates in place (the poll
- * loop reads many other fields off the same object afterward).
- */
-export function swapBatterySignal(data: { battery?: any; signal?: any }): void {
-  const tempBattery = data.battery;
-  data.battery = data.signal;
-  data.signal = tempBattery;
-}
+// NOTE (2026-07-22): a `swapBatterySignal` helper used to live here, swapping battery↔signal on
+// every poll on the belief that LinkTap firmware reported them crossed. Verified WRONG against the
+// live valve: LinkTap's own cloud API (getAllDevices, authoritative labels) reported
+// batteryStatus=100% / signal=37 while the local API reported battery:100 — i.e. the device's own
+// labels agree and are correct. The swap made the LOCAL path display signal as battery (and vice
+// versa) while the server-observed webhook path showed true battery — the readings jumped between
+// sources. Trust the device's labels; do not reintroduce the swap.
 
 /** The watering volume target, across the various field names the cloud/local APIs use. */
 export function pickTargetVolume(data: any): number {
