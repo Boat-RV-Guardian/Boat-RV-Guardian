@@ -186,8 +186,14 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       lock + commandersRef → `hooks/useLinkTapCommands.ts` (7 tests); the polling loop + telemetry
       state + stateRef → `hooks/useLinkTapPolling.ts` (poll body moved verbatim); Flooding Sentry /
       safety guard / offline / battery / watering alerts → `hooks/useValveSentries.ts`. Widget render
-      smoke test guards the hook composition. ⚠️ **Live-gateway smoke test still wanted before the next
-      release** (open/close + auto-restart + volume cutoff on the real valve).
+      smoke test guards the hook composition. ✅ **Live-gateway smoke test PASSED (2026-07-22, onsite
+      macOS app + `wrangler tail`):** LAN poll live at 5s (after fixing this Mac's EMPTY gateway IP —
+      the "stale data" symptom; set to `172.31.0.244`); 3 opens via the worker's `/api/control` relay;
+      2 hardware-timer closes (1-min runs); 1 **manual Stop mid-run** via `/api/control` (6:08:41 PM
+      POST → valve closed, wateringOff 16s later); LinkTap events → worker → Firestore → app
+      "server-observed" all live; a real `flood.alarm` (5:58 PM) triggered the worker auto-shutoff
+      (`{"ok":true,"valves":1}`). Not exercised: the software volume cutoff under real flow (runs
+      closed on timer first; covered by unit tests) — verify opportunistically during a real fill.
 - [x] **Task 2 follow-up — monitor-role command-gating test — DONE (2026-07-10).** Covered directly in
       `useLinkTapCommands.test.tsx`: monitor users can't start or manually stop; automation `'limit'`
       stops stay ungated; plus cloud-first routing, LAN fallback, and always-present open limits.
@@ -238,6 +244,15 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
 
 ## 💳 Owner / external-gated (need Stripe, DNS, an email provider, or an owner-confirmed prod merge)
 
+- [ ] **🔴 Deploy the hosted worker (owner OK needed — prod).** `brvg-cloud-worker` is running
+      **2026-07-04 code** (checked `wrangler deployments list` 2026-07-22) — it's missing the LinkTap
+      flow-rate unit fix (cloud-server #21: `vel` is mL/min, so cloud-path flow reads ~1000× off), the
+      server-side getApiKey shape fix (#23), and the Task 6 tier gate (#25). Deploy = `cd
+      brvg-cloud-server && npx wrangler deploy` (secrets already set on the worker).
+- [ ] **Shore-power PM Mini G3 dark since ~2026-07-07** (sensorState `shellypmminig3-dcb4d9db9850`
+      ~15 days stale, and the vehicle's Shore Power section shows "No devices configured"). It's on the
+      home LAN (192.168.86.x — unreachable from the boat). When at home: check it's powered/on Wi-Fi,
+      re-add it to the vehicle, and let the poll self-heal re-register its webhook.
 - [x] **Deploy the account portal → `account.boatrvguardian.com` — DONE (2026-07-08).** `brvg-account-site`
       (Astro + React islands; profile / telemetry / subscription) is LIVE. Created the `brvg-account-site`
       Cloudflare Pages project + deployed via `wrangler pages deploy` (sc4tech account
