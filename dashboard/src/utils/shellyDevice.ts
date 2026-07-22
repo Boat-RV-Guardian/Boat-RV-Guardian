@@ -9,6 +9,19 @@ export function deviceLocalHost(d: DeviceConfig): string {
   return d.localIp || (d.shellyDeviceId && /shelly/i.test(d.shellyDeviceId) ? `${d.shellyDeviceId.toLowerCase()}.local` : '');
 }
 
+// Map a Shelly device's reported identity (Shelly.GetDeviceInfo) to one of our sensor roles.
+// Returns null when we can't confidently tell (the user then keeps whatever they picked).
+// Moved from ProvisionShellyModal so role detection is unit-testable.
+export function detectRole(info: any): string | null {
+  const hay = `${info?.app || ''} ${info?.model || ''} ${info?.id || ''}`.toLowerCase();
+  if (hay.includes('flood')) return 'Flood Sensor';
+  // H&T temp/humidity sensors: app "HT"/"HTG3", ids like shellyhtg3-… / shellyplusht-…
+  if (/htg\d|plusht|shellyht|h&t/.test(hay)) return 'Environmental Sensor';
+  if (hay.includes('uni')) return 'Low Power Sensor';                 // Plus Uni → DC 12-24V monitoring
+  if (hay.includes('em') || hay.includes('pm')) return 'High Power Sensor'; // mains energy/power meter
+  return null;
+}
+
 // Find the device's voltmeter component id from a Shelly.GetStatus payload (peripheral-linked →
 // usually 100). Returns null when no `voltmeter:N` key is present.
 export function findVoltmeterId(status: any): number | null {

@@ -17,6 +17,7 @@ const SECTIONS: { key: SystemsSection; label: string; icon: string; color: strin
   { key: 'water', label: 'Water', icon: '💧', color: 'var(--accent-cyan)' },
   { key: 'power', label: 'Power', icon: '🔋', color: '#10b981' },
   { key: 'flood', label: 'Flood', icon: '🚨', color: '#3b82f6' },
+  { key: 'environment', label: 'Climate', icon: '🌡️', color: '#a78bfa' },
 ];
 
 export default function Systems({ active, section, onSection, onBack }: {
@@ -64,6 +65,7 @@ export default function Systems({ active, section, onSection, onBack }: {
         </div>
       )}
       {active && section === 'flood' && <Sensors category="flood" />}
+      {active && section === 'environment' && <Sensors category="environment" />}
     </div>
   );
 }
