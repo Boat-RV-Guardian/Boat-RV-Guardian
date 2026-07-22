@@ -6,8 +6,9 @@
 // digest handshake with the vehicle's sh_local_password and retries. So polling works whether or
 // not a device is secured.
 //
-// NOTE: the digest computation follows the Shelly Gen2 spec but is hardware-untested — verify the
-// secured-device path against a real Shelly. The unauthenticated path is the common case today.
+// NOTE: the secured-device digest path was hardware-verified 2026-07-22 against a PM Mini G3
+// (Gen3 fw 1.1.99): the challenge arrives in the WWW-Authenticate HEADER with an empty body,
+// and the retry succeeds with auth.nonce sent as a number. See parseDigestChallenge.
 import { nativeFetch } from './nativeFetch';
 
 const isTauriEnv = () =>
@@ -18,24 +19,53 @@ async function sha256Hex(input: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function rawPost(ip: string, bodyObj: any): Promise<{ status: number; data: any }> {
+async function rawPost(ip: string, bodyObj: any): Promise<{ status: number; data: any; wwwAuth: string }> {
   const url = `http://${ip}/rpc`;
   const body = JSON.stringify(bodyObj);
+  // Case-insensitive header lookup across the transports: standard Response (browser/Tauri) has
+  // headers.get; nativeFetch's Capacitor wrapper exposes getHeader.
+  const header = (res: any, name: string): string =>
+    res?.getHeader?.(name) ?? res?.headers?.get?.(name) ?? '';
   if (isTauriEnv()) {
     const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
     const res = await tauriFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
     let data: any = null;
     try { data = await res.json(); } catch { /* non-JSON */ }
-    return { status: res.status, data };
+    return { status: res.status, data, wwwAuth: header(res, 'www-authenticate') };
   }
   const res = await nativeFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
   let data: any = null;
   try { data = await res.json(); } catch { /* non-JSON */ }
-  return { status: (res as any).status ?? 200, data };
+  return { status: (res as any).status ?? 200, data, wwwAuth: header(res, 'www-authenticate') };
 }
 
 const isAuthChallenge = (r: { status: number; data: any }) =>
   r.status === 401 || (r.data && r.data.error && r.data.error.code === 401);
+
+/**
+ * Parse a Shelly digest challenge. Two REAL shapes exist:
+ *  - Gen3 firmware (verified on a live PM Mini G3, 2026-07-22): HTTP 401 with an EMPTY body and the
+ *    challenge in the `WWW-Authenticate` header (`Digest qop="auth", realm="…", nonce="…", …`);
+ *  - older firmware: a JSON-RPC error body whose `message` is a JSON-encoded challenge object.
+ * The pre-fix code only handled the body form, so every authenticated call against current
+ * firmware silently failed (garbage realm/nonce → 401 on the retry).
+ */
+export function parseDigestChallenge(bodyErrorMessage: string | undefined, wwwAuth: string | undefined): { realm: string; nonce: string | number } | null {
+  if (bodyErrorMessage) {
+    try {
+      const c = JSON.parse(bodyErrorMessage);
+      if (c && c.realm != null && c.nonce != null) return { realm: String(c.realm), nonce: c.nonce };
+    } catch { /* fall through to the header form */ }
+  }
+  if (wwwAuth) {
+    const grab = (k: string) => (wwwAuth.match(new RegExp(`${k}\\s*=\\s*"?([^",]+)"?`, 'i')) || [])[1];
+    const realm = grab('realm');
+    const nonce = grab('nonce');
+    // Shelly expects the retry's auth.nonce as a NUMBER when numeric (verified on hardware).
+    if (realm && nonce) return { realm, nonce: /^\d+$/.test(nonce) ? Number(nonce) : nonce };
+  }
+  return null;
+}
 
 /** Call a Shelly Gen2 RPC method, authenticating with `password` only if the device demands it. */
 export async function shellyRpc(ip: string, method: string, params: any = {}, password?: string): Promise<any> {
@@ -47,11 +77,9 @@ export async function shellyRpc(ip: string, method: string, params: any = {}, pa
 
   if (!password) throw new Error('This Shelly requires a password (set it in the vehicle settings).');
 
-  // Parse the digest challenge (Shelly returns it as a JSON string in error.message).
-  let challenge: any = {};
-  try { challenge = JSON.parse(first.data.error.message); } catch { challenge = first.data?.error || {}; }
-  const realm: string = challenge.realm || '';
-  const nonce = challenge.nonce;
+  const challenge = parseDigestChallenge(first.data?.error?.message, first.wwwAuth);
+  if (!challenge) throw new Error('Shelly auth challenge not understood (no realm/nonce in body or WWW-Authenticate)');
+  const { realm, nonce } = challenge;
   const ha1 = await sha256Hex(`admin:${realm}:${password}`);
   const ha2 = await sha256Hex('dummy_method:dummy_uri');
   const cnonce = Math.floor(Math.random() * 1e8);
@@ -60,6 +88,7 @@ export async function shellyRpc(ip: string, method: string, params: any = {}, pa
   const auth = { realm, username: 'admin', nonce, cnonce, response, algorithm: 'SHA-256' };
 
   const second = await rawPost(ip, { id: 2, method, params, auth });
+  if (second.status === 401) throw new Error('Shelly auth failed (wrong device password?)');
   if (second.data && second.data.error) throw new Error(second.data.error.message || 'Shelly RPC auth error');
   return second.data?.result ?? second.data;
 }
