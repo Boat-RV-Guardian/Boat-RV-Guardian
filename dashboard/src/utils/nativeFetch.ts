@@ -9,6 +9,8 @@ export interface NativeFetchResponse {
   json: () => Promise<any>;
   ok: boolean;
   status: number;
+  /** Case-insensitive response-header lookup (Capacitor path only; standard Responses use .headers.get). */
+  getHeader?: (name: string) => string | null;
 }
 
 export async function nativeFetch(url: string, options?: any): Promise<NativeFetchResponse> {
@@ -32,6 +34,13 @@ export async function nativeFetch(url: string, options?: any): Promise<NativeFet
       json: async () => (typeof res.data === 'string' ? JSON.parse(res.data) : res.data),
       ok: res.status >= 200 && res.status < 300,
       status: res.status,
+      // CapacitorHttp exposes headers as a plain object with original casing — needed so shellyRpc
+      // can read the WWW-Authenticate digest challenge from secured Gen3 devices.
+      getHeader: (name: string) => {
+        const h = res.headers || {};
+        const k = Object.keys(h).find((x) => x.toLowerCase() === name.toLowerCase());
+        return k ? String(h[k]) : null;
+      },
     };
   }
 
