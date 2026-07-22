@@ -140,29 +140,24 @@ below with why.
 These touch live Shelly / LinkTap hardware and the safety-critical poll/command path — do them when
 the devices are reachable and the app can be smoke-tested against them, not unattended.
 
-- [~] **🚨 ACTIVE — finish the "Attic test" Uni setup (2026-07-08 session ended mid-repair).** The Uni
-      (`shellyplusuni-f8b3b7fcfb74`, `192.168.86.170`, SSID "Mila") was factory-reset + re-provisioned
-      several times chasing the BLE provisioning regression. **Current device state (probed at close):
-      on Wi-Fi + reachable, `auth_en:false`, voltmeter peripheral ABSENT, 0 webhooks.** The widget shows
-      "0 V critical" because there is literally no voltmeter component. What's left, in order:
-      1. Phone ON the 192.168.86.x Wi-Fi (its Wi-Fi was OFF all session — the root cause of every
-         "unreachable"/silent-failure symptom; enabled via `adb shell svc wifi enable` at 10:5x).
-      2. App → Uni panel → 🩺 Scan for issues → **"Enable voltmeter (reboots device)"** fix → wait ~20s
-         → re-scan → **"Register cloud alerts"** + **"Set vehicle password"** fixes. Owner ran out of
-         time before confirming these fixes work — **if the scan fixes fail, debug DeviceScanPanel's
-         fix path next.** Manual fallback (proven 2026-07-08 01:4x): POST `SensorAddon.AddPeripheral
-         {type:'voltmeter'}` + `Shelly.Reboot`, then `Voltmeter.SetConfig {id:100,config:{xvoltage:
-         {expr:"x",unit:"V"}}}`; hooks then self-register on the next app poll (see fix below).
-      3. Verify: `Webhook.List` shows voltmeter.measurement/.change (cid 100, `&v=`/`&k=`),
-         `wrangler tail brvg-cloud-worker` shows `v=~14.7` (battery is on a charger — 14.7 V is REAL).
-      **Landed on the way (all merged):** #152 + #154 (BLE provisioning: #95 ordering ported, then
-      corrected — BLE now does ONLY info/Wi-Fi/IP-learn with reconnect-on-drop; Uni voltmeter/hooks/
-      password all happen post-join over HTTP; failures surface a "setup incomplete → 🩺 Scan" banner),
-      and the **webhook alertish-only + junk-cleanup fix** (no more "register all 10 input.* events"
-      fallback; cleanup pass VERIFIED live — the device's 10 junk hooks went to 0 after one app poll).
-      ⚠️ `main` is ahead of **v1.0.65** (the alertish fix is unreleased; the owner's phone runs a local
-      build of it — see the CLAUDE.md 2026-07-08 handoff for the local-build pipeline). Cut **v1.0.66**
-      once the Uni verify passes.
+- [ ] **Shelly Plus Uni — DEVICE DESTROYED 2026-07-22 (reverse-polarity hookup); replace + add
+      protection diode to the design.** The Attic-test Uni (`shellyplusuni-f8b3b7fcfb74`) burned up
+      when its DC supply was connected reversed. Before wiring a replacement:
+      **hardware BOM change — add reverse-polarity protection** (a series Schottky diode, e.g.
+      1N5819/SS34 on the supply lead — ~0.3 V drop at these currents — or a P-FET high-side
+      protector for zero drop) to the battery-monitor harness design + install docs. The old item's
+      remaining SOFTWARE verify (🩺 Scan fixes: enable-voltmeter → register cloud alerts → set
+      password; manual RPC fallback in the 2026-07-08 handoff) transfers to the replacement Uni.
+      (Historical repair steps: see the CLAUDE.md 2026-07-08 handoff. v1.0.66 shipped 2026-07-22
+      without the Uni verify — the rest of the smoke test passed.)
+
+- [~] **HTG3 (Environmental) — re-add with the #165 build and verify.** The first add attempt failed
+      because the app had no environmental role — now shipped (#165: role detection, Climate section,
+      Environment card, temp/RH/battery widget). NOTE the device's webhooks ARE already registered
+      (the partial add got that far): `shellyhtg3-d885ac14c8ec` was pushing `humidity.change` to the
+      worker cache as of 2026-07-22 18:5x. With the new build: re-add (auto-detects "Environmental
+      Sensor") → it should appear under Overview → Environment with live temp/RH. Flood sensor was
+      re-added + re-verified live the same day (its `flood.alarm` exercised the worker auto-shutoff).
 
 - [x] **Task 1 — Shelly Plus Uni remote telemetry — ROOT-CAUSED + FIXED 2026-07-03.** It never worked
       because provisioning enabled the voltmeter peripheral (which reboots the device) AFTER registering
@@ -231,8 +226,9 @@ the devices are reachable and the app can be smoke-tested against them, not unat
       **Hardware verify (owner):** re-provision the flood sensor over BLE → `Shelly.GetDeviceInfo` should
       flip from the recorded `auth_en:false` baseline to `auth_en:true`.
 - [ ] **Verify `shellyChangePassword` on hardware.** Settings "Edit→Save" pushes the new password to every
-      Shelly (`Shelly.SetAuth`); the digest path in [shellyRpc.ts](dashboard/src/utils/shellyRpc.ts) is
-      untested. A wrong/failed SetAuth can lock a device out (factory reset to recover); sleeping battery
+      Shelly (`Shelly.SetAuth`). The underlying **digest-auth path is now hardware-verified** (#166,
+      2026-07-22 — Gen3 header-form challenge, live PM Mini G3), so only the SetAuth flow itself remains.
+      A wrong/failed SetAuth can lock a device out (factory reset to recover); sleeping battery
       sensors fail until they next wake (UI reports per-device results).
 
 ---
@@ -264,10 +260,13 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
       flow-rate unit fix (cloud-server #21: `vel` is mL/min, so cloud-path flow reads ~1000× off), the
       server-side getApiKey shape fix (#23), and the Task 6 tier gate (#25). Deploy = `cd
       brvg-cloud-server && npx wrangler deploy` (secrets already set on the worker).
-- [ ] **Shore-power PM Mini G3 dark since ~2026-07-07** (sensorState `shellypmminig3-dcb4d9db9850`
-      ~15 days stale, and the vehicle's Shore Power section shows "No devices configured"). It's on the
-      home LAN (192.168.86.x — unreachable from the boat). When at home: check it's powered/on Wi-Fi,
-      re-add it to the vehicle, and let the poll self-heal re-register its webhook.
+- [~] **Shore power — a NEW PM Mini G3 ("Dryer Plug", `shellypmminig3-dcb4d9db00fc`, 172.31.0.116) was
+      added ONSITE 2026-07-22**; it initially "didn't populate" — root cause was the Gen3 digest-auth
+      bug (#166, fixed): the AP path secures the device first, then every authenticated call failed, so
+      no webhooks registered and polls died. With the #166 build installed, the poll self-heal registers
+      its hooks automatically on the first successful poll — **verify voltage shows + a `pm1.voltage_change`
+      doc appears in sensorState**. The OLD home PM Mini (`…d9db9850`, 192.168.86.x, dark since ~7/07)
+      is a separate unit — check power/Wi-Fi when at home or retire its config.
 - [x] **Deploy the account portal → `account.boatrvguardian.com` — DONE (2026-07-08).** `brvg-account-site`
       (Astro + React islands; profile / telemetry / subscription) is LIVE. Created the `brvg-account-site`
       Cloudflare Pages project + deployed via `wrangler pages deploy` (sc4tech account
