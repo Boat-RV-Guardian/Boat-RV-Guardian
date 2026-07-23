@@ -94,6 +94,10 @@ export default function Settings({ user }: { user: any }) {
 
   // App Settings State
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
+  const [tempUnit, setTempUnit] = useState<'auto' | 'c' | 'f'>(() => {
+    const v = localStorage.getItem('lt_temp_unit');
+    return v === 'c' || v === 'f' ? v : 'auto';
+  });
   const volUnit = unitSystem === 'imperial' ? 'Gallons' : 'Liters';
   const [timeZone, setTimeZone] = useState(() => localStorage.getItem('lt_tz') || ((Intl as any).supportedValuesOf ? Intl.DateTimeFormat().resolvedOptions().timeZone : 'UTC'));
   const [vesselNickname, setVesselNickname] = useState(() => localStorage.getItem('lt_vessel_name') || '');
@@ -296,6 +300,7 @@ export default function Settings({ user }: { user: any }) {
         webhookUser: setWebhookUser,
         webhookKey: setWebhookKey,
         unitSystem: setUnitSystem,
+        tempUnit: setTempUnit,
         timeZone: setTimeZone,
         normalRunHours: setNormalRunHours,
         normalRunMinutes: setNormalRunMinutes,
@@ -375,7 +380,7 @@ export default function Settings({ user }: { user: any }) {
     writeSettings({
       syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword,
       webhookUrl, webhookUser, webhookKey,
-      unitSystem, timeZone, normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
+      unitSystem, tempUnit, timeZone, normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
       isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
       gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
       shellyServer, shellyAuthKey, highPowerIds, lowPowerIds, floodSensorIds,
@@ -392,7 +397,7 @@ export default function Settings({ user }: { user: any }) {
     window.dispatchEvent(new Event('settings_updated'));
     syncDispatchRef.current = false;
   }, [
-    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, webhookUser, webhookKey, unitSystem, timeZone,
+    syncSettingsCloud, storeHistoryCloud, vesselNickname, shellyLocalPassword, webhookUrl, webhookUser, webhookKey, unitSystem, tempUnit, timeZone,
     normalRunHours, normalRunMinutes, normalRunDaily, normalRunVolume, autoRestartNormal,
     isCloudPollingActive, isLocalPollingActive, cloudUsername, cloudApiKey,
     gatewayIp, gatewayId, primaryDeviceId, secondaryDeviceId,
@@ -691,6 +696,7 @@ export default function Settings({ user }: { user: any }) {
           {/* Device Preferences — local to this device, not synced to cloud */}
           <DevicePreferencesPanel
             unitSystem={unitSystem} setUnitSystem={setUnitSystem}
+            tempUnit={tempUnit} setTempUnit={setTempUnit}
             timeZone={timeZone} setTimeZone={setTimeZone}
           >
             <NotificationsPanel

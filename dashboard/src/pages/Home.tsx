@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getDevices, type DeviceConfig } from '../utils/VehicleManager';
 import { useShellyStatus } from '../hooks/useShellyStatus';
+import { resolveTempUnit, cToDisplay, tempUnitLabel } from '../utils/tempUnit';
 
 type CatKey = 'fresh_water' | 'high_water' | 'batteries' | 'shore_power' | 'environment';
 
@@ -69,9 +70,9 @@ function ShellyTile({ device }: { device: DeviceConfig }) {
     } else if (device.role === 'Environmental Sensor') {
       const tC = data['temperature:0']?.tC ?? data.tmp?.tC ?? null;
       const rh = data['humidity:0']?.rh ?? data.hum?.value ?? null;
-      const imperial = (localStorage.getItem('lt_unit') || 'imperial') === 'imperial';
+      const tu = resolveTempUnit(device);
       badge = tC != null && tC <= 1 ? { t: 'FREEZE RISK', c: '#ef4444' } : null;
-      primary = tC != null ? `${(imperial ? tC * 9 / 5 + 32 : tC).toFixed(1)} ${imperial ? '°F' : '°C'}` : '—';
+      primary = tC != null ? `${cToDisplay(tC, tu).toFixed(1)} ${tempUnitLabel(tu)}` : '—';
       secondary = rh != null ? `💧 ${Number(rh).toFixed(0)}% RH` : 'Climate';
     }
   }

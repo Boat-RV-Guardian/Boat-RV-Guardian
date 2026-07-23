@@ -17,6 +17,7 @@ export interface DeviceConfig {
   webhookAppIp?: string; // app LAN IP last registered in this device's local webhook (self-heal marker)
   webhookCloudBase?: string; // worker base URL last registered in this device's cloud webhook (self-heal / cutover marker)
   batteryPowered?: boolean; // sleepy sensor (flood etc.) — don't poll; rely on webhook push
+  tempUnit?: 'c' | 'f'; // per-device temperature display override (unset = follow the app preference)
   bleMac?: string; // BLE address recorded during BLE pairing/onboarding
   fwVersion?: string;        // current firmware version (from Shelly.GetDeviceInfo at onboarding)
   fwUpdateVersion?: string;  // available stable update version, if any (presence ⇒ update available)

@@ -24,6 +24,7 @@ const SAMPLE: PersistedSettings = {
   webhookUser: 'user',
   webhookKey: 'key',
   unitSystem: 'metric',
+  tempUnit: 'c',
   timeZone: 'America/New_York',
   normalRunHours: 3,
   normalRunMinutes: 15,

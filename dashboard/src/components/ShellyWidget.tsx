@@ -7,6 +7,7 @@ import { db, doc, onSnapshot } from '../services/firebase';
 import { lastStatusKey } from '../hooks/useSensorBridge';
 import { demoSpecFor } from '../utils/demoFleet';
 import { demoShellyDoc, demoFloodAlarmActive } from '../utils/demoTelemetry';
+import { resolveTempUnit, cToDisplay, tempUnitLabel } from '../utils/tempUnit';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
@@ -357,9 +358,9 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       const tC = data['temperature:0']?.tC ?? data.tmp?.tC ?? null;
       const rh = data['humidity:0']?.rh ?? data.hum?.value ?? null;
       const battery = data['devicepower:0']?.battery?.percent ?? data.device_power?.battery?.percent ?? data.bat?.value ?? null;
-      const imperial = (localStorage.getItem('lt_unit') || 'imperial') === 'imperial';
-      const displayT = tC == null ? null : imperial ? tC * 9 / 5 + 32 : tC;
-      const unit = imperial ? '°F' : '°C';
+      const tu = resolveTempUnit(device);
+      const displayT = tC == null ? null : cToDisplay(tC, tu);
+      const unit = tempUnitLabel(tu);
       // Freeze warning matters on a boat/RV (water lines); everything else is informational.
       const badge = tC == null ? null : tC <= 1 ? { t: 'FREEZE RISK', c: '#ef4444' } : { t: 'NORMAL', c: '#10b981' };
       content = (
@@ -382,13 +383,14 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       const isFlood = !!(data['flood:0']?.alarm ?? data.flood?.alarm ?? false);
       const battery = data['devicepower:0']?.battery?.percent ?? data.device_power?.battery?.percent ?? data.bat?.value ?? null;
       const temp = data['temperature:0']?.tC ?? data.tmp?.tC ?? null;
+      const ftu = resolveTempUnit(device);
       content = (
         <div style={{ width: '100%', textAlign: 'center' }}>
           <div style={{ fontSize: '1.6rem', fontWeight: 800, color: isFlood ? '#ef4444' : '#3b82f6', marginBottom: '6px' }}>
             {isFlood ? '🚨 FLOOD DETECTED' : '✅ DRY (SAFE)'}
           </div>
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '6px' }}>
-            {temp != null && <span>🌡️ {Number(temp).toFixed(1)}°C</span>}
+            {temp != null && <span>🌡️ {cToDisplay(Number(temp), ftu).toFixed(1)}{tempUnitLabel(ftu)}</span>}
             {battery != null && <span>🔋 {battery}%</span>}
           </div>
           {floodSince && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '8px' }}>{isFlood ? 'Wet' : 'Dry'} since {formatTime(floodSince)}</div>}

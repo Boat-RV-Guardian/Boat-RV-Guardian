@@ -19,6 +19,7 @@ export interface PersistedSettings {
   webhookUser: string;
   webhookKey: string;
   unitSystem: 'metric' | 'imperial';
+  tempUnit: 'auto' | 'c' | 'f';
   timeZone: string;
   normalRunHours: number;
   normalRunMinutes: number;
@@ -93,6 +94,7 @@ export function readSettings(): PersistedSettings {
     webhookUser: g('sh_webhook_user') || '',
     webhookKey: g('sh_webhook_key') || '',
     unitSystem: (g('lt_unit') as 'metric' | 'imperial') || 'imperial',
+    tempUnit: (['c', 'f'].includes(g('lt_temp_unit') || '') ? g('lt_temp_unit') : 'auto') as 'auto' | 'c' | 'f',
     timeZone: g('lt_tz') || resolvedDefaultTz(),
     normalRunHours: Number(g('lt_nr_hrs') || '0'),
     normalRunMinutes: Number(g('lt_nr_mins') || '0'),
@@ -170,6 +172,7 @@ export function writeSettings(s: PersistedSettings): void {
   localStorage.setItem('sh_webhook_user', s.webhookUser.trim());
   localStorage.setItem('sh_webhook_key', s.webhookKey.trim());
   localStorage.setItem('lt_unit', s.unitSystem);
+  localStorage.setItem('lt_temp_unit', s.tempUnit);
   localStorage.setItem('lt_tz', s.timeZone);
   localStorage.setItem('lt_nr_hrs', s.normalRunHours.toString());
   localStorage.setItem('lt_nr_mins', s.normalRunMinutes.toString());

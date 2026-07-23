@@ -103,6 +103,7 @@ export default function DeviceConfigPanel({
               { label: 'High Water/Flood', icon: '🌊', color: '#3b82f6',            match: (d: DeviceConfig) => d.role === 'Flood Sensor' },
               { label: 'Batteries',        icon: '🔋', color: '#f59e0b',            match: (d: DeviceConfig) => d.role === 'Low Power Sensor' },
               { label: 'Shore Power',      icon: '⚡', color: '#a855f7',            match: (d: DeviceConfig) => d.role === 'High Power Sensor' },
+              { label: 'Environment',      icon: '🌡️', color: '#a78bfa',            match: (d: DeviceConfig) => d.role === 'Environmental Sensor' },
             ].map(({ label, icon, color, match }) => {
               const catDevices = devices.filter(match);
               return (
@@ -319,6 +320,24 @@ export default function DeviceConfigPanel({
                                   >Test</button>
                                 </div>
                               </div>
+
+                              {/* Temperature display override — devices that show a temperature
+                                  (environmental, flood) can pin °C/°F regardless of the app pref. */}
+                              {(device.role === 'Environmental Sensor' || device.role === 'Flood Sensor') && (
+                                <div>
+                                  <label className="form-label" style={{ marginBottom: '4px' }}>Temperature display</label>
+                                  <select className="form-input" value={device.tempUnit || 'default'}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      updateDevice(device.id, { tempUnit: v === 'c' || v === 'f' ? v : undefined });
+                                      setDevices(getDevices());
+                                    }}>
+                                    <option value="default">App preference (Settings → General)</option>
+                                    <option value="f">Fahrenheit (°F)</option>
+                                    <option value="c">Celsius (°C)</option>
+                                  </select>
+                                </div>
+                              )}
 
                               {/* Voltage calibration — a single offset written ONTO the device (Voltmeter
                                   xvoltage), so local + cloud both report the corrected value. */}
