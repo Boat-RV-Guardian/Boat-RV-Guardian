@@ -19,19 +19,21 @@ export default function PlanBadge() {
   if (role !== 'admin') return null;
 
   // App Store policies strictly prohibit external links to digital subscription payments.
-  // We hide the button on iOS/Android native builds ("Netflix route") to prevent app rejection.
+  // For iOS/Android native builds, we show an explanation instead of linking directly.
   const isMobileNative = typeof (window as any).Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform?.();
+
+  const handleMobileClick = () => {
+    alert("To manage your plan, please visit our website from a web browser. We can't provide a direct link here due to App Store policies.");
+  };
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', background: 'rgba(0,0,0,0.2)', padding: '10px 14px', borderRadius: '8px' }}>
       <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
         Plan: <strong style={{ color: '#fff' }}>{TIER_LABELS[ent.tier]}</strong>
       </span>
-      {!isMobileNative && (
-        <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }} onClick={openPortal}>
-          {isPremium ? 'Manage plan →' : 'Upgrade →'}
-        </button>
-      )}
+      <button className="btn-primary" style={{ padding: '6px 12px', fontSize: '0.8rem', whiteSpace: 'nowrap' }} onClick={isMobileNative ? handleMobileClick : openPortal}>
+        {isPremium ? 'Manage plan →' : 'Upgrade →'}
+      </button>
     </div>
   );
 }
