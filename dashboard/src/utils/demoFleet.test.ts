@@ -29,6 +29,13 @@ describe('demo fleet', () => {
     for (const s of DEMO_SENSOR_SPECS) expect(shellyIds.has(s.deviceId)).toBe(true);
   });
 
+  it('covers every dashboard category so no section of the demo is empty', () => {
+    const roles = new Set(DEMO_DEVICES.map((d) => d.role));
+    for (const role of ['Fresh Water', 'High Power Sensor', 'Low Power Sensor', 'Flood Sensor', 'Environmental Sensor']) {
+      expect(roles.has(role), role).toBe(true);
+    }
+  });
+
   it('demoSpecFor misses cleanly for a non-demo device', () => {
     expect(demoSpecFor('some-real-device')).toBeUndefined();
   });

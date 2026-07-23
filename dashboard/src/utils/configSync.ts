@@ -16,7 +16,8 @@ export const LOCAL_ONLY_KEYS = [
   'lt_notif_flood',
   'lt_notif_house_batt',
   'lt_notif_engine_batt',
-  'lt_notif_shore'
+  'lt_notif_shore',
+  'lt_event_sim'
 ];
 
 export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {

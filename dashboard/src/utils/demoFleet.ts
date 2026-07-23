@@ -53,6 +53,22 @@ export const DEMO_DEVICES: DeviceConfig[] = [
     shellyDeviceId: 'demo-flood',
     batteryPowered: true,
   },
+  {
+    id: 'demo-climate',
+    type: 'shelly_sensor',
+    role: 'Environmental Sensor',
+    name: 'Salon Climate',
+    shellyDeviceId: 'demo-climate',
+    batteryPowered: true,
+  },
+  {
+    id: 'demo-fridge',
+    type: 'shelly_sensor',
+    role: 'Environmental Sensor',
+    name: 'Fridge / Reefer',
+    shellyDeviceId: 'demo-fridge',
+    batteryPowered: true,
+  },
 ];
 
 /** Telemetry generator spec per Shelly device id (the LinkTap valve is driven by demoLinkTapDoc). */
@@ -62,6 +78,9 @@ export const DEMO_SENSOR_SPECS: DemoSensorSpec[] = [
   { deviceId: 'demo-house-batt', kind: 'battery', base: 12.5, solar: true, tempBaseC: 21 },
   { deviceId: 'demo-engine-batt', kind: 'battery', base: 12.8 },
   { deviceId: 'demo-flood', kind: 'flood', base: 0 },
+  // Cabin H&T (comfortable) and the reefer box (cold) — two Environmental sensors for variety.
+  { deviceId: 'demo-climate', kind: 'thermo', base: 22 },
+  { deviceId: 'demo-fridge', kind: 'thermo', base: 4 },
 ];
 
 /** Look up the generator spec for a Shelly device id, if this is a demo device. */

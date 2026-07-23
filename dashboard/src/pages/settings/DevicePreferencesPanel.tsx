@@ -3,7 +3,7 @@
 // block is passed in as children (NotificationsPanel keeps its own props in Settings). These
 // preferences are saved on this device only — not synced to the cloud.
 
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 interface Props {
   unitSystem: 'metric' | 'imperial';
@@ -16,6 +16,15 @@ interface Props {
 }
 
 export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, tempUnit, setTempUnit, timeZone, setTimeZone, children }: Props) {
+  // Device-local QA flag (not synced): shows the top event-simulator bar so alerts/dashboard states can
+  // be exercised without hardware. App.tsx reads lt_event_sim on the settings_updated event.
+  const [eventSim, setEventSim] = useState(() => localStorage.getItem('lt_event_sim') === '1');
+  const toggleEventSim = (on: boolean) => {
+    setEventSim(on);
+    localStorage.setItem('lt_event_sim', on ? '1' : '0');
+    window.dispatchEvent(new Event('settings_updated'));
+  };
+
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div>
@@ -49,6 +58,17 @@ export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, temp
       </div>
 
       {children}
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+        <input type="checkbox" checked={eventSim} onChange={(e) => toggleEventSim(e.target.checked)} style={{ marginTop: '3px' }} />
+        <span>
+          <span style={{ fontSize: '0.9rem', color: '#fff' }}>🧪 Event simulator (testing)</span>
+          <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            Shows a top bar to fire each sensor event (flood, low battery, shore loss, freeze…) so alerts and
+            dashboard states can be checked without hardware.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

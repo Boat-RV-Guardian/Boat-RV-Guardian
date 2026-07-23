@@ -7,6 +7,7 @@ import { db, doc, onSnapshot } from '../services/firebase';
 import { lastStatusKey } from '../hooks/useSensorBridge';
 import { demoSpecFor } from '../utils/demoFleet';
 import { demoShellyDoc, demoFloodAlarmActive } from '../utils/demoTelemetry';
+import { getDemoOverride, mergeDemoDoc, DEMO_SIM_EVENT } from '../utils/demoOverrides';
 import { resolveTempUnit, cToDisplay, tempUnitLabel } from '../utils/tempUnit';
 import { mapCloudSensorDoc } from '../utils/shellySensorState';
 
@@ -102,14 +103,18 @@ export default function ShellyWidget({ device }: { device: DeviceConfig }) {
       const tick = () => {
         const now = Date.now();
         // The bilge flood sensor follows the scripted incident (alarm window); the rest are steady.
-        const d = demoShellyDoc(demoSpec, now, demoSpec.kind === 'flood' && demoFloodAlarmActive(now));
+        const base = demoShellyDoc(demoSpec, now, demoSpec.kind === 'flood' && demoFloodAlarmActive(now));
+        // Event simulator: a pinned override wins over the baseline generator for its TTL.
+        const d = mergeDemoDoc(base, getDemoOverride(demoSpec.deviceId, now));
         if (d.event) setCloudEvent({ event: String(d.event), at: Number(d.at) || 0 });
         const remote = mapCloudSensorDoc(device.role, d);
         if (Object.keys(remote).length) applyData(remote, 'cloud');
       };
       tick();
       const id = setInterval(tick, 2000);
-      return () => clearInterval(id);
+      const onSim = () => tick(); // react immediately when the simulator fires
+      window.addEventListener(DEMO_SIM_EVENT, onSim);
+      return () => { clearInterval(id); window.removeEventListener(DEMO_SIM_EVENT, onSim); };
     }
     const vid = getActiveVehicleId();
     if (!vid) return;

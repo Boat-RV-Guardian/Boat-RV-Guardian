@@ -115,6 +115,11 @@ export function demoTempC(spec: DemoSensorSpec, t: number): number {
   return round(spec.base + 4 * (diurnal(t) - 0.5) + wobble(t, 9 * MIN, 0.2), 1);
 }
 
+/** Relative humidity (%) for a temp/humidity sensor at `t` — inversely tracks the day's warmth. */
+export function demoHumidity(t: number): number {
+  return Math.round(Math.min(95, Math.max(30, 55 - 8 * (diurnal(t) - 0.5) + wobble(t, 13 * MIN, 3))));
+}
+
 /**
  * A full Shelly `sensorState` doc for `spec` at `t`. Pass `alarmActive` for the flood sensor to script
  * a leak (increment 3 drives this); it defaults to dry.
@@ -135,7 +140,8 @@ export function demoShellyDoc(spec: DemoSensorSpec, t: number, alarmActive = fal
       return doc;
     }
     case 'thermo':
-      return { ...base, event: 'temperature.change', tC: String(demoTempC(spec, t)), batt: '100' };
+      // An H&T reports temperature AND humidity (separate webhooks IRL; the demo emits both at once).
+      return { ...base, event: 'temperature.change', tC: String(demoTempC(spec, t)), rh: String(demoHumidity(t)), batt: '100' };
     case 'flood':
       return {
         ...base,
