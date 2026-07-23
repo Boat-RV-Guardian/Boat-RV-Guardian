@@ -240,3 +240,7 @@ Boat & RV Guardian is a monitoring aid, not a guarantee. Always follow marine an
 electrical/plumbing best practices, and don't rely on any single system to protect life or
 property. Install fuses, test your setup, and confirm alerts actually reach you before you depend
 on them.
+
+## Quality Assurance & Ecosystem
+
+This project is part of the Boat RV Guardian ecosystem. For overarching architecture, AI workflows, and the QA Audit checklist, please see the [brvg-ecosystem](../brvg-ecosystem) repository.

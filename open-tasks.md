@@ -133,6 +133,17 @@ below with why.
       vehicle members (monitor included) — either accept that (documented) or gate the reveal/prefill
       to admin/control roles. Verify with a real provisioning pass on a device.
 
+- [ ] **Dashboard UI Improvements:**
+  - [ ] moveable tiles
+  - [ ] ability to hide tiles
+  - [ ] maybe resize?
+  - [ ] create historical data widget options
+
+- [ ] **Fix Account Page / Subscriptions (https://account.boatrvguardian.com):**
+  - [ ] Update the subscriptions page to be an e-commerce-like plan screen.
+  - [ ] Tie subscriptions to specific vehicles on the account (this will be the primary sign-up flow for all subscriptions).
+  - [ ] Implement GDPR data export (including device water-usage history CSV).
+
 ---
 
 ## 🔧 Hardware-gated (needs the physical devices / boat / home LAN)

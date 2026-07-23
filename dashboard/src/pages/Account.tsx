@@ -1,59 +1,34 @@
 import { useState } from 'react';
 import { useEntitlements } from '../hooks/useEntitlements';
-import { entitlementSummary, TIER_LABELS, TIER_PRICING } from '../utils/entitlements';
-import { redeemCoupon, MOCK_COUPONS } from '../utils/billing';
-import { trialStatus, usageRows, vehiclePlanRows } from '../utils/accountSummary';
-import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
-import { parseSmsPrefs, serializeSmsPrefs, type SmsPrefs } from '../utils/smsPrefs';
-import MessagingChannelPrefs from './settings/MessagingChannelPrefs';
+import { TIER_LABELS } from '../utils/entitlements';
+
+import { trialStatus, vehiclePlanRows } from '../utils/accountSummary';
+
+
 import {
   parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
   type ApiToken,
 } from '../utils/apiTokens';
 import { requestTrial } from '../utils/trial';
 import DeleteAccountButton from '../components/DeleteAccountButton';
-import EditDisplayName from '../components/EditDisplayName';
-import AccountActions from '../components/AccountActions';
-import ChangePassword from '../components/ChangePassword';
-import { needsEmailVerification } from '../utils/emailVerification';
 
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
 // what is just two count reads. Shapes: lt_devices = DeviceConfig[], lt_vehicles = Record<id, …>.
-interface LocalDevice { id: string; name?: string; linktapDeviceId?: string }
 function readLocalJson<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; }
 }
 
-// Per-vehicle messaging-channel prefs, one synced `sh_*_prefs` field per channel. Persisting fires
-// settings_updated so SyncModal pushes it to the cloud like any other config.
-function useChannelPrefs(field: string) {
-  const [prefs, setPrefs] = useState<SmsPrefs>(() => parseSmsPrefs(localStorage.getItem(field)));
-  const persist = (next: SmsPrefs) => {
-    setPrefs(next);
-    localStorage.setItem(field, serializeSmsPrefs(next));
-    window.dispatchEvent(new Event('settings_updated'));
-  };
-  return { prefs, persist };
-}
+
 
 // In-app subscription portal (open-tasks Task 14). MOCK billing for now: a coupon code "purchases" a
 // tier for the active vehicle so the entitlement flow is testable before Stripe. The Upgrade button
 // in Settings → Vehicles routes here. Also surfaces trial status, usage-vs-plan, and (Premium) a
 // CSV export of on-device usage history.
 export default function Account({ user }: { user?: { uid?: string; email?: string | null; displayName?: string | null; emailVerified?: boolean; providerData?: { providerId: string }[] } | null }) {
-  const hasPassword = !!user?.providerData?.some((p) => p.providerId === 'password');
-  const emailUnverified = needsEmailVerification(user ? { email: user.email ?? null, emailVerified: !!user.emailVerified, providerData: user.providerData ?? [] } : null);
   const ent = useEntitlements();
-  const price = TIER_PRICING[ent.tier];
-  const rows = entitlementSummary(ent);
-  const [code, setCode] = useState('');
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  // Messaging alert channels (Premium, per-vehicle) — SMS, WhatsApp, Telegram, each its own synced field.
-  const sms = useChannelPrefs('sh_sms_prefs');
-  const whatsapp = useChannelPrefs('sh_whatsapp_prefs');
-  const telegram = useChannelPrefs('sh_telegram_prefs');
+
 
   // Integration API tokens (Premium, per-vehicle). Persisted to the synced `sh_api_tokens` field.
   const [apiTokens, setApiTokens] = useState<ApiToken[]>(() => parseApiTokens(localStorage.getItem('sh_api_tokens')));
@@ -70,23 +45,14 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
 
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
-  const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
   // Per-vehicle plans ("Plex" billing) — read straight from the local vehicle map (each carries its
   // synced `tier`); no heavy VehicleManager import for what is a read-only list.
   const planRows = vehiclePlanRows(
     readLocalJson<Record<string, { config?: Record<string, string> }>>('lt_vehicles', {}),
     localStorage.getItem('lt_active_vehicle_id'),
   );
-  const usage = usageRows(ent, {
-    vehicleCount: Object.keys(readLocalJson<Record<string, unknown>>('lt_vehicles', {})).length || 1,
-    deviceCount: devices.length,
-  });
 
-  const apply = () => {
-    const r = redeemCoupon(code);
-    setMsg(r.ok ? { ok: true, text: `✓ Applied — this vehicle is now ${TIER_LABELS[r.tier!]}.` } : { ok: false, text: r.error || 'Failed' });
-    if (r.ok) setCode('');
-  };
+
 
   // In-portal vehicle switcher (Task 14 remainder): lazy-import VehicleManager, same pattern already
   // used by DeleteAccountButton/EditDisplayName for Firebase, so this view's static import surface
@@ -129,86 +95,9 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
     }
   };
 
-  // Premium "data export": flatten each device's on-device usage history (lt_usage_history_<id>) to
-  // a CSV and download it. The history key mirrors LinkTapWidget (`linktapDeviceId || id`).
-  const exportCsv = () => {
-    const data: DeviceUsage[] = devices.map((d) => {
-      const key = d.linktapDeviceId || d.id;
-      let usageMap: Record<string, number> = {};
-      try { usageMap = JSON.parse(localStorage.getItem(`lt_usage_history_${key}`) || '{}'); } catch { /* skip */ }
-      return { device: d.name || key, usage: usageMap };
-    });
-    const blob = new Blob([usageHistoryToCsv(data)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'brvg-usage-history.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '720px', margin: '0 auto', color: '#fff', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <h2 style={{ fontSize: '2rem', color: 'var(--accent-cyan)', margin: 0 }}>Account &amp; Plan</h2>
-
-      {/* Account basics (Task 14) */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Account</h3>
-        {user ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Signed in as</span>
-              <EditDisplayName uid={user.uid} displayName={user.displayName} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Email</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                {user.email || '—'}
-                {user.emailVerified
-                  ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#22c55e', border: '1px solid rgba(34,197,94,0.4)', borderRadius: '999px', padding: '1px 7px' }}>Verified</span>
-                  : emailUnverified
-                    ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#f59e0b', border: '1px solid rgba(245,158,11,0.4)', borderRadius: '999px', padding: '1px 7px' }}>Unverified</span>
-                    : null}
-              </span>
-            </div>
-            {ent.canSmsAlert && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', padding: '5px 0' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Support</span>
-                <span style={{ color: '#22c55e' }}>Priority support (Premium)</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Sign in to manage your account details.</p>
-        )}
-        {user && hasPassword && <ChangePassword email={user.email} />}
-        <AccountActions user={user} />
-      </div>
-
-      {/* Current plan */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          <span style={{ fontSize: '1.6rem', fontWeight: 700 }}>{TIER_LABELS[ent.tier]}</span>
-          <span style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            {price.monthly > 0 ? `$${price.monthly}/mo · $${price.yearly}/yr` : 'Free'}
-          </span>
-          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: '#f59e0b', border: '1px solid #f59e0b', borderRadius: '999px', padding: '2px 8px' }}>MOCK BILLING</span>
-        </div>
-        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-          Plans are per vehicle — people you share this vehicle with get its features. Real payments
-          aren't live yet; use a coupon code below to change the plan for testing.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '4px' }}>
-          {rows.map((r) => (
-            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>
-                <span style={{ color: r.on ? '#22c55e' : '#6b7280', marginRight: '8px' }}>{r.on ? '✓' : '○'}</span>{r.label}
-              </span>
-              <span style={{ color: r.on ? '#fff' : 'var(--text-secondary)' }}>{r.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* Opt-in Basic free trial — only for a signed-in user on a Free vehicle that hasn't trialed yet.
           The worker still enforces eligibility, so this is the offer, not the authorization. */}
@@ -240,18 +129,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         </div>
       )}
 
-      {/* Usage vs plan (Task 14) */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Usage &amp; limits</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {usage.map((r) => (
-            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', padding: '5px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>{r.label}</span>
-              <span style={{ color: r.on ? '#fff' : 'var(--text-secondary)' }}>{r.value}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+
 
       {/* Per-vehicle plans (Task 14 "Plex" billing) — read-only overview of every vehicle's tier */}
       {planRows.length > 1 && (
@@ -286,63 +164,20 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         </div>
       )}
 
-      {/* Data & privacy (Task 14) — CSV export is a Premium feature (canExport) */}
+      {/* Data & privacy (GDPR) */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Data &amp; privacy</h3>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-            Export this device's water-usage history as CSV.{!ent.canExport && ' (Premium)'}
+            Manage your data and export GDPR reports via our secure web portal.
           </span>
-          <button className="btn-primary" onClick={exportCsv} disabled={!ent.canExport} style={{ padding: '8px 18px', opacity: ent.canExport ? 1 : 0.5 }} title={ent.canExport ? 'Download CSV' : 'Upgrade to Premium to export'}>
-            Export CSV
+          <button className="btn-primary" onClick={() => window.open('https://account.boatrvguardian.com/privacy', '_blank')} style={{ padding: '8px 18px' }}>
+            Privacy Portal
           </button>
         </div>
 
-        {/* Delete account (GDPR) — only when signed in. Solo-owned vehicles are deleted; shared ones
-            you're simply removed from. Shared, confirm-protected component (also in Settings → Danger Zone). */}
-        {user?.uid && (
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '4px' }}>
-            <DeleteAccountButton uid={user.uid} />
-          </div>
-        )}
       </div>
 
-      {/* Alert channels — SMS / WhatsApp / Telegram escalation (Task 6/14). Premium-gated (canSmsAlert).
-          Prefs are stored + synced per channel; the worker send path lives in brvg-cloud-server (SMS is
-          hosted-only; WhatsApp + Telegram are available on self-host too). */}
-      <MessagingChannelPrefs
-        title="SMS & voice alerts"
-        unlocked={ent.canSmsAlert}
-        lockedNote="Escalate critical alerts (flood, low battery, shore power, offline) to a text message. Upgrade to Premium to add phone numbers and choose which alerts text you."
-        description="Add the numbers that should receive a text for the alerts you pick below. (Delivery goes live once an SMS provider is connected.)"
-        prefs={sms.prefs}
-        onChange={sms.persist}
-        variant="phone"
-        inputPlaceholder="+1 555 123 4567"
-        emptyLabel="No numbers yet."
-      />
-      <MessagingChannelPrefs
-        title="WhatsApp alerts"
-        unlocked={ent.canSmsAlert}
-        lockedNote="Escalate critical alerts to WhatsApp. Upgrade to Premium to add WhatsApp numbers and choose which alerts notify you."
-        description="Add the WhatsApp numbers that should receive the alerts you pick below."
-        prefs={whatsapp.prefs}
-        onChange={whatsapp.persist}
-        variant="phone"
-        inputPlaceholder="+1 555 123 4567"
-        emptyLabel="No numbers yet."
-      />
-      <MessagingChannelPrefs
-        title="Telegram alerts"
-        unlocked={ent.canSmsAlert}
-        lockedNote="Escalate critical alerts to Telegram. Upgrade to Premium to add Telegram chats and choose which alerts notify you."
-        description="Add the Telegram chat IDs (or @usernames) that should receive the alerts you pick below. Start a chat with the bot first so it can message you."
-        prefs={telegram.prefs}
-        onChange={telegram.persist}
-        variant="handle"
-        inputPlaceholder="@username or chat id"
-        emptyLabel="No chats yet."
-      />
 
       {/* Integrations / API tokens (Task 14) — Premium (canIntegrations). Scaffold: tokens are issued
           + stored + synced; no server validates them yet (lands with the integration endpoints). */}
@@ -385,21 +220,17 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         )}
       </div>
 
-      {/* Coupon redemption (mock payment) */}
-      <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Redeem a code</h3>
-        <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-          Enter a coupon to change this vehicle's plan (stand-in for the credit-card checkout, coming later).
-        </p>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input className="form-input" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Coupon code" autoCapitalize="characters" autoCorrect="off" spellCheck={false} style={{ flex: 1 }} onKeyDown={(e) => { if (e.key === 'Enter') apply(); }} />
-          <button className="btn-primary" onClick={apply} disabled={!code.trim()} style={{ padding: '8px 18px' }}>Apply</button>
+      {user?.uid && (
+        <div className="glass-card" style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <h3 style={{ marginTop: 0, color: '#ef4444', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', paddingBottom: '8px', marginBottom: '16px' }}>Danger Zone</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.85rem', color: '#fca5a5', flex: '1 1 200px' }}>
+              Permanently delete my account and all my vehicles.
+            </span>
+            <DeleteAccountButton uid={user.uid} intro="This permanently deletes your account, the vehicles you solely own, and removes you from any shared vehicles." />
+          </div>
         </div>
-        {msg && <p style={{ margin: 0, fontSize: '0.82rem', color: msg.ok ? '#22c55e' : '#ffb3b3' }}>{msg.text}</p>}
-        <p style={{ margin: '4px 0 0 0', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-          Test codes: {Object.keys(MOCK_COUPONS).join(' · ')}
-        </p>
-      </div>
+      )}
     </div>
   );
 }

@@ -14,18 +14,17 @@ function seed(vehicles: Record<string, { name?: string; type?: string }>, active
 }
 
 describe('GlobalBar', () => {
-  it('shows the active vehicle label and an account button', () => {
+  // The account button moved out of the global bar into its own Settings tab (2026-07-23 refactor);
+  // the bar now owns only the vehicle switcher.
+  it('shows the active vehicle label', () => {
     seed({ v1: { name: 'Serenity', type: 'boat' } }, 'v1');
-    const onOpenAccount = vi.fn();
-    render(<GlobalBar onOpenAccount={onOpenAccount} />);
+    render(<GlobalBar />);
     expect(screen.getByText('⛵ Serenity')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /account/i }));
-    expect(onOpenAccount).toHaveBeenCalled();
   });
 
   it('opens a dropdown listing all vehicles when there is more than one', () => {
     seed({ v1: { name: 'Serenity', type: 'boat' }, v2: { name: 'Wanderer', type: 'rv' } }, 'v1');
-    render(<GlobalBar onOpenAccount={vi.fn()} />);
+    render(<GlobalBar />);
     fireEvent.click(screen.getByRole('button', { name: /switch vehicle/i }));
     const options = screen.getAllByRole('option');
     expect(options).toHaveLength(2);
@@ -34,7 +33,7 @@ describe('GlobalBar', () => {
 
   it('opens the menu even with a single vehicle (never a dead click) and offers Manage vehicles', () => {
     seed({ v1: { name: 'Serenity', type: 'boat' } }, 'v1');
-    render(<GlobalBar onOpenAccount={vi.fn()} />);
+    render(<GlobalBar />);
     fireEvent.click(screen.getByRole('button', { name: /switch vehicle/i }));
     expect(screen.getByRole('option', { selected: true }).textContent).toContain('Serenity');
     expect(screen.getByText(/only one vehicle/i)).toBeTruthy();

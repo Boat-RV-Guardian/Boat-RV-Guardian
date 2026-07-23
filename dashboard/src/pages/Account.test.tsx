@@ -13,33 +13,9 @@ beforeEach(() => {
 });
 
 describe('Account', () => {
-  it('defaults to the Free plan when no tier is set', () => {
-    render(<Account />);
-    // Both the plan-name header and the price line read "Free", so match at least one.
-    expect(screen.getAllByText('Free').length).toBeGreaterThan(0);
-  });
 
-  it('applies a coupon and reactively updates the plan', () => {
-    render(<Account />);
-    fireEvent.change(screen.getByPlaceholderText('Coupon code'), { target: { value: 'GUARDIANBASIC' } });
-    fireEvent.click(screen.getByRole('button', { name: /apply/i }));
-    expect(screen.getByText(/now Basic/i)).toBeTruthy();
-    expect(screen.getByText('Basic')).toBeTruthy(); // plan header updated via useEntitlements
-    expect(localStorage.getItem('lt_vehicle_tier')).toBe('basic');
-  });
 
-  it('shows an error for an invalid coupon', () => {
-    render(<Account />);
-    fireEvent.change(screen.getByPlaceholderText('Coupon code'), { target: { value: 'BOGUS' } });
-    fireEvent.click(screen.getByRole('button', { name: /apply/i }));
-    expect(screen.getByText(/invalid or expired/i)).toBeTruthy();
-  });
 
-  it('renders the usage & limits section', () => {
-    render(<Account />);
-    expect(screen.getByText('Usage & limits')).toBeTruthy();
-    expect(screen.getByText('Telemetry resolution')).toBeTruthy();
-  });
 
   it('shows trial status when a future trial end is stashed', () => {
     localStorage.setItem('lt_vehicle_trial_ends', String(Date.now() + 5 * 86_400_000));
@@ -47,39 +23,9 @@ describe('Account', () => {
     expect(screen.getByText(/days left/i)).toBeTruthy();
   });
 
-  it('exports CSV on Premium (enabled, builds from device history, triggers a download)', () => {
-    // Seed a device + its on-device usage history so the export actually flattens real buckets.
-    localStorage.setItem('lt_devices', JSON.stringify([
-      { id: 'd1', type: 'linktap_valve', role: 'Fresh Water', name: 'Tank', linktapDeviceId: 'lt1' },
-    ]));
-    localStorage.setItem('lt_usage_history_lt1', JSON.stringify({ '2026-06-01T00:00:00.000Z': 5 }));
-    let madeWith = '';
-    (URL as any).createObjectURL = (b: Blob) => { madeWith = String((b as any).type || 'blob'); return 'blob:x'; };
-    localStorage.setItem('lt_vehicle_tier', 'premium'); // export is a Premium feature (canExport)
-    render(<Account />);
-    const btn = screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-    fireEvent.click(btn);
-    expect(madeWith).toContain('text/csv');
-  });
 
-  it('disables CSV export on the Free plan', () => {
-    localStorage.setItem('lt_vehicle_tier', 'free');
-    render(<Account />);
-    expect((screen.getByRole('button', { name: /export csv/i }) as HTMLButtonElement).disabled).toBe(true);
-  });
 
-  it('shows a sign-in prompt in the Account section when no user is passed', () => {
-    render(<Account />);
-    expect(screen.getByText('Account')).toBeTruthy();
-    expect(screen.getByText(/sign in to manage/i)).toBeTruthy();
-  });
 
-  it('shows the signed-in user email + display name when passed a user', () => {
-    render(<Account user={{ email: 'skipper@example.com', displayName: 'Skipper' }} />);
-    expect(screen.getByText('skipper@example.com')).toBeTruthy();
-    expect(screen.getByText('Skipper')).toBeTruthy();
-  });
 
   it('lists per-vehicle plans when more than one vehicle exists', () => {
     localStorage.setItem('lt_vehicles', JSON.stringify({
@@ -129,13 +75,6 @@ describe('Account', () => {
   });
 
   // --- Entitlement gating (Task 2/3): the SMS + integrations sections lock on non-Premium tiers ---
-  it('gates the SMS section behind Premium on the Free plan', () => {
-    localStorage.setItem('lt_vehicle_tier', 'free'); // canSmsAlert = false
-    render(<Account />);
-    expect(screen.getByText(/SMS & voice alerts \(Premium\)/i)).toBeTruthy();
-    expect(screen.getByText(/upgrade to premium to add phone numbers/i)).toBeTruthy();
-    expect(screen.queryByPlaceholderText(/555 123 4567/)).toBeNull(); // no phone input when gated
-  });
 
   it('gates the integrations section behind Premium on the Free plan', () => {
     localStorage.setItem('lt_vehicle_tier', 'free'); // canIntegrations = false
@@ -145,13 +84,19 @@ describe('Account', () => {
     expect(screen.queryByRole('button', { name: /generate/i })).toBeNull(); // no generate when gated
   });
 
-  it('opens the SMS + integrations inputs on a Premium plan', () => {
+  // Messaging/SMS prefs moved to Settings → MessagingChannelPrefs (covered by its own test);
+  // Account keeps the integrations tokens.
+  it('opens the integrations inputs on a Premium plan', () => {
     localStorage.setItem('lt_vehicle_tier', 'premium');
     render(<Account />);
-    // SMS + WhatsApp both use the phone placeholder; Telegram + integrations add their own inputs.
-    expect(screen.getAllByPlaceholderText(/555 123 4567/).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByPlaceholderText(/@username or chat id/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /generate/i })).toBeTruthy();
+  });
+
+  // Data export / GDPR reports moved to the web portal (account.boatrvguardian.com).
+  it('links out to the privacy portal instead of exporting in-app', () => {
+    render(<Account />);
+    expect(screen.getByRole('button', { name: /privacy portal/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /export.*csv/i })).toBeNull();
   });
 
   // --- Opt-in Basic trial (owner decision: not auto-granted) ---

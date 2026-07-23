@@ -184,7 +184,7 @@ export default function App() {
             )}
           </div>
         </div>
-        <GlobalBar onOpenAccount={() => setCurrentView('account')} />
+        <GlobalBar />
       </header>
       <EmailVerifyBanner user={user} />
       {/* Event simulator bar: always in a demo build; opt-in for QA on a real build (Settings toggle). */}

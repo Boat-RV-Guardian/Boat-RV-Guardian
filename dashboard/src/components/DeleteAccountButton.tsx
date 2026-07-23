@@ -19,6 +19,9 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
   const [ownedShared, setOwnedShared] = useState<OwnedSharedUI[]>([]);
   const [decisions, setDecisions] = useState<Record<string, string>>({}); // vid -> 'delete' | targetUid
   const [classification, setClassification] = useState<DeletionClassification | null>(null);
+  const [tooManyVehiclesError, setTooManyVehiclesError] = useState(false);
+  const [singleVehicleName, setSingleVehicleName] = useState('');
+  const [vehicleDeleteConfirmChecked, setVehicleDeleteConfirmChecked] = useState(false);
 
   if (!uid) return null;
 
@@ -26,6 +29,8 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
     setShowDelete(true);
     setDeleteMsg(null);
     setDeleteConfirm('');
+    setVehicleDeleteConfirmChecked(false);
+    setTooManyVehiclesError(false);
     // Best-effort fetch of the user's vehicles to surface ownership decisions. On failure we still
     // allow a basic delete (no transfer options).
     try {
@@ -42,9 +47,21 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
       });
       setClassification(cls);
       setOwnedShared(ui);
-      const dec: Record<string, string> = {};
-      ui.forEach((v) => { dec[v.id] = v.others[0]?.uid || 'delete'; }); // default: transfer to first member
-      setDecisions(dec);
+
+      const ownedCount = cls.toDelete.length + ui.length;
+      if (ownedCount > 1) {
+        setTooManyVehiclesError(true);
+      } else {
+        if (ownedCount === 1) {
+          if (cls.toDelete.length === 1) {
+            const d = docs.find((x) => x.id === cls.toDelete[0])!.data;
+            setSingleVehicleName(d.lt_vessel_name || cls.toDelete[0]);
+          } else {
+            setSingleVehicleName(ui[0].name);
+            setDecisions({ [ui[0].id]: 'delete' }); // Force delete for the single shared vehicle
+          }
+        }
+      }
     } catch { /* offline / no access — fall back to a basic delete */ }
   };
 
@@ -120,25 +137,21 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
         This <strong>cannot be undone.</strong>
       </span>
 
-      {/* Owned vehicles shared with others — transfer or delete, per vehicle. */}
-      {ownedShared.length > 0 && (
+      {tooManyVehiclesError ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', padding: '10px' }}>
-          <span style={{ fontSize: '0.82rem', color: '#fff' }}>You own {ownedShared.length} vehicle(s) shared with others. For each, transfer ownership or delete it:</span>
-          {ownedShared.map((v) => (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '0.85rem', flex: '1 1 120px' }}>{v.name}</span>
-              <select
-                value={decisions[v.id] ?? 'delete'}
-                onChange={(e) => setDecisions((d) => ({ ...d, [v.id]: e.target.value }))}
-                style={{ flex: '1 1 160px', padding: '6px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}
-              >
-                {v.others.map((o) => <option key={o.uid} value={o.uid}>Transfer to {o.email}</option>)}
-                <option value="delete">Delete this vehicle</option>
-              </select>
-            </div>
-          ))}
+          <span style={{ fontSize: '0.85rem', color: '#fca5a5' }}>
+            You own multiple vehicles. Please transfer or delete all but one vehicle in Settings &rarr; Vehicle before deleting your account.
+          </span>
+          <button onClick={() => setShowDelete(false)} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem', alignSelf: 'flex-start' }}>Close</button>
         </div>
-      )}
+      ) : (
+        <>
+          {singleVehicleName && (
+            <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '0.82rem', color: '#fff', cursor: 'pointer', padding: '8px', background: 'rgba(239,68,68,0.1)', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <input type="checkbox" checked={vehicleDeleteConfirmChecked} onChange={(e) => setVehicleDeleteConfirmChecked(e.target.checked)} />
+              I understand that my vehicle <strong>{singleVehicleName}</strong> will also be permanently deleted.
+            </label>
+          )}
 
       <span style={{ fontSize: '0.82rem', color: '#fca5a5' }}>Type <strong>DELETE</strong> to confirm.</span>
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -149,12 +162,23 @@ export default function DeleteAccountButton({ uid, intro }: { uid?: string | nul
           aria-label="Type DELETE to confirm"
           style={{ flex: '1 1 120px', padding: '8px 10px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(0,0,0,0.25)', color: '#fff' }}
         />
-        <button onClick={onDeleteAccount} disabled={deleteConfirm !== 'DELETE' || deleteBusy} style={{ background: deleteConfirm === 'DELETE' && !deleteBusy ? '#ef4444' : '#7f1d1d', border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 16px', cursor: deleteConfirm === 'DELETE' && !deleteBusy ? 'pointer' : 'not-allowed', fontSize: '0.85rem' }}>
+        <button
+          onClick={onDeleteAccount}
+          disabled={deleteConfirm !== 'DELETE' || (!!singleVehicleName && !vehicleDeleteConfirmChecked) || deleteBusy}
+          style={{
+            background: deleteConfirm === 'DELETE' && (!singleVehicleName || vehicleDeleteConfirmChecked) && !deleteBusy ? '#ef4444' : '#7f1d1d',
+            border: 'none', color: '#fff', borderRadius: '8px', padding: '8px 16px',
+            cursor: deleteConfirm === 'DELETE' && (!singleVehicleName || vehicleDeleteConfirmChecked) && !deleteBusy ? 'pointer' : 'not-allowed',
+            fontSize: '0.85rem'
+          }}
+        >
           {deleteBusy ? 'Deleting…' : 'Permanently delete'}
         </button>
         <button onClick={() => { setShowDelete(false); setDeleteConfirm(''); }} className="btn-secondary" style={{ padding: '8px 14px', fontSize: '0.85rem' }}>Cancel</button>
       </div>
       {deleteMsg && <span style={{ fontSize: '0.8rem', color: '#fca5a5' }}>{deleteMsg}</span>}
-    </div>
+    </>
+  )}
+</div>
   );
 }

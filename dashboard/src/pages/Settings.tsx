@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
 import { getActiveVehicleId, getVehiclesMap, switchVehicle, addNewVehicle, deleteVehicle, getDevices, updateDevice, type DeviceConfig } from '../utils/VehicleManager';
-import { getLocalVehicleConfig } from '../utils/configSync';
 import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { useVehicleSharing } from '../hooks/useVehicleSharing';
@@ -9,12 +8,11 @@ import { useLinkTapDiscovery } from '../hooks/useLinkTapDiscovery';
 import { deviceLocalHost, findVoltmeterId } from '../utils/shellyDevice';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
-import DeleteAccountButton from '../components/DeleteAccountButton';
-import { auth } from '../services/firebase';
 import VehiclesPanel from './settings/VehiclesPanel';
 import AccountPanel from './settings/AccountPanel';
+import Account from './Account';
 import DeviceConfigPanel from './settings/DeviceConfigPanel';
-import DevicePreferencesPanel from './settings/DevicePreferencesPanel';
+
 import AddDevicePanel from './settings/AddDevicePanel';
 import SoftwareUpdatesPanel from './settings/SoftwareUpdatesPanel';
 import NotificationsPanel from './settings/NotificationsPanel';
@@ -28,12 +26,26 @@ import { readSettings, writeSettings, applyPersistedSettings } from '../utils/se
 import { linkTapGetApiKey } from '../utils/linktapCloud';
 import { isLocalMode } from '../utils/userScope';
 import { useAppUpdater } from '../hooks/useAppUpdater';
+import { parseSmsPrefs, serializeSmsPrefs, type SmsPrefs } from '../utils/smsPrefs';
+import MessagingChannelPrefs from './settings/MessagingChannelPrefs';
+
+// Per-vehicle messaging-channel prefs, one synced `sh_*_prefs` field per channel. Persisting fires
+// settings_updated so SyncModal pushes it to the cloud like any other config.
+function useChannelPrefs(field: string) {
+  const [prefs, setPrefs] = useState<SmsPrefs>(() => parseSmsPrefs(localStorage.getItem(field)));
+  const persist = (next: SmsPrefs) => {
+    setPrefs(next);
+    localStorage.setItem(field, serializeSmsPrefs(next));
+    window.dispatchEvent(new Event('settings_updated'));
+  };
+  return { prefs, persist };
+}
 
 const APP_VERSION = '1.0.65';
 
 export default function Settings({ user }: { user: any }) {
   const [showLogin, setShowLogin] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'accounts' | 'devices' | 'friends' | 'updates'>('general');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'vehicle' | 'notifications' | 'devices' | 'friends' | 'updates'>('accounts');
   const [devicesTab, setDevicesTab] = useState<'add' | 'config' | 'advanced'>('config');
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   // Real signed-update path on Tauri desktop (Task 13 part 3); the GitHub-tag check above/below stays
@@ -71,7 +83,7 @@ export default function Settings({ user }: { user: any }) {
   // Cross-device sync
   // Cloud-vehicle reconciliation lives in SyncModal (always mounted) so it works app-wide.
   // Settings only needs the cloud write helpers; its vehiclesMap refreshes via settings_updated.
-  const { cloudVehicles, userConfig, updateVehicleConfig, updateUserConfig, deleteVehicleConfig, hardDeleteVehicleConfig } = useCloudConfig(null);
+  const { cloudVehicles, userConfig, updateUserConfig, deleteVehicleConfig, hardDeleteVehicleConfig } = useCloudConfig(null);
   const [defaultVidSaving, setDefaultVidSaving] = useState(false);
 
   // --- Friends / Sharing (Friends tab): state, derived roles/members + handlers live in the hook ---
@@ -85,12 +97,16 @@ export default function Settings({ user }: { user: any }) {
   } = useVehicleSharing({ user, cloudVehicles, activeVid, activeTab });
 
   // Sync Toggles
-  const [syncSettingsCloud, setSyncSettingsCloud] = useState(() => localStorage.getItem('lt_sync_cloud') !== 'false');
-  const [storeHistoryCloud, setStoreHistoryCloud] = useState(() => localStorage.getItem('lt_store_history_cloud') === 'true');
+  const [syncSettingsCloud, setSyncSettingsCloud] = useState(true);
+  const [storeHistoryCloud, setStoreHistoryCloud] = useState(true);
   // Active vehicle's entitlements (per-vehicle tier). Cloud history is a Basic+ feature. Legacy/unset
   // vehicles grandfather to premium, so this gates nothing until real tiers are assigned.
   const entitlements = useEntitlements();
-  const canCloudHistory = entitlements.historyRetentionDays > 0;
+
+  // Messaging alert channels (Premium, per-vehicle) — SMS, WhatsApp, Telegram, each its own synced field.
+  const sms = useChannelPrefs('sh_sms_prefs');
+  const whatsapp = useChannelPrefs('sh_whatsapp_prefs');
+  const telegram = useChannelPrefs('sh_telegram_prefs');
 
   // App Settings State
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
@@ -278,8 +294,7 @@ export default function Settings({ user }: { user: any }) {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'mock' | 'connecting'>('disconnected');
   // (isDiscovering / discoveryMsg + the LinkTap discovery actions now live in useLinkTapDiscovery)
 
-  const [isManualSyncing, setIsManualSyncing] = useState(false);
-  const [manualSyncMsg, setManualSyncMsg] = useState<{text: string, type: 'success' | 'error'} | null>(null);
+
 
   useEffect(() => {
     const handleSettingsUpdate = () => {
@@ -410,25 +425,6 @@ export default function Settings({ user }: { user: any }) {
     battLowVoltage, battCritVoltage, battNormalVoltage, battOverVoltage, battChargeVoltage,
     shoreCritLowV, shoreLowV, shoreNormalV, shoreHighV, shoreCritHighV
   ]);
-
-  const handleManualSync = async () => {
-    setIsManualSyncing(true);
-    setManualSyncMsg(null);
-    try {
-      const vid = getActiveVehicleId();
-      const timeoutPromise = new Promise<void>((_, reject) => setTimeout(() => reject(new Error('Sync timed out')), 8000));
-      await Promise.race([
-        updateVehicleConfig(vid, getLocalVehicleConfig()),
-        timeoutPromise
-      ]);
-      setManualSyncMsg({ text: 'Settings successfully synced to cloud!', type: 'success' });
-      setTimeout(() => setManualSyncMsg(null), 5000);
-    } catch (e: any) {
-      setManualSyncMsg({ text: e.message || 'Failed to sync to cloud', type: 'error' });
-    } finally {
-      setIsManualSyncing(false);
-    }
-  };
 
 
   const handleExpandDevice = (deviceId: string) => {
@@ -648,8 +644,10 @@ export default function Settings({ user }: { user: any }) {
       <h2 style={{ fontSize: '2rem', color: 'var(--accent-cyan)', margin: 0 }}>Settings</h2>
       
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '16px', overflowX: 'auto' }}>
-        <button onClick={() => setActiveTab('general')} className={activeTab === 'general' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>General</button>
-        <button onClick={() => setActiveTab('devices')} className={activeTab === 'devices' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Devices</button>
+        <button onClick={() => setActiveTab('accounts')} className={activeTab === 'accounts' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Account</button>
+        <button onClick={() => setActiveTab('vehicle')} className={activeTab === 'vehicle' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Vehicle</button>
+        <button onClick={() => setActiveTab('notifications')} className={activeTab === 'notifications' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Notifications</button>
+        <button onClick={() => setActiveTab('devices')} className={activeTab === 'devices' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Hardware</button>
         <button onClick={() => setActiveTab('friends')} className={activeTab === 'friends' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>Sharing</button>
         <button onClick={() => setActiveTab('updates')} className={activeTab === 'updates' ? 'btn-primary' : 'btn-secondary'} style={{ padding: '8px 16px', fontSize: '0.9rem', whiteSpace: 'nowrap', position: 'relative' }}>
           Updates
@@ -657,7 +655,7 @@ export default function Settings({ user }: { user: any }) {
         </button>
       </div>
 
-      {activeTab === 'general' && (
+      {activeTab === 'vehicle' && (
         <>
           {/* Vehicles Sub-section (App & System Config) */}
           <VehiclesPanel
@@ -679,46 +677,71 @@ export default function Settings({ user }: { user: any }) {
             webhookUser={webhookUser} setWebhookUser={setWebhookUser}
             webhookKey={webhookKey} setWebhookKey={setWebhookKey}
             showWebhookKey={showWebhookKey} setShowWebhookKey={setShowWebhookKey}
-            onManualSync={handleManualSync} user={user}
-            isManualSyncing={isManualSyncing} manualSyncMsg={manualSyncMsg}
-          />
-
-          {/* Account Information (moved below Vehicles) */}
-          <AccountPanel
-            user={user} localMode={isLocalMode(localStorage)} showLogin={showLogin} setShowLogin={setShowLogin}
-            syncSettingsCloud={syncSettingsCloud} setSyncSettingsCloud={setSyncSettingsCloud}
-            canCloudHistory={canCloudHistory}
-            storeHistoryCloud={storeHistoryCloud} setStoreHistoryCloud={setStoreHistoryCloud}
-            vehiclesMap={vehiclesMap} userConfig={userConfig} updateUserConfig={updateUserConfig}
-            defaultVidSaving={defaultVidSaving} setDefaultVidSaving={setDefaultVidSaving}
-          />
-
-          {/* Device Preferences — local to this device, not synced to cloud */}
-          <DevicePreferencesPanel
+            user={user}
             unitSystem={unitSystem} setUnitSystem={setUnitSystem}
             tempUnit={tempUnit} setTempUnit={setTempUnit}
             timeZone={timeZone} setTimeZone={setTimeZone}
-          >
-            <NotificationsPanel
-              notificationsEnabled={notificationsEnabled} onNotificationsEnabledChange={setNotificationsEnabled}
-              notifyAutoGuard={notifyAutoGuard} onNotifyAutoGuardChange={setNotifyAutoGuard}
-              alertOffline={alertOffline} onAlertOfflineChange={setAlertOffline}
-              notifyWatering={notifyWatering} onNotifyWateringChange={setNotifyWatering}
-              notifyFlood={notifyFlood} onNotifyFloodChange={setNotifyFlood}
-              notifyLowBattery={notifyLowBattery} onNotifyLowBatteryChange={setNotifyLowBattery}
-              notifyHouseBatt={notifyHouseBatt} onNotifyHouseBattChange={setNotifyHouseBatt}
-              notifyEngineBatt={notifyEngineBatt} onNotifyEngineBattChange={setNotifyEngineBatt}
-              notifyShorePower={notifyShorePower} onNotifyShorePowerChange={setNotifyShorePower}
-              alarmSound={alarmSound} onAlarmSoundChange={setAlarmSound}
-              alarmRepeatInterval={alarmRepeatInterval} onAlarmRepeatIntervalChange={setAlarmRepeatInterval}
-              alarmVolume={alarmVolume} onAlarmVolumeChange={setAlarmVolume}
-            />
-          </DevicePreferencesPanel>
+          />
+
+          {/* Account Information moved to the 'accounts' tab */}
 
         </>
       )}
 
-      {activeTab === 'general' && (
+      {activeTab === 'notifications' && (
+        <>
+          <NotificationsPanel
+            notificationsEnabled={notificationsEnabled} onNotificationsEnabledChange={setNotificationsEnabled}
+            notifyAutoGuard={notifyAutoGuard} onNotifyAutoGuardChange={setNotifyAutoGuard}
+            alertOffline={alertOffline} onAlertOfflineChange={setAlertOffline}
+            notifyWatering={notifyWatering} onNotifyWateringChange={setNotifyWatering}
+            notifyFlood={notifyFlood} onNotifyFloodChange={setNotifyFlood}
+            notifyLowBattery={notifyLowBattery} onNotifyLowBatteryChange={setNotifyLowBattery}
+            notifyHouseBatt={notifyHouseBatt} onNotifyHouseBattChange={setNotifyHouseBatt}
+            notifyEngineBatt={notifyEngineBatt} onNotifyEngineBattChange={setNotifyEngineBatt}
+            notifyShorePower={notifyShorePower} onNotifyShorePowerChange={setNotifyShorePower}
+            alarmSound={alarmSound} onAlarmSoundChange={setAlarmSound}
+            alarmRepeatInterval={alarmRepeatInterval} onAlarmRepeatIntervalChange={setAlarmRepeatInterval}
+            alarmVolume={alarmVolume} onAlarmVolumeChange={setAlarmVolume}
+          />
+
+          <MessagingChannelPrefs
+            title="SMS & voice alerts"
+            unlocked={entitlements.canSmsAlert}
+            lockedNote="Escalate critical alerts (flood, low battery, shore power, offline) to a text message. Upgrade to Premium to add phone numbers and choose which alerts text you."
+            description="Add the numbers that should receive a text for the alerts you pick below. (Delivery goes live once an SMS provider is connected.)"
+            prefs={sms.prefs}
+            onChange={sms.persist}
+            variant="phone"
+            inputPlaceholder="+1 555 123 4567"
+            emptyLabel="No numbers yet."
+          />
+          <MessagingChannelPrefs
+            title="WhatsApp alerts"
+            unlocked={entitlements.canSmsAlert}
+            lockedNote="Escalate critical alerts to WhatsApp. Upgrade to Premium to add WhatsApp numbers and choose which alerts notify you."
+            description="Add the WhatsApp numbers that should receive the alerts you pick below."
+            prefs={whatsapp.prefs}
+            onChange={whatsapp.persist}
+            variant="phone"
+            inputPlaceholder="+1 555 123 4567"
+            emptyLabel="No numbers yet."
+          />
+          <MessagingChannelPrefs
+            title="Telegram alerts"
+            unlocked={entitlements.canSmsAlert}
+            lockedNote="Escalate critical alerts to Telegram. Upgrade to Premium to add Telegram chats and choose which alerts notify you."
+            description="Add the Telegram chat IDs (or @usernames) that should receive the alerts you pick below. Start a chat with the bot first so it can message you."
+            prefs={telegram.prefs}
+            onChange={telegram.persist}
+            variant="handle"
+            inputPlaceholder="@username or chat id"
+            emptyLabel="No chats yet."
+          />
+        </>
+      )}
+
+      {activeTab === 'vehicle' && (
         <>
         {/* Delete Vehicle Section */}
         <div className="glass-card" style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}>
@@ -733,22 +756,22 @@ export default function Settings({ user }: { user: any }) {
           </button>
           {Object.keys(vehiclesMap).length <= 1 && (
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '8px' }}>
-              You cannot delete your only vehicle. To remove everything, delete your account below.
-            </div>
-          )}
-          {auth.currentUser?.uid && (
-            <div style={{ borderTop: '1px solid rgba(239, 68, 68, 0.2)', paddingTop: '14px', marginTop: '16px' }}>
-              <div style={{ fontSize: '0.85rem', color: '#fca5a5', marginBottom: '8px' }}>
-                Permanently delete my account{Object.keys(vehiclesMap).length <= 1 ? ' and my last vehicle' : ' and all my vehicles'}.
-              </div>
-              <DeleteAccountButton
-                uid={auth.currentUser.uid}
-                intro="This permanently deletes your account, the vehicles you solely own (including this one), and removes you from any shared vehicles."
-              />
+              You cannot delete your only vehicle. To remove everything, delete your account in the Account tab.
             </div>
           )}
         </div>
       </>
+      )}
+
+      {activeTab === 'accounts' && (
+        <>
+          <AccountPanel
+            user={user} localMode={isLocalMode(localStorage)} showLogin={showLogin} setShowLogin={setShowLogin}
+            vehiclesMap={vehiclesMap} userConfig={userConfig} updateUserConfig={updateUserConfig}
+            defaultVidSaving={defaultVidSaving} setDefaultVidSaving={setDefaultVidSaving}
+          />
+          <Account user={user} />
+        </>
       )}
 
       {activeTab === 'devices' && (

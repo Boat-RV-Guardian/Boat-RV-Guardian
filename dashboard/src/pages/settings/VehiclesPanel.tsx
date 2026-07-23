@@ -9,8 +9,6 @@ import PlanBadge from './PlanBadge';
 import { DEFAULT_WORKER_URL } from '../../utils/configSync';
 import type { Vehicle } from '../../utils/VehicleManager';
 
-type Msg = { text: string; type: 'success' | 'error' } | null;
-
 interface Props {
   selectedVid: string;
   setSelectedVid: (v: string) => void;
@@ -47,10 +45,13 @@ interface Props {
   setWebhookKey: (v: string) => void;
   showWebhookKey: boolean;
   setShowWebhookKey: (v: boolean) => void;
-  onManualSync: () => void;
   user: any;
-  isManualSyncing: boolean;
-  manualSyncMsg: Msg;
+  unitSystem: 'metric' | 'imperial';
+  setUnitSystem: (v: 'metric' | 'imperial') => void;
+  tempUnit: 'auto' | 'c' | 'f';
+  setTempUnit: (v: 'auto' | 'c' | 'f') => void;
+  timeZone: string;
+  setTimeZone: (v: string) => void;
 }
 
 export default function VehiclesPanel(p: Props) {
@@ -63,11 +64,6 @@ export default function VehiclesPanel(p: Props) {
   const [customServer, setCustomServer] = useState(() => !!p.webhookUrl);
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <h3 style={{ marginTop: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px', margin: 0 }}>Vehicles</h3>
-
-      {/* Per-vehicle plan + upgrade link (full comparison lives on the marketing pricing page) */}
-      <PlanBadge />
-
       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', background: 'rgba(0,0,0,0.2)', padding: '16px', borderRadius: '8px' }}>
         <div style={{ flex: 1 }}>
            <label className="form-label" style={{ marginBottom: '8px' }}>Active Vehicle Profile</label>
@@ -95,6 +91,9 @@ export default function VehiclesPanel(p: Props) {
           + New
         </button>
       </div>
+
+      {/* Per-vehicle plan + upgrade link (full comparison lives on the marketing pricing page) */}
+      <PlanBadge />
 
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: '12px' }}>
           <div style={{ flex: 1 }}>
@@ -142,6 +141,32 @@ export default function VehiclesPanel(p: Props) {
           >
             {p.isEditingType ? 'Done' : 'Change'}
           </button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <div>
+            <label className="form-label">Units</label>
+            <select className="form-input" value={p.unitSystem} onChange={(e) => p.setUnitSystem(e.target.value as 'metric' | 'imperial')}>
+              <option value="metric">Metric (Liters)</option>
+              <option value="imperial">Imperial (Gallons)</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Temperature</label>
+            <select className="form-input" value={p.tempUnit} onChange={(e) => p.setTempUnit(e.target.value as 'auto' | 'c' | 'f')}>
+              <option value="auto">Match units ({p.unitSystem === 'imperial' ? '°F' : '°C'})</option>
+              <option value="f">Fahrenheit (°F)</option>
+              <option value="c">Celsius (°C)</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Time Zone</label>
+            <select className="form-input" value={p.timeZone} onChange={(e) => p.setTimeZone(e.target.value)}>
+              {(Intl as any).supportedValuesOf ? (Intl as any).supportedValuesOf('timeZone').map((tz: string) => (
+                <option key={tz} value={tz}>{tz}</option>
+              )) : <option value={p.timeZone}>{p.timeZone}</option>}
+            </select>
+          </div>
         </div>
 
         {/* Advanced Vehicle Settings (Shelly Local Password, Custom Cloud Server URL, etc.) — collapsed by default. */}
@@ -236,27 +261,7 @@ export default function VehiclesPanel(p: Props) {
           )}
         </div>
 
-        {/* Force Cloud Sync — bottom of the Vehicles section; only usable when signed in to the
-            cloud (otherwise there's nothing to sync with). */}
-        <div style={{ marginTop: '4px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button className="btn-primary" onClick={p.onManualSync} disabled={!p.user || p.isManualSyncing}>
-            {p.isManualSyncing ? 'Syncing...' : 'Force Cloud Sync'}
-          </button>
-          {!p.user && (
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', margin: 0, textAlign: 'center' }}>
-              Sign in (Account Information below) to sync with the cloud.
-            </p>
-          )}
-          {p.manualSyncMsg && (
-            <div style={{
-              fontSize: '0.85rem', textAlign: 'center', padding: '8px', borderRadius: '4px',
-              color: p.manualSyncMsg.type === 'success' ? '#10b981' : '#ef4444',
-              background: p.manualSyncMsg.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)'
-            }}>
-              {p.manualSyncMsg.text}
-            </div>
-          )}
-        </div>
+
     </div>
   );
 }

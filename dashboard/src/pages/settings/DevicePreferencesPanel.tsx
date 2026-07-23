@@ -1,9 +1,9 @@
 // Device Preferences card (Settings → General). Extracted from Settings.tsx as part of the Task 3
-// split. Owns the card shell + the device-local Units / Time Zone selects; the Notifications & Alarms
-// block is passed in as children (NotificationsPanel keeps its own props in Settings). These
-// preferences are saved on this device only — not synced to the cloud.
+// split. Owns the card shell + the device-local Units / Temperature / Time Zone selects, plus the
+// device-local event-simulator toggle. (Notifications & Alarms moved to their own Settings tab.)
+// These preferences are saved on this device only — not synced to the cloud.
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 
 interface Props {
   unitSystem: 'metric' | 'imperial';
@@ -12,10 +12,9 @@ interface Props {
   setTempUnit: (v: 'auto' | 'c' | 'f') => void;
   timeZone: string;
   setTimeZone: (v: string) => void;
-  children: ReactNode;
 }
 
-export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, tempUnit, setTempUnit, timeZone, setTimeZone, children }: Props) {
+export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, tempUnit, setTempUnit, timeZone, setTimeZone }: Props) {
   // Device-local QA flag (not synced): shows the top event-simulator bar so alerts/dashboard states can
   // be exercised without hardware. App.tsx reads lt_event_sim on the settings_updated event.
   const [eventSim, setEventSim] = useState(() => localStorage.getItem('lt_event_sim') === '1');
@@ -56,8 +55,6 @@ export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, temp
           </select>
         </div>
       </div>
-
-      {children}
 
       <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
         <input type="checkbox" checked={eventSim} onChange={(e) => toggleEventSim(e.target.checked)} style={{ marginTop: '3px' }} />

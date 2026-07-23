@@ -71,7 +71,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
 
   // --- Historical Data Tracking ---
   const [enableHistory, setEnableHistory] = useState(() => localStorage.getItem('lt_enable_history') !== 'false');
-  const [storeHistoryCloud, setStoreHistoryCloud] = useState(() => localStorage.getItem('lt_store_history_cloud') === 'true');
+  const [storeHistoryCloud, setStoreHistoryCloud] = useState(true);
   // Usage history + Event Sentry Log state, persistence, and cloud mirroring live in this hook.
   const { usageHistory, setUsageHistory, logs, addLog } = useDeviceHistory(deviceId, storeHistoryCloud);
   // Alarm sound + alert notifications (prefs, repeat loop, WebAudio alarm, web/Tauri/Capacitor notify).
@@ -129,7 +129,7 @@ export default function LinkTapWidget({ device }: { device: DeviceConfig }) {
       setNotifyLowBattery(localStorage.getItem('lt_notif_battery') === 'true');
       setNotifyWatering(localStorage.getItem('lt_notif_watering') === 'true');
       setEnableHistory(localStorage.getItem('lt_enable_history') !== 'false');
-      setStoreHistoryCloud(localStorage.getItem('lt_store_history_cloud') === 'true');
+      setStoreHistoryCloud(true);
       setInputDuration(Number(localStorage.getItem(`lt_input_dur_${deviceId}`) || '15'));
       setInputVolume(Number(localStorage.getItem(`lt_input_vol_${deviceId}`) || '50'));
       setDelayedStartMins(Number(localStorage.getItem(`lt_del_mins_${deviceId}`) || '0'));

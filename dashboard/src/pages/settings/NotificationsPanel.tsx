@@ -47,7 +47,7 @@ export default function NotificationsPanel({
   alarmVolume, onAlarmVolumeChange,
 }: Props) {
   return (
-    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '16px' }}>
+    <div className="glass-card">
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>Notifications & Alarms</h3>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
