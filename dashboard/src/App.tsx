@@ -167,12 +167,23 @@ export default function App() {
             boxShadow: '0 0 10px rgba(0, 242, 254, 0.4)'
           }} />
           <div style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #fff, #00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap' }}>
-              BOAT AND RV GUARDIAN
-            </h1>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              Monitor and control critical systems on your Boat or RV
-            </p>
+            {/* Phone: a compact single-line wordmark (the full title + tagline get truncated on a
+                narrow screen and the hero strip below already names the vehicle). Desktop keeps the
+                full title + tagline — there's room for it. */}
+            {isMobile ? (
+              <h1 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.01em', background: 'linear-gradient(90deg, #fff, #00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap' }}>
+                Boat &amp; RV Guardian
+              </h1>
+            ) : (
+              <>
+                <h1 style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800, letterSpacing: '-0.02em', background: 'linear-gradient(90deg, #fff, #00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', whiteSpace: 'nowrap' }}>
+                  BOAT AND RV GUARDIAN
+                </h1>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  Monitor and control critical systems on your Boat or RV
+                </p>
+              </>
+            )}
           </div>
         </div>
         <GlobalBar onOpenAccount={() => setCurrentView('account')} />
