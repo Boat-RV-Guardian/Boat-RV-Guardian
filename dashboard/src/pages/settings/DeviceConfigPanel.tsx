@@ -336,6 +336,30 @@ export default function DeviceConfigPanel({
                                     <option value="f">Fahrenheit (°F)</option>
                                     <option value="c">Celsius (°C)</option>
                                   </select>
+                                  {device.role === 'Environmental Sensor' && (
+                                    <div style={{ marginTop: '6px' }}>
+                                      <button className="btn-secondary" disabled={devicePanelBusy || !deviceLocalHost(device)}
+                                        style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                                        onClick={async () => {
+                                          setDevicePanelBusy(true); setDevicePanelMsg(null);
+                                          try {
+                                            const { resolveTempUnit } = await import('../../utils/tempUnit');
+                                            const unit = resolveTempUnit(device);
+                                            const { shellyRpc, syncHtDisplayUnit } = await import('../../utils/shellyRpc');
+                                            const pw = localStorage.getItem('sh_local_password') || undefined;
+                                            await syncHtDisplayUnit((m, p) => shellyRpc(deviceLocalHost(device), m, p, pw), unit);
+                                            setDevicePanelMsg({ id: device.id, text: `✓ Device display set to ${unit === 'f' ? '°F' : '°C'}`, ok: true });
+                                          } catch (err: any) {
+                                            setDevicePanelMsg({ id: device.id, text: `✗ ${err?.message || 'Unreachable'} — wake the sensor (button press) and retry`, ok: false });
+                                          } finally { setDevicePanelBusy(false); }
+                                        }}>
+                                        📟 Sync °C/°F to the device's own display
+                                      </button>
+                                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                                        Pushes the unit above onto the sensor's e-ink screen. Battery sensor — wake it first (button press), then tap.
+                                      </p>
+                                    </div>
+                                  )}
                                 </div>
                               )}
 
