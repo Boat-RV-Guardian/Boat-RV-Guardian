@@ -274,6 +274,19 @@ export const refreshCloudShellyWebhooks = (
  * (an early reboot there would abort the rest of provisioning). Returns { id, rebooted }; throws the
  * device's error if AddPeripheral fails and no voltmeter is present, so callers can surface why.
  */
+/**
+ * H&T family: set the ON-DEVICE (e-ink display) temperature unit. This is display-only device
+ * config (HT_UI component) — telemetry stays °C on the wire regardless. Used at provisioning so a
+ * new sensor's screen matches the app's °C/°F preference, and from the device panel's sync button.
+ * `call` runs one RPC (HTTP or BLE); best-effort at every call site (sleepy device).
+ */
+export async function syncHtDisplayUnit(
+  call: (method: string, params: any) => Promise<any>,
+  unit: 'c' | 'f',
+): Promise<void> {
+  await call('HT_UI.SetConfig', { config: { temperature_unit: unit === 'f' ? 'F' : 'C' } });
+}
+
 export async function enableShellyVoltmeter(
   call: (method: string, params: any) => Promise<any>,
   opts: { reboot?: boolean } = {},

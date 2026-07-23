@@ -191,6 +191,14 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
             await enableShellyVoltmeter((m, p) => shellyRpc('192.168.33.1', m, p), { reboot: false });
           } catch { /* best-effort */ }
         }
+        if (detected === 'Environmental Sensor') {
+          try {
+            // Match the sensor's own e-ink display to the app's °C/°F preference while it's awake.
+            const { shellyRpc, syncHtDisplayUnit } = await import('../utils/shellyRpc');
+            const { resolveTempUnit } = await import('../utils/tempUnit');
+            await syncHtDisplayUnit((m, p) => shellyRpc('192.168.33.1', m, p), resolveTempUnit());
+          } catch { /* best-effort */ }
+        }
       } catch (e) {
         console.warn('Could not fetch device info', e);
       }
@@ -365,6 +373,16 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         } catch { /* best-effort */ }
       }
 
+      // Environmental (H&T) sensors: match the device's own display to the app's °C/°F preference
+      // while it's guaranteed awake (owner request 2026-07-22).
+      if (detected === 'Environmental Sensor') {
+        try {
+          const { syncHtDisplayUnit } = await import('../utils/shellyRpc');
+          const { resolveTempUnit } = await import('../utils/tempUnit');
+          await syncHtDisplayUnit((m, p) => shellyRpc(localIp, m, p, shellyPassword || undefined), resolveTempUnit());
+        } catch { /* best-effort */ }
+      }
+
       // Secure the device with this vehicle's local password (best-effort; never block onboarding).
       // Done LAST, AFTER any voltmeter reboot has settled, so it isn't run against a rebooting device.
       try {
@@ -430,6 +448,16 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
         }
       } else if (isShellyUni(info) && !localIp) {
         httpFinishFailed = true; // joined Wi-Fi but we never learned its IP → couldn't finish
+      }
+
+      // Environmental (H&T) sensors: set the device's own e-ink display to the app's °C/°F
+      // preference over HTTP while it's still awake post-join (owner request 2026-07-22).
+      if (detectRole(info) === 'Environmental Sensor' && localIp) {
+        try {
+          const { shellyRpc, syncHtDisplayUnit } = await import('../utils/shellyRpc');
+          const { resolveTempUnit } = await import('../utils/tempUnit');
+          await syncHtDisplayUnit((m, p) => shellyRpc(localIp, m, p), resolveTempUnit());
+        } catch { /* best-effort */ }
       }
 
       // Secure the just-provisioned device with the vehicle's local password — LAST, after any
