@@ -5,7 +5,7 @@ import type { TileBadge, TileLevel } from '../../utils/sensorDisplay';
 // context line, and an optional sparkline/extra footer. Status level tints the border/glow
 // (.metric-ok/.metric-warn/.metric-crit in index.css).
 
-export default function MetricCard({ icon, iconColor, title, badge, primary, unit, secondary, level = 'none', onClick, footer, children }: {
+export default function MetricCard({ icon, iconColor, title, badge, primary, unit, secondary, level = 'none', onClick, footer, children, editControls }: {
   icon: string;
   iconColor: string;
   title: string;
@@ -19,10 +19,12 @@ export default function MetricCard({ icon, iconColor, title, badge, primary, uni
   footer?: ReactNode;
   /** Optional extra content between the reading and the footer (e.g. the valve's flow wave). */
   children?: ReactNode;
+  /** Reorder/hide controls, shown in place of the badge while the dashboard is in customize mode. */
+  editControls?: ReactNode;
 }) {
   return (
     <div
-      className={`metric-card metric-${level}`}
+      className={`metric-card metric-${level}${editControls ? ' metric-editing' : ''}`}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -31,7 +33,7 @@ export default function MetricCard({ icon, iconColor, title, badge, primary, uni
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <span className="metric-icon" style={{ background: `${iconColor}1f`, border: `1px solid ${iconColor}44` }}>{icon}</span>
         <span style={{ flex: 1, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-        {badge && <span className="metric-badge" style={{ color: badge.c, background: `${badge.c}1f`, border: `1px solid ${badge.c}55` }}>{badge.t}</span>}
+        {editControls ?? (badge && <span className="metric-badge" style={{ color: badge.c, background: `${badge.c}1f`, border: `1px solid ${badge.c}55` }}>{badge.t}</span>)}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', margin: '10px 0 2px' }}>

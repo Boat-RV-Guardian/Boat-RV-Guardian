@@ -41,3 +41,37 @@ export function recordReading(deviceId: string, value: number, now = Date.now(),
 export function getReadings(deviceId: string, now = Date.now(), storage: Storage = localStorage): ReadingPoint[] {
   return prune(load(deviceId, storage), now);
 }
+
+// --- Sparkline range ------------------------------------------------------------------------------
+// How far back the dashboard sparklines look. 48 h is the whole retained buffer (HISTORY_WINDOW_MS),
+// so 'all' is the widest meaningful choice. Device-local display preference.
+
+export const RANGE_KEY = 'lt_dash_range';
+
+export interface HistoryRange { key: string; label: string; ms: number }
+
+export const HISTORY_RANGES: HistoryRange[] = [
+  { key: '1h', label: '1 h', ms: 60 * 60 * 1000 },
+  { key: '6h', label: '6 h', ms: 6 * 60 * 60 * 1000 },
+  { key: '24h', label: '24 h', ms: 24 * 60 * 60 * 1000 },
+  { key: 'all', label: '48 h', ms: HISTORY_WINDOW_MS },
+];
+
+export const DEFAULT_RANGE_KEY = 'all';
+
+export function rangeByKey(key: string | null | undefined): HistoryRange {
+  return HISTORY_RANGES.find((r) => r.key === key) ?? HISTORY_RANGES[HISTORY_RANGES.length - 1];
+}
+
+export function loadRangeKey(storage: Storage = localStorage): string {
+  return rangeByKey(storage.getItem(RANGE_KEY)).key;
+}
+
+export function saveRangeKey(key: string, storage: Storage = localStorage): void {
+  try { storage.setItem(RANGE_KEY, rangeByKey(key).key); } catch { /* ignore */ }
+}
+
+/** Points within `rangeMs` of `now`. Returns the input untouched for a range covering everything. */
+export function withinRange(points: ReadingPoint[], rangeMs: number, now = Date.now()): ReadingPoint[] {
+  return points.filter((p) => now - p.t <= rangeMs);
+}

@@ -465,6 +465,28 @@ body {
   white-space: nowrap;
 }
 
+/* Customize mode: the card stops behaving like a link and shows reorder/hide controls instead of
+   its status badge. Touch targets stay finger-sized on a phone. */
+.metric-card.metric-editing { cursor: default; border-style: dashed; }
+.metric-card.metric-editing:hover { transform: none; }
+
+.tile-btn {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 0.8rem;
+  line-height: 1;
+  border-radius: 7px;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-family: var(--font-family);
+  transition: var(--transition);
+}
+.tile-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.16); border-color: rgba(0, 242, 254, 0.4); }
+.tile-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
 /* Mini-map */
 .map-dark img {
   filter: invert(1) hue-rotate(190deg) brightness(0.78) contrast(0.92) saturate(0.55);

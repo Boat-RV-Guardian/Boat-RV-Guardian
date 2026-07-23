@@ -1,9 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { getDevices, type DeviceConfig } from '../utils/VehicleManager';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { getDevices, getActiveVehicleId, type DeviceConfig } from '../utils/VehicleManager';
 import { useShellyStatus } from '../hooks/useShellyStatus';
 import { useLinkTapCloudState } from '../hooks/useLinkTapCloudState';
 import { sensorReading, type TileLevel } from '../utils/sensorDisplay';
-import { recordReading, getReadings } from '../utils/readingHistory';
+import {
+  recordReading, getReadings, withinRange, HISTORY_RANGES, rangeByKey, loadRangeKey, saveRangeKey,
+} from '../utils/readingHistory';
+import {
+  loadLayout, saveLayout, clearLayout, orderDevices, isHidden, moveDevice, toggleHidden,
+  type DashLayout,
+} from '../utils/dashboardLayout';
 import { mergeDeviceLogs, currentIssues, type AlertEvent } from '../utils/alerts';
 import type { AlertLog } from '../hooks/useDeviceHistory';
 import {
@@ -49,10 +55,12 @@ const openExternal = (url: string) => {
 
 // --- Shelly sensor card --------------------------------------------------------------------------
 
-function SensorCard({ device, onNavigate, onLevel }: {
+function SensorCard({ device, onNavigate, onLevel, rangeMs, editControls }: {
   device: DeviceConfig;
   onNavigate: (cat: CatKey) => void;
   onLevel: (id: string, level: TileLevel) => void;
+  rangeMs: number;
+  editControls?: ReactNode;
 }) {
   const { data, source } = useShellyStatus(device);
   const meta = ROLE_META[device.role] ?? { icon: '📟', color: '#64748b', cat: 'batteries' as CatKey };
@@ -67,7 +75,7 @@ function SensorCard({ device, onNavigate, onLevel }: {
   // Report our status level up so the hero strip can summarize.
   useEffect(() => { onLevel(device.id, reading.level); }, [device.id, reading.level, onLevel]);
 
-  const points = getReadings(device.id);
+  const points = withinRange(getReadings(device.id), rangeMs);
   const series = points.map((p) => p.v);
   const lastAt = points.length ? points[points.length - 1].t : null;
 
@@ -81,7 +89,8 @@ function SensorCard({ device, onNavigate, onLevel }: {
       unit={reading.unit}
       secondary={reading.secondary}
       level={reading.level}
-      onClick={() => onNavigate(meta.cat)}
+      onClick={editControls ? undefined : () => onNavigate(meta.cat)}
+      editControls={editControls}
       footer={
         <>
           {series.length >= 2 && <Sparkline values={series} color={meta.color} />}
@@ -97,10 +106,11 @@ function SensorCard({ device, onNavigate, onLevel }: {
 
 // --- LinkTap valve card --------------------------------------------------------------------------
 
-function ValveCard({ device, onNavigate, onLevel }: {
+function ValveCard({ device, onNavigate, onLevel, editControls }: {
   device: DeviceConfig;
   onNavigate: (cat: CatKey) => void;
   onLevel: (id: string, level: TileLevel) => void;
+  editControls?: ReactNode;
 }) {
   const state = useLinkTapCloudState(device.linktapDeviceId || device.id);
   const imperial = (localStorage.getItem('lt_unit') || 'imperial') === 'imperial';
@@ -124,7 +134,8 @@ function ValveCard({ device, onNavigate, onLevel }: {
         state?.signal != null ? `📶 ${state.signal}%` : null,
       ].filter(Boolean).join(' · ') || 'Fresh water'}
       level={level}
-      onClick={() => onNavigate('fresh_water')}
+      onClick={editControls ? undefined : () => onNavigate('fresh_water')}
+      editControls={editControls}
       footer={
         <>
           {open && (
@@ -266,6 +277,10 @@ function ActivityCard({ events }: { events: AlertEvent[] }) {
 export default function Home({ onNavigate }: HomeProps) {
   const [devices, setDevices] = useState<DeviceConfig[]>(() => getDevices());
   const [levels, setLevels] = useState<Record<string, TileLevel>>({});
+  const [vid, setVid] = useState(() => getActiveVehicleId() || '');
+  const [layout, setLayout] = useState<DashLayout>(() => loadLayout(getActiveVehicleId() || ''));
+  const [editing, setEditing] = useState(false);
+  const [rangeKey, setRangeKey] = useState(() => loadRangeKey());
   const [alertState, setAlertState] = useState(() => {
     const events = mergeDeviceLogs(getDevices().map((d) => ({ id: d.id, name: d.name })), readLog);
     return { events, issues: currentIssues(events, Date.now()) };
@@ -277,10 +292,19 @@ export default function Home({ onNavigate }: HomeProps) {
       setDevices(devs);
       const events = mergeDeviceLogs(devs.map((d) => ({ id: d.id, name: d.name })), readLog);
       setAlertState({ events, issues: currentIssues(events, Date.now()) });
+      // The layout is per vehicle — reload it when the active vehicle changes under us.
+      const nextVid = getActiveVehicleId() || '';
+      setVid((prev) => {
+        if (prev !== nextVid) { setLayout(loadLayout(nextVid)); setEditing(false); }
+        return nextVid;
+      });
     };
     window.addEventListener('settings_updated', refresh);
     return () => window.removeEventListener('settings_updated', refresh);
   }, []);
+
+  // Persist layout edits as they happen (device-local display preference).
+  const applyLayout = (next: DashLayout) => { setLayout(next); saveLayout(vid, next); };
 
   const onLevel = useMemo(() => (id: string, level: TileLevel) =>
     setLevels((prev) => (prev[id] === level ? prev : { ...prev, [id]: level })), []);
@@ -294,6 +318,42 @@ export default function Home({ onNavigate }: HomeProps) {
       if (la !== lb) return la - lb;
       return ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role);
     });
+
+  // One tile list. The natural order (valves, then sensors with problems floated first) is the
+  // DEFAULT; a saved layout overrides it, and devices the layout hasn't seen append at the end.
+  const tileDevices = [...valves, ...sensors];
+  const byId = new Map(tileDevices.map((d) => [d.id, d]));
+  const allIds = tileDevices.map((d) => d.id);
+  const orderedIds = orderDevices(allIds, layout);
+  const visibleIds = orderedIds.filter((id) => !isHidden(id, layout));
+  const hiddenIds = orderedIds.filter((id) => isHidden(id, layout));
+  const rangeMs = rangeByKey(rangeKey).ms;
+
+  const pickRange = (k: string) => { setRangeKey(k); saveRangeKey(k); };
+
+  // Reorder/hide controls shown on each card while customizing.
+  const tileControls = (id: string, idx: number) => (
+    <span style={{ display: 'inline-flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+      <button
+        className="tile-btn" aria-label="Move earlier" disabled={idx === 0}
+        onClick={() => applyLayout(moveDevice(id, -1, allIds, layout))}
+      >←</button>
+      <button
+        className="tile-btn" aria-label="Move later" disabled={idx === visibleIds.length - 1}
+        onClick={() => applyLayout(moveDevice(id, 1, allIds, layout))}
+      >→</button>
+      <button className="tile-btn" aria-label="Hide tile" onClick={() => applyLayout(toggleHidden(id, layout))}>🚫</button>
+    </span>
+  );
+
+  const renderTile = (id: string, idx: number) => {
+    const d = byId.get(id);
+    if (!d) return null;
+    const controls = editing ? tileControls(id, idx) : undefined;
+    return d.type === 'linktap_valve'
+      ? <ValveCard key={d.id} device={d} onNavigate={onNavigate} onLevel={onLevel} editControls={controls} />
+      : <SensorCard key={d.id} device={d} onNavigate={onNavigate} onLevel={onLevel} rangeMs={rangeMs} editControls={controls} />;
+  };
 
   const vesselName = localStorage.getItem('lt_vessel_name') || 'My Vehicle';
   const vehicleType = localStorage.getItem('lt_vehicle_type') || '';
@@ -315,13 +375,55 @@ export default function Home({ onNavigate }: HomeProps) {
             Live systems dashboard
           </p>
         </div>
-        <div className={`status-chip ${allNormal ? 'status-ok' : 'status-alert'}`}>
-          <span className={`status-dot ${allNormal ? 'online' : 'offline'}`} />
-          {allNormal
-            ? (warnCount > 0 ? `Normal · ${warnCount} active` : 'All systems normal')
-            : `${critCount} need${critCount === 1 ? 's' : ''} attention`}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <div className={`status-chip ${allNormal ? 'status-ok' : 'status-alert'}`}>
+            <span className={`status-dot ${allNormal ? 'online' : 'offline'}`} />
+            {allNormal
+              ? (warnCount > 0 ? `Normal · ${warnCount} active` : 'All systems normal')
+              : `${critCount} need${critCount === 1 ? 's' : ''} attention`}
+          </div>
+          {tileDevices.length > 0 && (
+            <button className="btn-secondary" style={{ padding: '6px 12px', fontSize: '0.78rem' }} onClick={() => setEditing((e) => !e)}>
+              {editing ? '✓ Done' : '⚙️ Customize'}
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Customize bar: history range for the sparklines + a reset for the tile layout. */}
+      {tileDevices.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>History</span>
+          <div style={{ display: 'inline-flex', gap: '4px' }}>
+            {HISTORY_RANGES.map((r) => (
+              <button
+                key={r.key}
+                onClick={() => pickRange(r.key)}
+                aria-pressed={rangeKey === r.key}
+                className={rangeKey === r.key ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '4px 10px', fontSize: '0.74rem', boxShadow: 'none' }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          {editing && (
+            <>
+              <span style={{ flex: 1 }} />
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                ← → to reorder · 🚫 to hide
+              </span>
+              <button
+                className="btn-secondary"
+                style={{ padding: '4px 10px', fontSize: '0.74rem' }}
+                onClick={() => { clearLayout(vid); setLayout(loadLayout(vid)); }}
+              >
+                ↺ Reset layout
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Needs-attention banner (only when something is wrong) */}
       {alertState.issues.length > 0 && (
@@ -338,11 +440,40 @@ export default function Home({ onNavigate }: HomeProps) {
 
       <div className="dash-body">
         <section className="dash-grid">
-          {valves.map((d) => <ValveCard key={d.id} device={d} onNavigate={onNavigate} onLevel={onLevel} />)}
-          {sensors.map((d) => <SensorCard key={d.id} device={d} onNavigate={onNavigate} onLevel={onLevel} />)}
+          {visibleIds.map((id, i) => renderTile(id, i))}
           {devices.length === 0 && (
             <div className="glass-card" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-secondary)', gridColumn: '1 / -1' }}>
               No devices yet. Add devices in Settings → Devices to populate your dashboard.
+            </div>
+          )}
+          {devices.length > 0 && visibleIds.length === 0 && (
+            <div className="glass-card" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)', gridColumn: '1 / -1' }}>
+              Every tile is hidden. Use <strong>⚙️ Customize</strong> to bring some back.
+            </div>
+          )}
+
+          {/* Hidden tiles live behind customize mode so a hidden sensor is never silently forgotten. */}
+          {editing && hiddenIds.length > 0 && (
+            <div style={{ gridColumn: '1 / -1', display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+                Hidden ({hiddenIds.length})
+              </span>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {hiddenIds.map((id) => {
+                  const d = byId.get(id);
+                  if (!d) return null;
+                  return (
+                    <button
+                      key={id}
+                      className="btn-secondary"
+                      style={{ padding: '6px 12px', fontSize: '0.78rem' }}
+                      onClick={() => applyLayout(toggleHidden(id, layout))}
+                    >
+                      👁 {d.name || d.role}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </section>

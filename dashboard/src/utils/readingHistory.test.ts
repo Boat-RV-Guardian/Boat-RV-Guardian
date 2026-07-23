@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { recordReading, getReadings, HISTORY_WINDOW_MS, MIN_SAMPLE_GAP_MS, MAX_POINTS } from './readingHistory';
+import {
+  recordReading, getReadings, HISTORY_WINDOW_MS, MIN_SAMPLE_GAP_MS, MAX_POINTS,
+  rangeByKey, loadRangeKey, saveRangeKey, withinRange,
+} from './readingHistory';
 
 const T0 = 1_800_000_000_000;
 
@@ -40,5 +43,31 @@ describe('recordReading', () => {
     localStorage.setItem('lt_read_hist_dev1', '{not json');
     expect(getReadings('dev1', T0)).toEqual([]);
     expect(recordReading('dev1', 5, T0)).toBe(true);
+  });
+});
+
+describe('history range', () => {
+  it('falls back to the widest range for an unknown or missing key', () => {
+    expect(rangeByKey(undefined).key).toBe('all');
+    expect(rangeByKey('nonsense').key).toBe('all');
+    expect(rangeByKey('1h').ms).toBe(60 * 60 * 1000);
+  });
+
+  it('round-trips the selected range and rejects junk', () => {
+    saveRangeKey('6h');
+    expect(loadRangeKey()).toBe('6h');
+    saveRangeKey('bogus');
+    expect(loadRangeKey()).toBe('all');
+  });
+
+  it('filters points to the window', () => {
+    const now = 10_000_000;
+    const pts = [
+      { t: now - 3 * 60 * 60 * 1000, v: 1 }, // 3 h old
+      { t: now - 30 * 60 * 1000, v: 2 },     // 30 min old
+      { t: now, v: 3 },
+    ];
+    expect(withinRange(pts, 60 * 60 * 1000, now).map((p) => p.v)).toEqual([2, 3]);
+    expect(withinRange(pts, HISTORY_WINDOW_MS, now)).toHaveLength(3);
   });
 });
