@@ -9,8 +9,6 @@ import PlanBadge from './PlanBadge';
 import { DEFAULT_WORKER_URL } from '../../utils/configSync';
 import type { Vehicle } from '../../utils/VehicleManager';
 
-type Msg = { text: string; type: 'success' | 'error' } | null;
-
 interface Props {
   selectedVid: string;
   setSelectedVid: (v: string) => void;

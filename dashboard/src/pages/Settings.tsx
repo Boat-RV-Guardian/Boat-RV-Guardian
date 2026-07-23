@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
 import { getActiveVehicleId, getVehiclesMap, switchVehicle, addNewVehicle, deleteVehicle, getDevices, updateDevice, type DeviceConfig } from '../utils/VehicleManager';
-import { getLocalVehicleConfig } from '../utils/configSync';
 import { nativeFetch } from '../utils/nativeFetch';
 import { useCloudConfig } from '../hooks/useCloudConfig';
 import { useVehicleSharing } from '../hooks/useVehicleSharing';
@@ -9,8 +8,6 @@ import { useLinkTapDiscovery } from '../hooks/useLinkTapDiscovery';
 import { deviceLocalHost, findVoltmeterId } from '../utils/shellyDevice';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
-import DeleteAccountButton from '../components/DeleteAccountButton';
-import { auth } from '../services/firebase';
 import VehiclesPanel from './settings/VehiclesPanel';
 import AccountPanel from './settings/AccountPanel';
 import Account from './Account';
@@ -86,7 +83,7 @@ export default function Settings({ user }: { user: any }) {
   // Cross-device sync
   // Cloud-vehicle reconciliation lives in SyncModal (always mounted) so it works app-wide.
   // Settings only needs the cloud write helpers; its vehiclesMap refreshes via settings_updated.
-  const { cloudVehicles, userConfig, updateVehicleConfig, updateUserConfig, deleteVehicleConfig, hardDeleteVehicleConfig } = useCloudConfig(null);
+  const { cloudVehicles, userConfig, updateUserConfig, deleteVehicleConfig, hardDeleteVehicleConfig } = useCloudConfig(null);
   const [defaultVidSaving, setDefaultVidSaving] = useState(false);
 
   // --- Friends / Sharing (Friends tab): state, derived roles/members + handlers live in the hook ---

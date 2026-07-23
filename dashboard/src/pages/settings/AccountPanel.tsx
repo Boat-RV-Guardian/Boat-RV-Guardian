@@ -128,7 +128,27 @@ export default function AccountPanel(p: Props) {
           </button>
         </div>
 
+        {/* Cloud sync + cloud history. `canCloudHistory` is the tier gate (Free has no retention),
+            the first entitlement gate in the app — keep it wired to the entitlement, not the tier name. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <label style={{ display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
+              <span style={{ fontWeight: 600 }}>Sync settings with the cloud</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Automatically backup and restore your configuration</span>
+            </label>
+            <input type="checkbox" checked={p.syncSettingsCloud} onChange={(e) => p.setSyncSettingsCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--accent-cyan)' }} />
+          </div>
 
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: p.canCloudHistory ? 1 : 0.6 }}>
+            <label style={{ display: 'flex', flexDirection: 'column', cursor: p.canCloudHistory ? 'pointer' : 'not-allowed' }}>
+              <span style={{ fontWeight: 600 }}>Store historical data in the cloud</span>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                {p.canCloudHistory ? 'Sync your water flow history for long-term storage' : 'Cloud history is a Basic/Premium feature — upgrade to enable.'}
+              </span>
+            </label>
+            <input type="checkbox" disabled={!p.canCloudHistory} checked={p.canCloudHistory && p.storeHistoryCloud} onChange={(e) => p.setStoreHistoryCloud(e.target.checked)} style={{ width: '18px', height: '18px', cursor: p.canCloudHistory ? 'pointer' : 'not-allowed', accentColor: 'var(--accent-cyan)' }} />
+          </div>
+        </div>
 
         {/* Startup vehicle: open the last-used vehicle, or always a specific default. */}
         {(() => {

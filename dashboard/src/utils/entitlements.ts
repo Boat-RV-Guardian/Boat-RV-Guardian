@@ -242,7 +242,9 @@ export function entitlementSummary(e: Entitlements): EntitlementLine[] {
  * belong in a real browser (password managers/autofill don't work well in the native WKWebView), so
  * the native app opens this in the system browser rather than embedding it. Finalize host with Task 11.
  */
-export const UPGRADE_PORTAL_URL = 'https://app.boatrvguardian.com/?view=account';
+// Subscriptions are a WEB experience (autofill fails in the native webview) and are managed per
+// VEHICLE, so callers append `?vehicleId=<vid>`. Single source of truth for the portal base.
+export const UPGRADE_PORTAL_URL = 'https://account.boatrvguardian.com/';
 
 /** Human-facing labels + prices for the pricing UI (Task 6 pricing-page rebuild). */
 export const TIER_LABELS: Record<Tier, string> = {

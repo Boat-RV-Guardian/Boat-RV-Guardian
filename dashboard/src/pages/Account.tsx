@@ -15,7 +15,6 @@ import DeleteAccountButton from '../components/DeleteAccountButton';
 // Read the local device list / vehicle map straight from localStorage instead of importing
 // VehicleManager — that module drags a heavy transitive graph (configSync, etc.) into this view for
 // what is just two count reads. Shapes: lt_devices = DeviceConfig[], lt_vehicles = Record<id, …>.
-interface LocalDevice { id: string; name?: string; linktapDeviceId?: string }
 function readLocalJson<T>(key: string, fallback: T): T {
   try { return JSON.parse(localStorage.getItem(key) || '') as T; } catch { return fallback; }
 }
@@ -46,7 +45,6 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
 
 
   const trial = trialStatus(Number(localStorage.getItem('lt_vehicle_trial_ends')) || null, Date.now());
-  const devices = readLocalJson<LocalDevice[]>('lt_devices', []);
   // Per-vehicle plans ("Plex" billing) — read straight from the local vehicle map (each carries its
   // synced `tier`); no heavy VehicleManager import for what is a read-only list.
   const planRows = vehiclePlanRows(
