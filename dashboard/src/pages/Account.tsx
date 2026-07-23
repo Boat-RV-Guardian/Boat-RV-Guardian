@@ -99,7 +99,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
 
 
   return (
-    <div style={{ padding: '20px', maxWidth: '720px', margin: '0 auto', color: '#fff', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* Opt-in Basic free trial — only for a signed-in user on a Free vehicle that hasn't trialed yet.
           The worker still enforces eligibility, so this is the offer, not the authorization. */}
@@ -178,13 +178,6 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
           </button>
         </div>
 
-        {/* Delete account (GDPR) — only when signed in. Solo-owned vehicles are deleted; shared ones
-            you're simply removed from. Shared, confirm-protected component (also in Settings → Danger Zone). */}
-        {user?.uid && (
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', marginTop: '4px' }}>
-            <DeleteAccountButton uid={user.uid} />
-          </div>
-        )}
       </div>
 
 
@@ -229,7 +222,17 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         )}
       </div>
 
-
+      {user?.uid && (
+        <div className="glass-card" style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+          <h3 style={{ marginTop: 0, color: '#ef4444', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', paddingBottom: '8px', marginBottom: '16px' }}>Danger Zone</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '0.85rem', color: '#fca5a5', flex: '1 1 200px' }}>
+              Permanently delete my account and all my vehicles.
+            </span>
+            <DeleteAccountButton uid={user.uid} intro="This permanently deletes your account, the vehicles you solely own, and removes you from any shared vehicles." />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { vehicleSwitcherItems, activeVehicleLabel, vehicleTypeIcon, type Vehicle
 // lives here rather than buried in Settings → Vehicles. Logic is the pure utils/vehicleSwitcher; this
 // owns the dropdown + reacts to settings_updated (switchVehicle dispatches it).
 
-export default function GlobalBar({ onOpenAccount }: { onOpenAccount: () => void }) {
+export default function GlobalBar() {
   const [items, setItems] = useState<VehicleSwitcherItem[]>(() => vehicleSwitcherItems(getVehiclesMap(), getActiveVehicleId()));
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -79,15 +79,6 @@ export default function GlobalBar({ onOpenAccount }: { onOpenAccount: () => void
         )}
       </div>
 
-      {/* Account button */}
-      <button
-        onClick={onOpenAccount}
-        aria-label="Account"
-        title="Account & plan"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer', fontSize: '1rem' }}
-      >
-        👤
-      </button>
     </div>
   );
 }
