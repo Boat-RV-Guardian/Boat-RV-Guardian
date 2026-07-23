@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import Home from './pages/Home';
 import Systems from './pages/Systems';
 import Alerts from './pages/Alerts';
 import Settings from './pages/Settings';
@@ -16,7 +15,7 @@ import Login from './pages/Login';
 import { hasActiveVehicle, createLocalVehicle } from './utils/VehicleManager';
 import { migrateAllVehiclesThresholds } from './utils/configSync';
 import { applyUserScope, enterLocalMode, exitLocalMode, isLocalMode } from './utils/userScope';
-import { parseViewTarget, sectionForCategory, type AppView, type SystemsSection } from './utils/navTargets';
+import { parseViewTarget, type AppView, type SystemsSection } from './utils/navTargets';
 import { useIsMobile } from './hooks/useIsMobile';
 import { seedDemoVehicle } from './utils/demoSeed';
 import { useDemoScenario } from './hooks/useDemoScenario';
@@ -31,8 +30,8 @@ export default function App() {
     try { return parseViewTarget(new URLSearchParams(window.location.search).get('view')); }
     catch { return null; }
   })();
-  const [currentView, setCurrentView] = useState<AppView>(initialTarget?.view ?? 'overview');
-  const [systemsSection, setSystemsSection] = useState<SystemsSection>(initialTarget?.section ?? 'water');
+  const [currentView, setCurrentView] = useState<AppView>(initialTarget?.view ?? 'systems');
+  const [systemsSection, setSystemsSection] = useState<SystemsSection>(initialTarget?.section ?? 'dashboard');
   // Navigate to a destination (view + optional Systems section) from one place.
   const goTo = (view: AppView, section?: SystemsSection) => { if (section) setSystemsSection(section); setCurrentView(view); };
   const isMobile = useIsMobile(); // primary nav = top row on desktop, bottom tab bar on mobile
@@ -185,15 +184,15 @@ export default function App() {
         </div>
       )}
       {(() => {
-        // Systems merged into Overview (owner call, 2026-07-07): the Overview cards drill into the
-        // full Systems sections, so Systems no longer gets its own tab. While drilled in, the
-        // Overview tab stays highlighted (isTabActive) — Systems is Overview's detail view.
+        // Systems-first IA (owner call, 2026-07-22): Systems is the FIRST primary destination; the
+        // former "Overview" page is its Dashboard sub-page (Systems.tsx renders it as section
+        // 'dashboard'). Primary tabs: Systems / Alerts / Settings.
         const tabs: { v: AppView; icon: string; label: string }[] = [
-          { v: 'overview', icon: '📊', label: 'Overview' },
+          { v: 'systems', icon: '📊', label: 'Systems' },
           { v: 'alerts', icon: '🔔', label: 'Alerts' },
           { v: 'settings', icon: '⚙️', label: 'Settings' },
         ];
-        const isTabActive = (v: AppView) => currentView === v || (v === 'overview' && currentView === 'systems');
+        const isTabActive = (v: AppView) => currentView === v;
         // Desktop: a top row of pill buttons. Mobile: a bottom tab bar (icon over label) in normal flow.
         const nav = (
           <nav style={isMobile
@@ -225,10 +224,9 @@ export default function App() {
 
         const content = (
           <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
-            {currentView === 'overview' && <Home onNavigate={(cat) => goTo('systems', sectionForCategory(cat))} />}
             {/* Systems stays mounted (display:none when inactive) so the valve's Flooding Sentry keeps running. */}
             <div style={{ display: currentView === 'systems' ? 'block' : 'none', height: '100%' }}>
-              <Systems active={currentView === 'systems'} section={systemsSection} onSection={setSystemsSection} onBack={() => setCurrentView('overview')} />
+              <Systems active={currentView === 'systems'} section={systemsSection} onSection={setSystemsSection} />
             </div>
             {currentView === 'alerts' && <Alerts />}
             {currentView === 'settings' && <Settings user={user} />}

@@ -112,8 +112,9 @@ export default function Home({ onNavigate }: HomeProps) {
 
   const vesselName = localStorage.getItem('lt_vessel_name') || 'My Vehicle';
 
+  // No page padding of its own — this renders inside Systems' padded container (Dashboard section).
   return (
-    <div style={{ padding: '20px', maxWidth: '1100px', margin: '0 auto', color: '#fff', paddingBottom: '100px' }}>
+    <div style={{ color: '#fff' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '8px' }}>
         <div>
           <h1 style={{ fontSize: '1.8rem', margin: 0, background: 'linear-gradient(90deg,#fff,#00f2fe)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{vesselName}</h1>
