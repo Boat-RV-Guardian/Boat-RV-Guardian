@@ -2,16 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { parseViewTarget, sectionForCategory } from './navTargets';
 
 describe('parseViewTarget', () => {
-  it('maps the new primary views', () => {
-    expect(parseViewTarget('overview')).toEqual({ view: 'overview' });
-    expect(parseViewTarget('systems')).toEqual({ view: 'systems', section: 'water' });
+  it('maps the primary views (Systems-first IA, 2026-07-22)', () => {
+    expect(parseViewTarget('systems')).toEqual({ view: 'systems', section: 'dashboard' });
+    expect(parseViewTarget('dashboard')).toEqual({ view: 'systems', section: 'dashboard' });
     expect(parseViewTarget('alerts')).toEqual({ view: 'alerts' });
     expect(parseViewTarget('settings')).toEqual({ view: 'settings' });
     expect(parseViewTarget('account')).toEqual({ view: 'account' });
   });
 
-  it('maps the legacy 6-tab names forward', () => {
-    expect(parseViewTarget('home')).toEqual({ view: 'overview' });
+  it('maps the legacy names forward (overview/home → Systems Dashboard)', () => {
+    expect(parseViewTarget('overview')).toEqual({ view: 'systems', section: 'dashboard' });
+    expect(parseViewTarget('home')).toEqual({ view: 'systems', section: 'dashboard' });
     expect(parseViewTarget('fresh_water')).toEqual({ view: 'systems', section: 'water' });
     expect(parseViewTarget('high_water')).toEqual({ view: 'systems', section: 'flood' });
     expect(parseViewTarget('batteries')).toEqual({ view: 'systems', section: 'power' });

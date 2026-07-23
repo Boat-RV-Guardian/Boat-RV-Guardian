@@ -32,25 +32,25 @@ export default function GlobalBar({ onOpenAccount }: { onOpenAccount: () => void
     if (id !== getActiveVehicleId()) switchVehicle(id); // backs up current, loads target, fires settings_updated
   };
 
-  const multi = items.length > 1;
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-      {/* Vehicle switcher */}
+      {/* Vehicle switcher — ALWAYS opens on click (owner request 2026-07-22: a single-vehicle chip
+          used to be a silent dead click). With one vehicle the menu still shows it (with the ✓) plus
+          a "Manage vehicles" entry into Settings, so the click always does something. */}
       <div ref={ref} style={{ position: 'relative' }}>
         <button
-          onClick={() => multi && setOpen((o) => !o)}
+          onClick={() => setOpen((o) => !o)}
           aria-label="Switch vehicle"
-          aria-haspopup={multi ? 'listbox' : undefined}
-          aria-expanded={multi ? open : undefined}
+          aria-haspopup="listbox"
+          aria-expanded={open}
           disabled={items.length === 0}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '8px', padding: '6px 12px', cursor: multi ? 'pointer' : 'default', fontSize: '0.85rem', maxWidth: '220px' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontSize: '0.85rem', maxWidth: '220px' }}
         >
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeVehicleLabel(items)}</span>
-          {multi && <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>▾</span>}
+          <span style={{ fontSize: '0.7rem', opacity: 0.7 }}>▾</span>
         </button>
-        {open && multi && (
-          <div role="listbox" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, minWidth: '200px', background: 'var(--bg-secondary, #11161c)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 50, overflow: 'hidden' }}>
+        {open && (
+          <div role="listbox" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, minWidth: '220px', background: 'var(--bg-secondary, #11161c)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', zIndex: 50, overflow: 'hidden' }}>
             {items.map((it) => (
               <button
                 key={it.id}
@@ -64,6 +64,17 @@ export default function GlobalBar({ onOpenAccount }: { onOpenAccount: () => void
                 {it.active && <span style={{ color: 'var(--accent-cyan)', fontSize: '0.8rem' }}>✓</span>}
               </button>
             ))}
+            {items.length === 1 && (
+              <div style={{ padding: '4px 12px 8px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Only one vehicle is assigned to this account.
+              </div>
+            )}
+            <button
+              onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent('navigate_view', { detail: 'settings' })); }}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-secondary)', padding: '10px 12px', cursor: 'pointer', fontSize: '0.82rem' }}
+            >
+              <span>⚙️</span><span>Manage vehicles…</span>
+            </button>
           </div>
         )}
       </div>

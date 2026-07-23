@@ -32,11 +32,18 @@ describe('GlobalBar', () => {
     expect(screen.getByRole('option', { selected: true }).textContent).toContain('Serenity');
   });
 
-  it('does not offer a dropdown with a single vehicle', () => {
+  it('opens the menu even with a single vehicle (never a dead click) and offers Manage vehicles', () => {
     seed({ v1: { name: 'Serenity', type: 'boat' } }, 'v1');
     render(<GlobalBar onOpenAccount={vi.fn()} />);
-    const switcher = screen.getByRole('button', { name: /switch vehicle/i });
-    fireEvent.click(switcher);
-    expect(screen.queryByRole('option')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /switch vehicle/i }));
+    expect(screen.getByRole('option', { selected: true }).textContent).toContain('Serenity');
+    expect(screen.getByText(/only one vehicle/i)).toBeTruthy();
+    // The manage entry navigates to Settings via the navigate_view event.
+    const nav = vi.fn();
+    window.addEventListener('navigate_view', nav as EventListener);
+    fireEvent.click(screen.getByText(/manage vehicles/i));
+    expect(nav).toHaveBeenCalled();
+    expect(((nav.mock.calls[0] as any)[0] as CustomEvent).detail).toBe('settings');
+    window.removeEventListener('navigate_view', nav as EventListener);
   });
 });
