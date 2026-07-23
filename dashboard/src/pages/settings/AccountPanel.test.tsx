@@ -8,9 +8,6 @@ function renderPanel(over: Partial<React.ComponentProps<typeof AccountPanel>> = 
     user: { uid: 'u1', email: 'me@example.com' },
     localMode: false,
     showLogin: false, setShowLogin: vi.fn(),
-    syncSettingsCloud: true, setSyncSettingsCloud: vi.fn(),
-    canCloudHistory: true,
-    storeHistoryCloud: false, setStoreHistoryCloud: vi.fn(),
     vehiclesMap: {},
     userConfig: null,
     updateUserConfig: vi.fn(),
@@ -48,20 +45,7 @@ describe('AccountPanel', () => {
     expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
   });
 
-  it('disables the cloud-history toggle for tiers with no retention', () => {
-    renderPanel({ canCloudHistory: false });
-    const storeHistory = screen.getAllByRole('checkbox')[1]; // 2nd toggle = store historical data
-    expect((storeHistory as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText(/upgrade to enable/i)).toBeTruthy();
-  });
 
-  it('enables + wires the cloud-history toggle when the tier allows retention', () => {
-    const p = renderPanel({ canCloudHistory: true });
-    const storeHistory = screen.getAllByRole('checkbox')[1];
-    expect((storeHistory as HTMLInputElement).disabled).toBe(false);
-    fireEvent.click(storeHistory);
-    expect(p.setStoreHistoryCloud).toHaveBeenCalledWith(true);
-  });
 
   it('hides the migrate option in local mode with no local vehicles', () => {
     renderPanel({ user: null, localMode: true, vehiclesMap: {} });

@@ -171,7 +171,7 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
           <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             Manage your data and export GDPR reports via our secure web portal.
           </span>
-          <button className="btn-primary" onClick={() => window.open('https://account.boatrvguardian.com/', '_blank')} style={{ padding: '8px 18px' }}>
+          <button className="btn-primary" onClick={() => window.open('https://account.boatrvguardian.com/privacy', '_blank')} style={{ padding: '8px 18px' }}>
             Privacy Portal
           </button>
         </div>

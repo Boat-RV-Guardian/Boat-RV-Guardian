@@ -102,7 +102,6 @@ export default function Settings({ user }: { user: any }) {
   // Active vehicle's entitlements (per-vehicle tier). Cloud history is a Basic+ feature. Legacy/unset
   // vehicles grandfather to premium, so this gates nothing until real tiers are assigned.
   const entitlements = useEntitlements();
-  const canCloudHistory = entitlements.historyRetentionDays > 0;
 
   // Messaging alert channels (Premium, per-vehicle) — SMS, WhatsApp, Telegram, each its own synced field.
   const sms = useChannelPrefs('sh_sms_prefs');
@@ -768,9 +767,6 @@ export default function Settings({ user }: { user: any }) {
         <>
           <AccountPanel
             user={user} localMode={isLocalMode(localStorage)} showLogin={showLogin} setShowLogin={setShowLogin}
-            syncSettingsCloud={syncSettingsCloud} setSyncSettingsCloud={setSyncSettingsCloud}
-            canCloudHistory={canCloudHistory}
-            storeHistoryCloud={storeHistoryCloud} setStoreHistoryCloud={setStoreHistoryCloud}
             vehiclesMap={vehiclesMap} userConfig={userConfig} updateUserConfig={updateUserConfig}
             defaultVidSaving={defaultVidSaving} setDefaultVidSaving={setDefaultVidSaving}
           />
