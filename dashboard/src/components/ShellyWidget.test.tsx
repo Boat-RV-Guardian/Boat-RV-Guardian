@@ -10,7 +10,8 @@ vi.mock('../services/firebase', () => ({
 
 (globalThis as any).__DEMO__ = false;
 
-import ShellyWidget, { mapCloudSensorDoc } from './ShellyWidget';
+import ShellyWidget from './ShellyWidget';
+import { mapCloudSensorDoc } from '../utils/shellySensorState';
 
 beforeEach(() => localStorage.clear());
 

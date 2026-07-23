@@ -8,6 +8,7 @@ import { lastStatusKey } from '../hooks/useSensorBridge';
 import { demoSpecFor } from '../utils/demoFleet';
 import { demoShellyDoc, demoFloodAlarmActive } from '../utils/demoTelemetry';
 import { resolveTempUnit, cToDisplay, tempUnitLabel } from '../utils/tempUnit';
+import { mapCloudSensorDoc } from '../utils/shellySensorState';
 
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
 
@@ -29,26 +30,6 @@ const invokeTauri = async (cmd: string, args?: any) => {
   return invoke(cmd, args);
 };
 const num = (key: string, dflt: number) => Number(localStorage.getItem(key) ?? dflt) || dflt;
-
-// Map a worker-cached sensorState doc ({v,vraw,tC,batt,event}) to the internal status shape the
-// widget's displays read (the same keys a local Shelly poll produces). Shared by the live onSnapshot
-// reader and the DEMO generator so both render identically. Returns {} when the doc carries nothing.
-export function mapCloudSensorDoc(role: string, d: Record<string, any>): Record<string, any> {
-  const n = (x: any) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
-  const remote: any = {};
-  if (d.v != null || d.vraw != null) {
-    // Same `v` field, mapped to the shape each role's display reads: shore power → pm1:0.voltage,
-    // DC battery/voltmeter → voltmeter:100.
-    if (role === 'High Power Sensor') remote['pm1:0'] = { voltage: n(d.v) ?? n(d.vraw) };
-    else remote['voltmeter:100'] = { id: 100, voltage: n(d.vraw), xvoltage: n(d.v) };
-  }
-  if (d.tC != null) remote['temperature:0'] = { tC: n(d.tC) };
-  if (d.rh != null) remote['humidity:0'] = { rh: n(d.rh) };
-  if (d.batt != null) remote['devicepower:0'] = { battery: { percent: n(d.batt) } };
-  const ev = String(d.event || '');
-  if (/flood|alarm|leak/i.test(ev)) remote['flood:0'] = { alarm: !/off|clear|inactive|dry/i.test(ev) };
-  return remote;
-}
 
 // Compact SVG trend line with optional dashed threshold lines.
 function Sparkline({ points, color, min, max, thresholds }: {
