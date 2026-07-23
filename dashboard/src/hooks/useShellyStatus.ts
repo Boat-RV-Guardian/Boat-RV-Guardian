@@ -37,19 +37,22 @@ export function useShellyStatus(device: DeviceConfig, intervalMs = 12000) {
     if (__DEMO__) {
       let stop = false;
       const tick = async () => {
-        const [{ demoSpecFor }, { demoShellyDoc, demoFloodAlarmActive }] = await Promise.all([
-          import('../utils/demoFleet'), import('../utils/demoTelemetry'),
+        const [{ demoSpecFor }, { demoShellyDoc, demoFloodAlarmActive }, { getDemoOverride, mergeDemoDoc }] = await Promise.all([
+          import('../utils/demoFleet'), import('../utils/demoTelemetry'), import('../utils/demoOverrides'),
         ]);
         if (stop) return;
         const spec = demoSpecFor(device.shellyDeviceId!);
         if (!spec) return;
         const now = Date.now();
-        const remote = mapCloudSensorDoc(device.role, demoShellyDoc(spec, now, spec.kind === 'flood' && demoFloodAlarmActive(now)));
+        const base = demoShellyDoc(spec, now, spec.kind === 'flood' && demoFloodAlarmActive(now));
+        const remote = mapCloudSensorDoc(device.role, mergeDemoDoc(base, getDemoOverride(spec.deviceId, now)));
         if (Object.keys(remote).length) { setData(remote); setSource('cloud'); }
       };
       tick();
       const id = setInterval(tick, 2000);
-      return () => { stop = true; clearInterval(id); };
+      const onSim = () => { tick(); };
+      window.addEventListener('demo_sim', onSim);
+      return () => { stop = true; clearInterval(id); window.removeEventListener('demo_sim', onSim); };
     }
     const vid = getActiveVehicleId();
     if (!vid) return;

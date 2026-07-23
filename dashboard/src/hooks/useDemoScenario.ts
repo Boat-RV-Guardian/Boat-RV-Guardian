@@ -9,24 +9,26 @@
 import { useEffect } from 'react';
 import type { AlertLog } from './useDeviceHistory';
 import { demoFloodAlarmActive } from '../utils/demoTelemetry';
+import { appendEventLog } from '../utils/eventLog';
 
 const HOUR = 3_600_000;
 
 function appendDemoAlert(deviceConfigId: string, type: AlertLog['type'], message: string, ts: number): void {
-  const key = `lt_event_log_${deviceConfigId}`;
-  let logs: AlertLog[] = [];
-  try { logs = JSON.parse(localStorage.getItem(key) || '[]') || []; } catch { logs = []; }
-  logs.unshift({ ts, type, message });
-  localStorage.setItem(key, JSON.stringify(logs.slice(0, 50)));
+  appendEventLog(deviceConfigId, { ts, type, message });
 }
 
-// A little believable backstory so the Alerts tab isn't empty when a visitor first lands (before the
-// first live flood fires). Seeded once; subsequent live events prepend to it.
+// A believable backstory across the fleet so the Alerts tab + dashboard activity feed aren't empty
+// when a visitor first lands (before the first live flood fires). Seeded once; live events prepend.
 function seedDemoHistoryOnce(now: number): void {
   if (localStorage.getItem('lt_event_log_demo-flood')) return; // already have events — don't reseed
-  appendDemoAlert('demo-house-batt', 'warning', 'House battery dipped to 12.1 V overnight — recovered on solar.', now - 8 * HOUR);
-  appendDemoAlert('demo-shore', 'info', 'Shore power connected — 120 V steady.', now - 5 * HOUR);
-  appendDemoAlert('demo-flood', 'success', 'Bilge dry — routine sensor check OK.', now - 3 * HOUR);
+  appendDemoAlert('demo-house-batt', 'warning', 'House battery dipped to 12.1 V overnight — recovered on solar.', now - 22 * HOUR);
+  appendDemoAlert('demo-shore', 'info', 'Shore power connected — 120 V steady.', now - 19 * HOUR);
+  appendDemoAlert('demo-fridge', 'warning', 'Reefer warmed to 8 °C during a defrost cycle — back to 4 °C.', now - 14 * HOUR);
+  appendDemoAlert('demo-valve', 'info', 'Fresh-water fill completed — 42 L drawn.', now - 11 * HOUR);
+  appendDemoAlert('demo-climate', 'info', 'Cabin comfortable — 22 °C, 54% RH.', now - 8 * HOUR);
+  appendDemoAlert('demo-engine-batt', 'success', 'Engine battery fully charged — 13.4 V after the run.', now - 6 * HOUR);
+  appendDemoAlert('demo-shore', 'warning', 'Shore voltage sagged to 112 V at the dock (marina load).', now - 4 * HOUR);
+  appendDemoAlert('demo-flood', 'success', 'Bilge dry — routine sensor check OK.', now - 2 * HOUR);
 }
 
 /** Run the scripted demo incidents. No-op outside a `--mode demo` build. */

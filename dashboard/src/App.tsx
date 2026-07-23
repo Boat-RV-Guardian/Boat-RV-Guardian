@@ -19,6 +19,7 @@ import { parseViewTarget, type AppView, type SystemsSection } from './utils/navT
 import { useIsMobile } from './hooks/useIsMobile';
 import { seedDemoVehicle } from './utils/demoSeed';
 import { useDemoScenario } from './hooks/useDemoScenario';
+import DemoEventBar from './components/DemoEventBar';
 
 export default function App() {
   usePushNotifications();
@@ -43,13 +44,15 @@ export default function App() {
   // Local-only mode: a no-account session (synthetic owner) that NEVER syncs to the cloud. Either this
   // or cloud mode — see the "Configuration sync model" in CLAUDE.md.
   const [localMode, setLocalMode] = useState(() => isLocalMode(localStorage));
+  // QA event-simulator opt-in on a real build (Settings → Device Preferences). Demo builds always show it.
+  const [eventSim, setEventSim] = useState(() => localStorage.getItem('lt_event_sim') === '1');
 
   // One-time: pull pre-refresh vehicles onto the new marine/RV default thresholds (untouched values
   // only — customized ones are preserved). The active vehicle is also re-checked on every cloud pull.
   useEffect(() => { migrateAllVehiclesThresholds(); }, []);
 
   useEffect(() => {
-    const sync = () => setHasVehicle(hasActiveVehicle());
+    const sync = () => { setHasVehicle(hasActiveVehicle()); setEventSim(localStorage.getItem('lt_event_sim') === '1'); };
     window.addEventListener('settings_updated', sync);
     window.addEventListener('role_updated', sync);
     return () => { window.removeEventListener('settings_updated', sync); window.removeEventListener('role_updated', sync); };
@@ -184,11 +187,8 @@ export default function App() {
         <GlobalBar onOpenAccount={() => setCurrentView('account')} />
       </header>
       <EmailVerifyBanner user={user} />
-      {__DEMO__ && (
-        <div style={{ background: 'linear-gradient(90deg, rgba(0,242,254,0.14), rgba(99,102,241,0.14))', borderBottom: '1px solid rgba(0,242,254,0.28)', padding: '8px 16px', textAlign: 'center', fontSize: '0.82rem', color: 'var(--text-secondary)', flexShrink: 0 }}>
-          🎬 <strong style={{ color: '#00f2fe' }}>Demo</strong> — simulated data, no real devices. Explore freely; controls animate but change nothing.
-        </div>
-      )}
+      {/* Event simulator bar: always in a demo build; opt-in for QA on a real build (Settings toggle). */}
+      {__DEMO__ ? <DemoEventBar mode="demo" /> : eventSim && <DemoEventBar mode="test" />}
       {(() => {
         // Systems-first IA (owner call, 2026-07-22): Systems is the FIRST primary destination; the
         // former "Overview" page is its Dashboard sub-page (Systems.tsx renders it as section

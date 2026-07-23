@@ -131,6 +131,15 @@ describe('demoShellyDoc', () => {
     expect(Number(d.tC)).toBe(19); // 21 + 4·(diurnal(0)-0.5) = 21 - 2
   });
 
+  it('shapes a thermo as a temperature doc carrying humidity too (an H&T reports both)', () => {
+    const d = demoShellyDoc({ deviceId: 'x', kind: 'thermo', base: 22 }, 0);
+    expect(d.event).toBe('temperature.change');
+    expect(Number(d.tC)).toBe(20); // 22 + 4·(diurnal(0)-0.5) = 22 - 2
+    expect(Number(d.rh)).toBeGreaterThanOrEqual(30);
+    expect(Number(d.rh)).toBeLessThanOrEqual(95);
+    expect(d.batt).toBe('100');
+  });
+
   it('flood is dry by default and alarms when scripted (as the widget’s regex reads it)', () => {
     const dry = demoShellyDoc({ deviceId: 'x', kind: 'flood', base: 0 }, 0);
     const wet = demoShellyDoc({ deviceId: 'x', kind: 'flood', base: 0 }, 0, true);

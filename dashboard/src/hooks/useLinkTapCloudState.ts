@@ -12,6 +12,7 @@ import { db, doc, onSnapshot } from '../services/firebase';
 import { getActiveVehicleId } from '../utils/VehicleManager';
 import { mergeLinkTapSensorDoc, linkTapSensorStateKey, type LinkTapCloudState } from '../utils/linktapCloudState';
 import { demoLinkTapDoc } from '../utils/demoTelemetry';
+import { getDemoOverride, mergeDemoDoc, DEMO_SIM_EVENT } from '../utils/demoOverrides';
 
 export function useLinkTapCloudState(taplinkerId: string | undefined | null): LinkTapCloudState | null {
   const [state, setState] = useState<LinkTapCloudState | null>(null);
@@ -20,10 +21,24 @@ export function useLinkTapCloudState(taplinkerId: string | undefined | null): Li
     if (!taplinkerId) return;
     // DEMO: no Firestore — tick the deterministic valve generator in place of onSnapshot.
     if (__DEMO__) {
-      const tick = () => setState((prev) => mergeLinkTapSensorDoc(prev, demoLinkTapDoc(Date.now())));
+      const tick = () => setState((prev) => {
+        const now = Date.now();
+        let doc = demoLinkTapDoc(now);
+        // A simulated flood forces the valve closed (the safety-shutoff story), same as the scripted one.
+        const floodOv = getDemoOverride('demo-flood', now);
+        const floodActive = !!floodOv && /alarm on|flood/i.test(floodOv.event || '') && !/off|clear|inactive|dry/i.test(floodOv.event || '');
+        if (floodActive) {
+          doc = { ...doc, watering: '0', flow: '0', event: 'water cut-off alert', alarm: 'floodShutoff', kind: 'alarm' };
+        } else {
+          doc = mergeDemoDoc(doc, getDemoOverride(taplinkerId, now));
+        }
+        return mergeLinkTapSensorDoc(prev, doc);
+      });
       tick();
       const id = setInterval(tick, 1000);
-      return () => clearInterval(id);
+      const onSim = () => tick();
+      window.addEventListener(DEMO_SIM_EVENT, onSim);
+      return () => { clearInterval(id); window.removeEventListener(DEMO_SIM_EVENT, onSim); };
     }
     const vid = getActiveVehicleId();
     if (!vid) return;
