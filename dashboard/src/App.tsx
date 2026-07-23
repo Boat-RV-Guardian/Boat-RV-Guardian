@@ -194,31 +194,35 @@ export default function App() {
         ];
         const isTabActive = (v: AppView) => currentView === v;
         // Desktop: a top row of pill buttons. Mobile: a bottom tab bar (icon over label) in normal flow.
-        const nav = (
-          <nav style={isMobile
-            ? { display: 'flex', justifyContent: 'space-around', alignItems: 'stretch', background: 'var(--bg-secondary, rgba(0,0,0,0.85))', borderTop: '1px solid rgba(255,255,255,0.12)', flexShrink: 0, zIndex: 10 }
-            : { display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '10px', padding: '15px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, zIndex: 10 }}>
-            {tabs.map((tab) => (isMobile ? (
+        const nav = isMobile ? (
+          <nav className="tabbar">
+            {tabs.map((tab) => (
               <button
                 key={tab.v}
                 onClick={() => setCurrentView(tab.v)}
                 aria-label={tab.label}
                 aria-current={isTabActive(tab.v) ? 'page' : undefined}
-                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px', background: 'none', border: 'none', padding: '8px 4px', cursor: 'pointer', color: isTabActive(tab.v) ? 'var(--accent-cyan)' : 'var(--text-secondary)', fontSize: '0.65rem', fontWeight: isTabActive(tab.v) ? 700 : 400 }}
+                className={isTabActive(tab.v) ? 'active' : undefined}
               >
-                <span style={{ fontSize: '1.25rem', lineHeight: 1 }}>{tab.icon}</span>
+                <span className="tab-icon">{tab.icon}</span>
                 {tab.label}
               </button>
-            ) : (
-              <button
-                key={tab.v}
-                className={isTabActive(tab.v) ? 'btn-primary' : 'btn-secondary'}
-                onClick={() => setCurrentView(tab.v)}
-                style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
-              >
-                {tab.icon} {tab.label}
-              </button>
-            )))}
+            ))}
+          </nav>
+        ) : (
+          <nav style={{ display: 'flex', justifyContent: 'center', padding: '12px 15px', background: 'rgba(0,0,0,0.5)', borderBottom: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, zIndex: 10 }}>
+            <div className="tab-seg">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.v}
+                  className={isTabActive(tab.v) ? 'active' : undefined}
+                  onClick={() => setCurrentView(tab.v)}
+                  aria-current={isTabActive(tab.v) ? 'page' : undefined}
+                >
+                  {tab.icon} {tab.label}
+                </button>
+              ))}
+            </div>
           </nav>
         );
 

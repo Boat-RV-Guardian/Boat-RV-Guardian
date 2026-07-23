@@ -74,6 +74,7 @@ export const VEHICLE_DEFAULT_CONFIG: Record<string, string> = {
   sh_whatsapp_prefs: '', // per-vehicle WhatsApp alert prefs (JSON {phones=addresses,events}) — Premium
   sh_telegram_prefs: '', // per-vehicle Telegram alert prefs (JSON {phones=chat ids,events}) — Premium
   sh_api_tokens: '',     // per-vehicle integration API tokens (JSON ApiToken[]; '' ⇒ none) — Premium
+  lt_vehicle_location: '', // last-known vehicle GPS position (JSON VehicleLocation; see utils/vehicleLocation)
   lt_devices: '[]'
 };
 
