@@ -3,7 +3,7 @@ import { useEntitlements } from '../hooks/useEntitlements';
 import { TIER_LABELS } from '../utils/entitlements';
 
 import { trialStatus, vehiclePlanRows } from '../utils/accountSummary';
-import { usageHistoryToCsv, type DeviceUsage } from '../utils/historyCsv';
+
 
 import {
   parseApiTokens, serializeApiTokens, addApiToken, revokeApiToken, randomToken, maskToken,
@@ -97,23 +97,6 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
     }
   };
 
-  // Premium "data export": flatten each device's on-device usage history (lt_usage_history_<id>) to
-  // a CSV and download it. The history key mirrors LinkTapWidget (`linktapDeviceId || id`).
-  const exportCsv = () => {
-    const data: DeviceUsage[] = devices.map((d) => {
-      const key = d.linktapDeviceId || d.id;
-      let usageMap: Record<string, number> = {};
-      try { usageMap = JSON.parse(localStorage.getItem(`lt_usage_history_${key}`) || '{}'); } catch { /* skip */ }
-      return { device: d.name || key, usage: usageMap };
-    });
-    const blob = new Blob([usageHistoryToCsv(data)], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'brvg-usage-history.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
 
   return (
     <div style={{ padding: '20px', maxWidth: '720px', margin: '0 auto', color: '#fff', paddingBottom: '100px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -183,15 +166,15 @@ export default function Account({ user }: { user?: { uid?: string; email?: strin
         </div>
       )}
 
-      {/* Data & privacy (Task 14) — CSV export is a Premium feature (canExport) */}
+      {/* Data & privacy (GDPR) */}
       <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <h3 style={{ margin: 0, color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>Data &amp; privacy</h3>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-            Export this device's water-usage history as CSV.{!ent.canExport && ' (Premium)'}
+            Manage your data and export GDPR reports via our secure web portal.
           </span>
-          <button className="btn-primary" onClick={exportCsv} disabled={!ent.canExport} style={{ padding: '8px 18px', opacity: ent.canExport ? 1 : 0.5 }} title={ent.canExport ? 'Download CSV' : 'Upgrade to Premium to export'}>
-            Export CSV
+          <button className="btn-primary" onClick={() => window.open('https://account.boatrvguardian.com/', '_blank')} style={{ padding: '8px 18px' }}>
+            Privacy Portal
           </button>
         </div>
 
