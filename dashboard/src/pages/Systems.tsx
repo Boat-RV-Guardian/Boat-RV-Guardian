@@ -31,13 +31,13 @@ export default function Systems({ active, section, onSection }: {
 }) {
   return (
     <div style={{ padding: '20px 20px 100px', maxWidth: '1100px', margin: '0 auto', color: '#fff' }}>
-      <nav style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px' }}>
+      <nav className="subnav">
         {SECTIONS.map((s) => (
           <button
             key={s.key}
             onClick={() => onSection(s.key)}
-            className={section === s.key ? 'btn-primary' : 'btn-secondary'}
-            style={{ padding: '8px 16px', fontSize: '0.9rem', boxShadow: 'none' }}
+            className={section === s.key ? 'active' : undefined}
+            aria-current={section === s.key ? 'page' : undefined}
           >
             {s.icon} {s.label}
           </button>

@@ -33,6 +33,24 @@ export function useShellyStatus(device: DeviceConfig, intervalMs = 12000) {
   // when a local poll isn't fresh (within 20s), so a live LAN read isn't clobbered by a staler cache.
   useEffect(() => {
     if (device.enabled === false || !device.shellyDeviceId) return;
+    // DEMO: no Firestore — tick the deterministic generator (same pattern as ShellyWidget).
+    if (__DEMO__) {
+      let stop = false;
+      const tick = async () => {
+        const [{ demoSpecFor }, { demoShellyDoc, demoFloodAlarmActive }] = await Promise.all([
+          import('../utils/demoFleet'), import('../utils/demoTelemetry'),
+        ]);
+        if (stop) return;
+        const spec = demoSpecFor(device.shellyDeviceId!);
+        if (!spec) return;
+        const now = Date.now();
+        const remote = mapCloudSensorDoc(device.role, demoShellyDoc(spec, now, spec.kind === 'flood' && demoFloodAlarmActive(now)));
+        if (Object.keys(remote).length) { setData(remote); setSource('cloud'); }
+      };
+      tick();
+      const id = setInterval(tick, 2000);
+      return () => { stop = true; clearInterval(id); };
+    }
     const vid = getActiveVehicleId();
     if (!vid) return;
     const ref = doc(db, 'vehicles', vid, 'sensorState', device.shellyDeviceId);

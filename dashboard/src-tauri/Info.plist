@@ -14,5 +14,9 @@
 	<array>
 		<string>_http._tcp</string>
 	</array>
+	<!-- The Dashboard's "Use this device" location pin uses WebKit geolocation, which needs Location
+	     Services consent on macOS. Best-effort: if the OS declines, the app falls back to manual entry. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Boat &amp; RV Guardian uses this device's location only when you tap "Use this device" to pin your vehicle's position on the dashboard map.</string>
 </dict>
 </plist>
