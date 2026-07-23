@@ -139,6 +139,10 @@ below with why.
   - [ ] maybe resize?
   - [ ] create historical data widget options
 
+- [ ] **Fix Account Page / Subscriptions:**
+  - [ ] Update the subscriptions page to be an e-commerce-like plan screen.
+  - [ ] Tie subscriptions to specific vehicles on the account (this will be the primary sign-up flow for all subscriptions).
+
 ---
 
 ## 🔧 Hardware-gated (needs the physical devices / boat / home LAN)
