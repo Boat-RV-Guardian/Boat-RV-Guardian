@@ -9,6 +9,7 @@ import { deviceLocalHost, findVoltmeterId } from '../utils/shellyDevice';
 import ProvisionShellyModal from '../components/ProvisionShellyModal';
 import ProvisionLinkTapModal from '../components/ProvisionLinkTapModal';
 import VehiclesPanel from './settings/VehiclesPanel';
+import VehicleWifiPanel from './settings/VehicleWifiPanel';
 import AccountPanel from './settings/AccountPanel';
 import Account from './Account';
 import DeviceConfigPanel from './settings/DeviceConfigPanel';
@@ -743,6 +744,9 @@ export default function Settings({ user }: { user: any }) {
 
       {activeTab === 'vehicle' && (
         <>
+        {/* Remembered network for device provisioning (device-local, never synced). */}
+        <VehicleWifiPanel />
+
         {/* Delete Vehicle Section */}
         <div className="glass-card" style={{ border: '1px solid rgba(239, 68, 68, 0.2)' }}>
           <h3 style={{ marginTop: 0, color: '#ef4444', borderBottom: '1px solid rgba(239, 68, 68, 0.2)', paddingBottom: '8px', marginBottom: '16px' }}>Danger Zone</h3>

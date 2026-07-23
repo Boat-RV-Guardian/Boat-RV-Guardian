@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { nativeFetch } from '../utils/nativeFetch';
 import { detectRole } from '../utils/shellyDevice';
 import { auth } from '../services/firebase';
 import { DEFAULT_WORKER_URL } from '../utils/configSync';
+import { getActiveVehicleId } from '../utils/VehicleManager';
+import { wifiPrefill, saveVehicleWifi, clearVehicleWifi } from '../utils/vehicleWifi';
 
 // Helper to use Tauri's fetch if available, otherwise browser fetch
 const isTauriEnv = () => typeof window !== 'undefined' && (!!(window as any).__TAURI_INTERNALS__ || !!(window as any).isTauri);
@@ -26,8 +28,13 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   const [step, setStep] = useState<'selection' | 'ble_scanning' | 'ap_connect' | 'credentials' | 'ip_entry' | 'provisioning' | 'confirm_type' | 'completion'>('selection');
   const [method, setMethod] = useState<'wifi' | 'manual_ip' | 'bluetooth' | null>(null);
 
-  const [ssid, setSsid] = useState('');
-  const [password, setPassword] = useState('');
+  // Remembered vehicle Wi-Fi (device-local, never synced — see utils/vehicleWifi). Prefilled for
+  // admin/control so a second sensor doesn't mean retyping the network password (a real failure mode:
+  // an autocapitalised retype was a root-caused provisioning bug).
+  const savedWifi = useMemo(() => wifiPrefill(getActiveVehicleId() || '', localStorage.getItem('lt_my_role')), []);
+  const [ssid, setSsid] = useState(savedWifi?.ssid || '');
+  const [password, setPassword] = useState(savedWifi?.password || '');
+  const [rememberWifi, setRememberWifi] = useState(!!savedWifi);
   const [showPassword, setShowPassword] = useState(false);
   const [localIp, setLocalIp] = useState('');
   const [shellyPassword, setShellyPassword] = useState('');
@@ -163,7 +170,17 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
     }
   };
 
+  // Persist (or forget) the vehicle's Wi-Fi as the user asked, at the moment they commit to
+  // provisioning — so the credentials they just typed are remembered even if the device step fails.
+  const persistWifiChoice = () => {
+    const vid = getActiveVehicleId() || '';
+    if (!vid) return;
+    if (rememberWifi) saveVehicleWifi(vid, ssid, password);
+    else clearVehicleWifi(vid);
+  };
+
   const executeWifiProvisioning = async () => {
+    persistWifiChoice();
     setIsProcessing(true);
     try {
       setStatusMessage('Getting Device ID (1/3)...');
@@ -405,6 +422,7 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
   const executeBluetoothProvisioning = async () => {
     const selectedDev = bleDevices.find(d => d.deviceId === selectedBleDevice);
     if (!selectedDev) { setStatusMessage('Select a device first.'); return; }
+    persistWifiChoice();
     setIsProcessing(true);
     setStatusMessage('Connecting & sending Wi-Fi over Bluetooth…');
     try {
@@ -674,6 +692,16 @@ export default function ProvisionShellyModal({ onClose }: { onClose: () => void 
                   {showPassword ? '🙈' : '👁️'}
                 </button>
               </div>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '10px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={rememberWifi} onChange={e => setRememberWifi(e.target.checked)} style={{ marginTop: '3px' }} />
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                  Remember this network for this vehicle
+                  <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Prefills the next sensor you add. Stored on this device only — never uploaded, and not
+                    shared with people you've shared the vehicle with.
+                  </span>
+                </span>
+              </label>
             </div>
             {statusMessage && <div style={{ color: statusMessage.toLowerCase().includes('fail') || statusMessage.includes('Error') ? '#ef4444' : 'var(--accent-cyan)', fontSize: '0.85rem', textAlign: 'center' }}>{statusMessage}</div>}
             <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
