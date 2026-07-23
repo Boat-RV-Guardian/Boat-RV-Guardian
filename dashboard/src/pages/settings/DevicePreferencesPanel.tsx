@@ -8,12 +8,14 @@ import type { ReactNode } from 'react';
 interface Props {
   unitSystem: 'metric' | 'imperial';
   setUnitSystem: (v: 'metric' | 'imperial') => void;
+  tempUnit: 'auto' | 'c' | 'f';
+  setTempUnit: (v: 'auto' | 'c' | 'f') => void;
   timeZone: string;
   setTimeZone: (v: string) => void;
   children: ReactNode;
 }
 
-export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, timeZone, setTimeZone, children }: Props) {
+export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, tempUnit, setTempUnit, timeZone, setTimeZone, children }: Props) {
   return (
     <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div>
@@ -26,6 +28,14 @@ export default function DevicePreferencesPanel({ unitSystem, setUnitSystem, time
           <select className="form-input" value={unitSystem} onChange={(e) => setUnitSystem(e.target.value as 'metric' | 'imperial')}>
             <option value="metric">Metric (Liters)</option>
             <option value="imperial">Imperial (Gallons)</option>
+          </select>
+        </div>
+        <div>
+          <label className="form-label">Temperature</label>
+          <select className="form-input" value={tempUnit} onChange={(e) => setTempUnit(e.target.value as 'auto' | 'c' | 'f')}>
+            <option value="auto">Match units ({unitSystem === 'imperial' ? '°F' : '°C'})</option>
+            <option value="f">Fahrenheit (°F)</option>
+            <option value="c">Celsius (°C)</option>
           </select>
         </div>
         <div>

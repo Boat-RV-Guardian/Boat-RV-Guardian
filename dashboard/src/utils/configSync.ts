@@ -1,6 +1,7 @@
 export const LOCAL_ONLY_KEYS = [
   'lt_sync_cloud',
   'lt_unit',
+  'lt_temp_unit',
   'lt_tz',
   'lt_is_cloud_polling',
   'lt_is_local_polling',
