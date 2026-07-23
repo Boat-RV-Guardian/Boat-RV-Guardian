@@ -139,7 +139,7 @@ below with why.
   - [ ] maybe resize?
   - [ ] create historical data widget options
 
-- [ ] **Fix Account Page / Subscriptions:**
+- [ ] **Fix Account Page / Subscriptions (https://account.boatrvguardian.com):**
   - [ ] Update the subscriptions page to be an e-commerce-like plan screen.
   - [ ] Tie subscriptions to specific vehicles on the account (this will be the primary sign-up flow for all subscriptions).
 
