@@ -294,6 +294,29 @@ export default function SyncModal() {
     (window as any).__is_syncing_cloud = false;
   }, [activeVehicleConfig, configVid, activeVid, hasResolved]);
 
+  // Safety net for the live sync above. That effect BAILS when one of our own edits is mid-flight
+  // (autoSaveTimer pending) and only re-runs when activeVehicleConfig changes — so a peer's change
+  // that arrives during that window is dropped until an app restart (observed 2026-07-22: a device
+  // added on the phone didn't appear on the already-open desktop until a full relaunch). Re-check on
+  // a low interval so it self-heals within ~12s, but ONLY when idle (no pending local edit to protect).
+  const liveCfgRef = useRef(activeVehicleConfig);
+  liveCfgRef.current = activeVehicleConfig;
+  useEffect(() => {
+    if (!hasResolved) return;
+    const id = setInterval(() => {
+      if (localStorage.getItem('lt_sync_cloud') === 'false') return;
+      if (!auth.currentUser || autoSaveTimer.current) return;
+      if (configVid !== activeVid) return;
+      const cfg = liveCfgRef.current;
+      if (!cfg || Object.keys(cfg).length === 0) return;
+      if (!cloudConfigDiffers(getLocalVehicleConfig(), cfg)) return;
+      (window as any).__is_syncing_cloud = true;
+      applyCloudVehicleConfig(cfg);
+      (window as any).__is_syncing_cloud = false;
+    }, 12000);
+    return () => clearInterval(id);
+  }, [hasResolved, activeVid, configVid]);
+
   // Setup auto-save listener — debounced to avoid hammering Firestore on rapid setting changes.
   // __is_syncing_cloud is set by switchVehicle/deleteVehicle/applyCloudVehicleConfig so this
   // skips events triggered by a vehicle change (which would otherwise write the new vehicle's
