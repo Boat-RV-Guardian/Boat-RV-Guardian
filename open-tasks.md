@@ -133,6 +133,12 @@ below with why.
       vehicle members (monitor included) — either accept that (documented) or gate the reveal/prefill
       to admin/control roles. Verify with a real provisioning pass on a device.
 
+- [ ] **Dashboard UI Improvements:**
+  - [ ] moveable tiles
+  - [ ] ability to hide tiles
+  - [ ] maybe resize?
+  - [ ] create historical data widget options
+
 ---
 
 ## 🔧 Hardware-gated (needs the physical devices / boat / home LAN)
