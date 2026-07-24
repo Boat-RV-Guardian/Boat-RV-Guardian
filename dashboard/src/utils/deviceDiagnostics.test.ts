@@ -94,19 +94,34 @@ describe('classifyShellyProbe', () => {
 describe('classifyLinkTapConfig', () => {
   const valve: DeviceConfig = { id: 'v1', type: 'linktap_valve', role: 'Fresh Water', name: 'Valve', linktapGatewayId: 'gw', linktapDeviceId: 'tap' };
 
+  const IP = '172.31.0.244';
+
   it('errors when the account is not connected', () => {
-    const issues = classifyLinkTapConfig(valve, { cloudUser: '', cloudKey: '', gatewayId: 'gw' }, { signedIn: true });
+    const issues = classifyLinkTapConfig(valve, { cloudUser: '', cloudKey: '', gatewayId: 'gw', gatewayIp: IP }, { signedIn: true });
     expect(issues.find((i) => i.title === 'LinkTap account not connected')!.severity).toBe('error');
   });
 
   it('errors when the valve is missing its gateway/TapLinker mapping', () => {
     const bare: DeviceConfig = { id: 'v2', type: 'linktap_valve', role: 'Fresh Water', name: 'Valve' };
-    const issues = classifyLinkTapConfig(bare, { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw' }, { signedIn: true });
+    const issues = classifyLinkTapConfig(bare, { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw', gatewayIp: IP }, { signedIn: true });
     expect(issues.find((i) => i.title === 'Valve not fully mapped')!.severity).toBe('error');
   });
 
-  it('is clean for a fully configured, signed-in valve', () => {
-    const issues = classifyLinkTapConfig(valve, { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw' }, { signedIn: true });
+  it('warns when the local gateway IP is unset (the 2026-07-22 "looks stale" case)', () => {
+    const issues = classifyLinkTapConfig(valve, { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw', gatewayIp: '' }, { signedIn: true });
+    const w = issues.find((i) => i.title === 'Local gateway IP not set');
+    expect(w?.severity).toBe('warn');
+    expect(w?.detail).toMatch(/stale|delayed/i);
+  });
+
+  it('warns when the IP is set but the gateway ID is missing', () => {
+    const issues = classifyLinkTapConfig(valve, { cloudUser: 'u', cloudKey: 'k', gatewayId: '', gatewayIp: IP }, { signedIn: true });
+    expect(issues.find((i) => i.title === 'No local gateway ID')?.severity).toBe('warn');
+    expect(issues.find((i) => i.title === 'Local gateway IP not set')).toBeUndefined();
+  });
+
+  it('is clean for a fully configured, signed-in valve with a gateway IP', () => {
+    const issues = classifyLinkTapConfig(valve, { cloudUser: 'u', cloudKey: 'k', gatewayId: 'gw', gatewayIp: IP }, { signedIn: true });
     expect(issues.every((i) => i.severity === 'ok')).toBe(true);
   });
 });

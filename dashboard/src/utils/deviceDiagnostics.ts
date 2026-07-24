@@ -149,7 +149,7 @@ export function classifyShellyProbe(device: DeviceConfig, probe: ShellyProbe, ct
 /** PURE: config-level findings for a LinkTap valve (no device I/O — the widget owns live status). */
 export function classifyLinkTapConfig(
   device: DeviceConfig,
-  cfg: { cloudUser: string; cloudKey: string; gatewayId: string },
+  cfg: { cloudUser: string; cloudKey: string; gatewayId: string; gatewayIp: string },
   ctx: Pick<ScanContext, 'signedIn'>,
 ): DeviceIssue[] {
   const issues: DeviceIssue[] = [];
@@ -169,11 +169,21 @@ export function classifyLinkTapConfig(
       detail: 'Missing gateway or TapLinker ID — events can\'t be routed to this vehicle. Re-add the valve.',
     });
   }
-  if (!cfg.gatewayId) {
+  // The on-LAN fast path needs the gateway's IP. When it's unset the app runs CLOUD-ONLY, and the
+  // cloud cache only refreshes on valve events — so on the boat's own network live data can look
+  // hours-stale even though nothing is broken. This was a real, hard-to-diagnose "it's not working"
+  // (2026-07-22): the gateway IP was empty and the scan reported "No issues found". Flag it clearly.
+  if (!cfg.gatewayIp) {
     issues.push({
       severity: 'warn',
-      title: 'No local gateway configured',
-      detail: 'Without a gateway ID/IP the app has no on-LAN fallback when the cloud is unreachable. Set it in Devices → Advanced Options.',
+      title: 'Local gateway IP not set',
+      detail: 'No on-LAN fast path — live valve data comes only from the cloud cache, which updates on valve events, so on the boat it can look delayed or stale. Set or scan the gateway IP in Devices → Advanced Options → Local Gateway Control.',
+    });
+  } else if (!cfg.gatewayId) {
+    issues.push({
+      severity: 'warn',
+      title: 'No local gateway ID',
+      detail: 'A gateway IP is set but its ID is missing, so the on-LAN fallback may not resolve. Re-scan the gateway in Devices → Advanced Options.',
     });
   }
   if (!ctx.signedIn) {
