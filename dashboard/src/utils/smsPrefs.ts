@@ -84,6 +84,19 @@ export function addHandle(prefs: SmsPrefs, input: string): SmsPrefs {
   return { ...prefs, phones: [...prefs.phones, h] };
 }
 
+/** Normalize a user-entered email: trim + lowercase; returns null when it isn't a plausible address. */
+export function normalizeEmail(input: string): string | null {
+  const e = String(input).trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? e : null;
+}
+
+/** Add a validated email (no-op on invalid or duplicate). Reuses the generic `phones` address list. */
+export function addEmail(prefs: SmsPrefs, input: string): SmsPrefs {
+  const norm = normalizeEmail(input);
+  if (!norm || prefs.phones.includes(norm)) return prefs;
+  return { ...prefs, phones: [...prefs.phones, norm] };
+}
+
 /** Opt an event in/out of SMS escalation. */
 export function setEventEnabled(prefs: SmsPrefs, event: string, on: boolean): SmsPrefs {
   const has = prefs.events.includes(event);

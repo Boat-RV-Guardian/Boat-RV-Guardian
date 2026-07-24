@@ -108,6 +108,7 @@ export default function Settings({ user }: { user: any }) {
   const sms = useChannelPrefs('sh_sms_prefs');
   const whatsapp = useChannelPrefs('sh_whatsapp_prefs');
   const telegram = useChannelPrefs('sh_telegram_prefs');
+  const email = useChannelPrefs('sh_email_prefs');
 
   // App Settings State
   const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => localStorage.getItem('lt_unit') as 'metric' | 'imperial' || 'imperial');
@@ -706,6 +707,17 @@ export default function Settings({ user }: { user: any }) {
             alarmVolume={alarmVolume} onAlarmVolumeChange={setAlarmVolume}
           />
 
+          <MessagingChannelPrefs
+            title="Email alerts"
+            unlocked={true}
+            lockedNote=""
+            description="Available on every plan. Your account email (and anyone the boat is shared with) is included automatically — add any extra addresses here, then pick which alerts email you."
+            prefs={email.prefs}
+            onChange={email.persist}
+            variant="email"
+            inputPlaceholder="name@example.com"
+            emptyLabel="No extra addresses — members still get emailed."
+          />
           <MessagingChannelPrefs
             title="SMS & voice alerts"
             unlocked={entitlements.canSmsAlert}

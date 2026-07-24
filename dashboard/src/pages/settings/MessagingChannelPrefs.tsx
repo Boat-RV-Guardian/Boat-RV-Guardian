@@ -5,7 +5,7 @@
 // E.164; 'handle' variant (Telegram) accepts a freeform chat id / @username.
 
 import { useState } from 'react';
-import { addPhone, addHandle, removePhone, setEventEnabled, SMS_EVENT_CATALOG, type SmsPrefs } from '../../utils/smsPrefs';
+import { addPhone, addHandle, addEmail, removePhone, setEventEnabled, SMS_EVENT_CATALOG, type SmsPrefs } from '../../utils/smsPrefs';
 
 interface Props {
   title: string;
@@ -16,7 +16,7 @@ interface Props {
   unlocked: boolean;
   prefs: SmsPrefs;
   onChange: (next: SmsPrefs) => void;
-  variant: 'phone' | 'handle';
+  variant: 'phone' | 'handle' | 'email';
   inputPlaceholder: string;
   /** Label for the address chips area ("No numbers yet." / "No chats yet."). */
   emptyLabel: string;
@@ -29,7 +29,9 @@ export default function MessagingChannelPrefs({
   const [err, setErr] = useState('');
 
   const onAdd = () => {
-    const next = variant === 'phone' ? addPhone(prefs, input) : addHandle(prefs, input);
+    const next = variant === 'phone' ? addPhone(prefs, input)
+      : variant === 'email' ? addEmail(prefs, input)
+      : addHandle(prefs, input);
     if (next === prefs) { setErr(input.trim() ? 'Enter a valid destination.' : ''); return; }
     onChange(next);
     setInput('');
@@ -59,7 +61,7 @@ export default function MessagingChannelPrefs({
           </div>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             <input
-              type={variant === 'phone' ? 'tel' : 'text'}
+              type={variant === 'phone' ? 'tel' : variant === 'email' ? 'email' : 'text'}
               value={input}
               onChange={(e) => { setInput(e.target.value); setErr(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}

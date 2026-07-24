@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseSmsPrefs, serializeSmsPrefs, normalizePhone, addPhone, removePhone, setEventEnabled,
-  EMPTY_SMS_PREFS, type SmsPrefs,
+  normalizeEmail, addEmail, EMPTY_SMS_PREFS, type SmsPrefs,
 } from './smsPrefs';
 
 describe('parse/serialize', () => {
@@ -45,6 +45,20 @@ describe('addPhone / removePhone', () => {
     const p: SmsPrefs = { phones: ['a', 'b'], events: [] };
     expect(removePhone(p, 'a')).toEqual({ phones: ['b'], events: [] });
     expect(removePhone(p, 'z')).toBe(p);            // absent → no-op
+  });
+});
+
+describe('normalizeEmail / addEmail', () => {
+  it('lowercases + trims a valid email and rejects junk', () => {
+    expect(normalizeEmail(' Skipper@Boat.COM ')).toBe('skipper@boat.com');
+    expect(normalizeEmail('nope')).toBeNull();
+    expect(normalizeEmail('a@b')).toBeNull();
+  });
+  it('adds a valid email once (reusing the phones address list); no-ops on invalid/dupe', () => {
+    const p1 = addEmail(EMPTY_SMS_PREFS, 'Crew@Ship.io');
+    expect(p1.phones).toEqual(['crew@ship.io']);
+    expect(addEmail(p1, 'crew@ship.io')).toBe(p1); // dupe → same ref
+    expect(addEmail(p1, 'garbage')).toBe(p1);       // invalid → same ref
   });
 });
 
