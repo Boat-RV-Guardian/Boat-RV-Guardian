@@ -6,6 +6,31 @@ to do. Last pruned 2026-07-08.
 
 Legend: `[ ]` not started · `[~]` in progress / partially done.
 
+## ✅ Shipped 2026-07-23 (autonomous session — dashboard redesign + 3 field-found alert bugs)
+
+- **Guardian Deck dashboard** (#172): metric-card layout with live-value tiles + SVG sparklines, a
+  GPS/location mini-map (`@capacitor/geolocation` + OSM), hero status strip, alerts rail. Header wordmark
+  fix (#173). **Tile customization** (#176): hide / reorder / sparkline history range. **Demo enrichment +
+  event-simulator bar** (#174): richer fake fleet + a top bar to fire every event (demo showcase AND a
+  hardware-free QA tool, `lt_event_sim`).
+- **Save vehicle Wi-Fi credentials** (#177) — device-local, never synced (see the App-features entry).
+- **Account portal rebuilt + DEPLOYED** (brvg-account-site #1/#2): e-commerce plan screen, per-vehicle
+  subscriptions via `?vehicleId=` deep link, GDPR JSON/CSV export, new `/privacy` route; dev-hydration fix;
+  auto-deploy workflow (#3, needs `CLOUDFLARE_PAGES_EDIT` secret).
+- **Adopted + repaired** the prior agent's stranded Settings/Account refactor (#175): fixed a failing
+  `tsc`, restored/cleaned the cloud-sync model per owner, greened 13 stale tests.
+- **Hosted worker DEPLOYED to prod** (owner-approved) — current core (LinkTap `vel` fix, getApiKey shape,
+  tier gate) + the fixes below. Enabled the every-5-min + daily crons (daily maintenance had never run).
+- **THREE false-alert bugs fixed + deployed** (all found from the field / live device testing):
+  1. **LinkTap gateway "disconnected" spam** (cloud-server #28) — a flapping gateway pushed every blip;
+     now debounced, alert only if offline 30+ min, with a calm "back online".
+  2. **False "flood alarm off" push** (cloud-server #29) — a routine dry/wake report pushed a 🚨; now the
+     all-clear is silent unless a real alarm was latched (then a calm ✅). Safety/shutoff unchanged.
+  3. **Spurious shore-power push** (cloud-server #30) — `pm1.voltage_change` (underscore) mis-classified
+     as an alert; now telemetry. Verified live: the Dryer Plug webhook returns `notified:0`.
+
+---
+
 **Feature requests** (new-capability / future ideas, as opposed to active build/verify/bug work) are
 tracked as GitHub issues labeled `enhancement`, not here:
 https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/issues?q=is%3Aissue+label%3Aenhancement
@@ -122,27 +147,33 @@ below with why.
 
 ## 🧩 App features (buildable anytime; verify with a device provisioning pass)
 
-- [ ] **Save the vehicle's Wi-Fi credentials to the vehicle (owner request, 2026-07-22).** Option to
-      store the boat/RV network's SSID + password as per-vehicle config so device provisioning (BLE and
-      Wi-Fi-AP `Wifi.SetConfig`) prefills them instead of retyping on every sensor add — retyping (and
-      an autocapitalized password) has been a real provisioning failure mode. Design notes:
-      opt-in save (e.g. a "remember for this vehicle" checkbox on the provisioning SSID/password step +
-      an editable field in Settings → Vehicles); store in the synced per-vehicle config (`sh_*`/`lt_*`
-      namespace, so `applyUserScope` wipes it on identity change like the other per-vehicle secrets);
-      masked display with reveal, like the LinkTap password field. ⚠️ Synced config is readable by ALL
-      vehicle members (monitor included) — either accept that (documented) or gate the reveal/prefill
-      to admin/control roles. Verify with a real provisioning pass on a device.
+- [x] **Save the vehicle's Wi-Fi credentials — DONE (2026-07-23, #177).** Owner chose **device-local,
+      never synced** (`utils/vehicleWifi.ts`): the key sits OUTSIDE `VEHICLE_KEYS` so it never reaches
+      Firestore — members (monitors included) can't read the network password — and IS in the `sh_*`
+      namespace so `applyUserScope` wipes it on identity change. Reveal/prefill gated to admin/control.
+      ProvisionShellyModal prefills SSID+password on both the AP and BLE paths with a "remember for this
+      vehicle" checkbox; Settings → Vehicle has a masked Wi-Fi card (reveal / edit / forget). A unit test
+      asserts the key is not a synced key so a refactor can't quietly start syncing it. ⚠️ Still wants a
+      real provisioning pass on a device to confirm the prefill flows through `Wifi.SetConfig`.
 
-- [ ] **Dashboard UI Improvements:**
-  - [ ] moveable tiles
-  - [ ] ability to hide tiles
-  - [ ] maybe resize?
-  - [ ] create historical data widget options
+- [~] **Dashboard UI Improvements — moveable / hide / history DONE (2026-07-23, #176).**
+  - [x] moveable tiles — ⚙️ Customize mode, ← → reorder (operates on the visible list; skips hidden tiles).
+  - [x] ability to hide tiles — 🚫 hide + a "Hidden (n)" restore strip so a sensor is never silently lost.
+  - [ ] maybe resize? — not done (parked; low value vs reorder/hide).
+  - [x] create historical data widget options — 1h/6h/24h/48h sparkline range selector. Layout is
+        per-vehicle + self-healing (a stale layout can never hide a newly added sensor). Pure logic in
+        `utils/dashboardLayout.ts` + readingHistory range helpers, unit-tested.
 
-- [ ] **Fix Account Page / Subscriptions (https://account.boatrvguardian.com):**
-  - [ ] Update the subscriptions page to be an e-commerce-like plan screen.
-  - [ ] Tie subscriptions to specific vehicles on the account (this will be the primary sign-up flow for all subscriptions).
-  - [ ] Implement GDPR data export (including device water-usage history CSV).
+- [x] **Fix Account Page / Subscriptions — DONE (2026-07-23, brvg-account-site #1; DEPLOYED to
+      account.boatrvguardian.com).**
+  - [x] E-commerce plan screen — `PlanPicker` (3 tiers, monthly/yearly toggle, yearly saving, feature
+        lists, Most-popular/Current markers, one-click switch); `BETA_FREE` shows prices struck through.
+  - [x] Per-vehicle subscriptions — the screen is scoped to one owned vehicle (picker when several) and
+        honors the app's `?vehicleId=` deep link from the Plan button; only OWNED vehicles listed.
+  - [x] GDPR data export — full JSON bundle + water-usage & device-event CSVs, built entirely in-browser
+        from the user's own Firestore reads (no server/Admin SDK). New auth-gated `/privacy` route so the
+        app's Privacy-Portal button resolves. Auto-deploy workflow added (brvg-account-site #3, awaiting
+        the `CLOUDFLARE_PAGES_EDIT` repo secret).
 
 ---
 
@@ -266,18 +297,18 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
 
 ## 💳 Owner / external-gated (need Stripe, DNS, an email provider, or an owner-confirmed prod merge)
 
-- [ ] **🔴 Deploy the hosted worker (owner OK needed — prod).** `brvg-cloud-worker` is running
-      **2026-07-04 code** (checked `wrangler deployments list` 2026-07-22) — it's missing the LinkTap
-      flow-rate unit fix (cloud-server #21: `vel` is mL/min, so cloud-path flow reads ~1000× off), the
-      server-side getApiKey shape fix (#23), and the Task 6 tier gate (#25). Deploy = `cd
-      brvg-cloud-server && npx wrangler deploy` (secrets already set on the worker).
-- [~] **Shore power — a NEW PM Mini G3 ("Dryer Plug", `shellypmminig3-dcb4d9db00fc`, 172.31.0.116) was
-      added ONSITE 2026-07-22**; it initially "didn't populate" — root cause was the Gen3 digest-auth
-      bug (#166, fixed): the AP path secures the device first, then every authenticated call failed, so
-      no webhooks registered and polls died. With the #166 build installed, the poll self-heal registers
-      its hooks automatically on the first successful poll — **verify voltage shows + a `pm1.voltage_change`
-      doc appears in sensorState**. The OLD home PM Mini (`…d9db9850`, 192.168.86.x, dark since ~7/07)
-      is a separate unit — check power/Wi-Fi when at home or retire its config.
+- [x] **Deploy the hosted worker — DONE + DEPLOYED (2026-07-23, owner-approved).** `brvg-cloud-worker`
+      was on 2026-07-04 code; deployed current `main` (LinkTap `vel` mL/min fix #21, getApiKey shape #23,
+      Task 6 tier gate #25) + the false-alert fixes below. `/api/health` 200; auth gates 401. Old
+      `boat-rv-guardian-webhooks` worker left for rollback.
+- [x] **Shore power — NEW PM Mini "Dryer Plug" (`…db00fc`, 172.31.0.116) VERIFIED reporting (2026-07-23).**
+      Live LAN probe: device reads **122 V**, webhook correctly registered (`pm1.voltage_change` → api.
+      w/ the right `&k=`). It "didn't populate" because (a) shore voltage is stable so `voltage_change`
+      rarely fires, and (b) — the real bug — the worker classifier required a literal dot, so
+      `pm1.voltage_change` (underscore) fell through as an ALERT and **pushed a spurious "Sensor alert"**
+      instead of caching silently. Fixed in cloud-server #30 (`/[._](measurement|change)$/`); replaying
+      the device webhook post-deploy returned `telemetry:true, notified:0, persisted:true`. The OLD home
+      PM Mini (`…d9db9850`, 192.168.86.x) is a separate unit, still dark — retire its config or power it.
 - [x] **Deploy the account portal → `account.boatrvguardian.com` — DONE (2026-07-08).** `brvg-account-site`
       (Astro + React islands; profile / telemetry / subscription) is LIVE. Created the `brvg-account-site`
       Cloudflare Pages project + deployed via `wrangler pages deploy` (sc4tech account
@@ -293,9 +324,9 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
       service** in the stack (see the sharing model). Blocks billing emails; Stripe can send receipts.
 - [ ] **SMS end-to-end delivery test-fire.** Twilio is live (trial acct) but delivery hasn't been fired
       end to end — needs a Twilio-**verified** destination cell.
-- [ ] **Worker FCM/SMS send-success status.** Worker writes a `lastSend` field to `sensorState/{device}`
-      (implemented in [#42](https://github.com/Boat-RV-Guardian/Boat-RV-Guardian/pull/42)) — if that PR is
-      still open, it needs an explicit owner OK to merge (`worker/**` auto-deploys to prod). Low priority.
+- [x] **Worker FCM/SMS send-success status — PR #42 is MERGED.** The `lastSend`-to-sensorState feature
+      landed against the (now-retired) `worker/`. It was NOT ported into the live `brvg-cloud-worker`
+      (brvg-cloud-server) during the cutover; re-port only if send-delivery visibility is wanted. Low priority.
 
 ---
 
