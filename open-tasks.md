@@ -320,8 +320,14 @@ prior live sessions: cross-account isolation #33, admin-delete stickiness #34, n
       `setActiveVehicleTier` is the drop-in seam (Stripe webhook → `setActiveVehicleTier`). Scope: real
       upgrade/downgrade/cancel, monthly⇄yearly, payment method, invoices/receipts, billing history (Stripe
       Customer Portal).
-- [ ] **Receipts / billing emails.** Needs a transactional email provider — there is currently **no email
-      service** in the stack (see the sharing model). Blocks billing emails; Stripe can send receipts.
+- [ ] **Receipts / billing emails — likely not needed soon (guidance 2026-07-23).** The concrete needs
+      are already covered: **email verification / password reset → Firebase** (built in, live); **payment
+      receipts/invoices → Stripe sends these itself**. A dedicated ESP only adds *custom-branded*
+      transactional mail (welcome/custom receipts) — real only after Stripe. **Google Workspace does NOT
+      fit**: our sender lives in the Cloudflare Worker, which can't open raw SMTP, and Workspace's relay is
+      SMTP-only. **When actually needed → Resend** (HTTP API that works from the Worker, 3k/mo free, send
+      from `boatrvguardian.com` via DKIM in Cloudflare DNS). Keep Workspace for human mailboxes; the two
+      coexist on the same domain. Don't set up an ESP yet.
 - [ ] **SMS end-to-end delivery test-fire.** Twilio is live (trial acct) but delivery hasn't been fired
       end to end — needs a Twilio-**verified** destination cell.
 - [x] **Worker FCM/SMS send-success status — PR #42 is MERGED.** The `lastSend`-to-sensorState feature
